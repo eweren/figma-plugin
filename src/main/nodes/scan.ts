@@ -100,15 +100,31 @@ export const scanSelectedTextNodes = async (
       if (isStale()) return out;
       if (node.type === "TEXT") {
         out.push({ node, ancestorHidden: false });
-      } else if ("findAllWithCriteria" in node) {
-        const found = node.findAllWithCriteria({ types: ["TEXT"] });
-        for (const text of found) {
-          out.push({ node: text, ancestorHidden: false });
+      } else if ("children" in node) {
+        // Search per CHILD, not per root. One atomic `findAllWithCriteria`
+        // on a whole design-system wall (tens of thousands of layers) blocks
+        // the canvas for its entire duration — Figma can't even process a
+        // deselect click, and the pending signal never flushes to the UI.
+        // A wall's children are individual screens: each per-child search is
+        // small and fast, and the breathers between them keep Figma
+        // interactive AND give a superseding selection a place to abort.
+        let children = 0;
+        for (const child of node.children) {
+          if (isStale()) return out;
+          if (child.type === "TEXT") {
+            out.push({ node: child, ancestorHidden: false });
+          } else if ("findAllWithCriteria" in child) {
+            const found = child.findAllWithCriteria({ types: ["TEXT"] });
+            for (const text of found) {
+              out.push({ node: text, ancestorHidden: false });
+            }
+          }
+          children++;
+          if (children % 10 === 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          }
         }
       }
-      // The per-root search runs engine-side; a periodic breather between
-      // roots covers multi-container selections without taxing the common
-      // "hundreds of individually selected texts" case with per-root hops.
       roots++;
       if (roots % 25 === 0) {
         await new Promise<void>((resolve) => setTimeout(resolve, 0));

@@ -88,6 +88,13 @@ async function emitSelection(sendPending = true): Promise<void> {
   // Tell the UI a scan is starting so it can show a loader during the
   // (potentially slow) getSelectionInfo() below, not just after it resolves.
   if (sendPending) send({ type: "selection-pending" });
+  // One REAL breather before the heavy work: everything up to the first
+  // engine search resolves in microtasks (cached config, loaded page), so
+  // without this the scan blocks the canvas straight from inside the
+  // selectionchange callback — the pending message never flushes to the UI
+  // (no loader) and pending input (a deselect click) never gets processed.
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  if (isStale()) return;
   let nodes: Awaited<ReturnType<typeof getSelectionInfo>>["nodes"] = [];
   try {
     nodes = (await getSelectionInfo(isStale)).nodes;
