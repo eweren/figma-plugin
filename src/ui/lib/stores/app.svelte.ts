@@ -132,7 +132,17 @@ function createAppState() {
       selectedNodes = selectedNodes.map((n) => byId.get(n.id) ?? n);
     },
     setScanning() {
-      if (scanSpinnerTimer || state.scanning) return;
+      if (state.scanning) return;
+      if (scanSpinnerTimer) {
+        // A SECOND scan started before the first delivered — the user
+        // switched selection while we were still working. That's exactly
+        // when feedback matters: show the loader immediately instead of
+        // re-waiting out the delay on a visibly stale list.
+        clearTimeout(scanSpinnerTimer);
+        scanSpinnerTimer = null;
+        state.scanning = true;
+        return;
+      }
       scanSpinnerTimer = setTimeout(() => {
         scanSpinnerTimer = null;
         state.scanning = true;

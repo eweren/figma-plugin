@@ -38,7 +38,12 @@ export async function writeTextNode(node: TextNode, newText: string): Promise<vo
  *   state instead. Page-wide work still happens on demand in the Download/Pull
  *   flow via the dedicated `request-page-connected-nodes` path.
  */
-export const getSelectionInfo = async (): Promise<{
+export const getSelectionInfo = async (
+  // Superseded-scan probe (see `scanSelectedTextNodes`): checked at every
+  // yield so an outdated scan stops burning canvas time as soon as a newer
+  // selection arrives. The caller discards the partial result.
+  isStale: () => boolean = () => false,
+): Promise<{
   nodes: NodeInfo[];
   basedOnSelection: boolean;
 }> => {
@@ -54,7 +59,8 @@ export const getSelectionInfo = async (): Promise<{
   const needsAncestorHidden = Boolean(
     (config.ignoreHiddenLayers ?? true) && config.ignoreHiddenLayersIncludingChildren,
   );
-  const selected = await scanSelectedTextNodes(needsAncestorHidden);
+  const selected = await scanSelectedTextNodes(needsAncestorHidden, isStale);
+  if (isStale()) return { nodes: [], basedOnSelection: true };
   // Filter BEFORE building NodeInfo — `getNodeInfo` costs ~5 bridge calls per
   // node (pluginData + name + …), which ignored nodes must not pay. One loop
   // so `characters` crosses the bridge once per node (filter + info share it),
@@ -70,6 +76,7 @@ export const getSelectionInfo = async (): Promise<{
     scanned++;
     if (scanned % 50 === 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (isStale()) return { nodes: [], basedOnSelection: true };
     }
   }
 
@@ -95,6 +102,7 @@ export const getSelectionInfo = async (): Promise<{
       resolved++;
       if (resolved % 25 === 0) {
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        if (isStale()) return { nodes: [], basedOnSelection: true };
       }
     }
   }

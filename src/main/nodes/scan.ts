@@ -44,10 +44,12 @@ const collectTextNodes = async (
   out: ScannedTextNode[],
   ancestorHidden: boolean,
   progress: { visited: number },
+  isStale: () => boolean,
 ): Promise<void> => {
   progress.visited++;
   if (progress.visited % YIELD_EVERY === 0) {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if (isStale()) return;
   }
   if (node.type === "TEXT") {
     out.push({ node, ancestorHidden });
@@ -57,7 +59,8 @@ const collectTextNodes = async (
     // A container's own hidden state makes its whole subtree "ancestor-hidden".
     const childAncestorHidden = ancestorHidden || node.visible === false;
     for (const child of node.children) {
-      await collectTextNodes(child, out, childAncestorHidden, progress);
+      if (isStale()) return;
+      await collectTextNodes(child, out, childAncestorHidden, progress, isStale);
     }
   }
 };
@@ -80,6 +83,11 @@ const collectTextNodes = async (
  */
 export const scanSelectedTextNodes = async (
   needsAncestorHidden: boolean,
+  // Superseded-scan check, polled at every yield. A newer selection makes the
+  // running scan WORTHLESS — without bailing out it would keep burning canvas
+  // time in the background, and rapid selection switches after a large
+  // selection queued up "zombie" scans the new one had to wait behind.
+  isStale: () => boolean = () => false,
 ): Promise<ScannedTextNode[]> => {
   // `figma.currentPage` is implicitly loaded — selection access requires it —
   // but calling `loadAsync` again is cheap and keeps the contract explicit.
@@ -89,6 +97,7 @@ export const scanSelectedTextNodes = async (
   if (!needsAncestorHidden) {
     let roots = 0;
     for (const node of figma.currentPage.selection) {
+      if (isStale()) return out;
       if (node.type === "TEXT") {
         out.push({ node, ancestorHidden: false });
       } else if ("findAllWithCriteria" in node) {
@@ -110,7 +119,8 @@ export const scanSelectedTextNodes = async (
 
   const progress = { visited: 0 };
   for (const node of figma.currentPage.selection) {
-    await collectTextNodes(node, out, false, progress);
+    if (isStale()) return out;
+    await collectTextNodes(node, out, false, progress, isStale);
   }
   return out;
 };

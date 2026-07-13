@@ -84,12 +84,13 @@ let scanGeneration = 0;
 
 async function emitSelection(sendPending = true): Promise<void> {
   const generation = ++scanGeneration;
+  const isStale = () => generation !== scanGeneration;
   // Tell the UI a scan is starting so it can show a loader during the
   // (potentially slow) getSelectionInfo() below, not just after it resolves.
   if (sendPending) send({ type: "selection-pending" });
   let nodes: Awaited<ReturnType<typeof getSelectionInfo>>["nodes"] = [];
   try {
-    nodes = (await getSelectionInfo()).nodes;
+    nodes = (await getSelectionInfo(isStale)).nodes;
   } catch (err) {
     // A failed scan MUST still answer the pending signal — otherwise the UI's
     // delayed spinner (armed by `selection-pending`) stays up forever. Fall
