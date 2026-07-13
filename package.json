@@ -14,6 +14,7 @@
     "build:ui-inspect:watch": "vite build --config vite.config.ui-inspect.ts --watch",
     "build:manifest": "node scripts/build-manifest.mjs",
     "dev": "concurrently -k -n main,ui,inspect -c yellow,green,blue \"pnpm run build:main:watch\" \"pnpm run build:ui:watch\" \"pnpm run build:ui-inspect:watch\"",
+    "gallery": "vite --config vite.config.gallery.ts",
     "schema": "openapi-typescript 'https://app.tolgee.io/v3/api-docs/Accessible with Project API key (All)' --output ./src/ui/lib/api/schema.generated.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

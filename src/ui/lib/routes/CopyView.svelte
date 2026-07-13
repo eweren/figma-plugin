@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { ICON } from "$shared/iconSizes";
   import { appState } from "$ui/lib/stores/app.svelte";
   import { Button, Card } from "$ui/lib/components/ui";
+  import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import Info from "lucide-svelte/icons/info";
 
   const language = $derived(appState.value.config?.language);
@@ -15,7 +17,7 @@
 
   <div class="flex-1 overflow-auto p-3 space-y-3">
     <div class="flex items-center gap-2 text-xs text-text-secondary">
-      <Info size={14} />
+      <Info size={ICON.inline} />
       <span>
         This page is a generated copy and won't be synchronised with Tolgee.
       </span>
@@ -35,12 +37,12 @@
     </Card>
   </div>
 
-  <footer class="flex justify-end gap-2 border-t border-border p-2">
+  <ViewFooter>
     <Button
       variant="ghost"
       onclick={() => appState.navigate({ name: "settings" })}
     >
       Open settings
     </Button>
-  </footer>
+  </ViewFooter>
 </div>

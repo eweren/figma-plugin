@@ -1,7 +1,8 @@
-import { TOLGEE_PLUGIN_CONFIG_NAME } from "$shared/constants";
+import { TOLGEE_NODE_INFO, TOLGEE_PLUGIN_CONFIG_NAME } from "$shared/constants";
 
 import { send } from "$main/bus";
 import { getNodeInfo } from "$main/nodes/getNodeInfo";
+import { loadFontCached } from "$main/text/applyRichText";
 
 /**
  * Options for the `createCopy` handler. The two modes have different payloads
@@ -46,7 +47,10 @@ const PROGRESS_INTERVAL = 10;
  *   page never ends up empty.
  *
  * Every cloned page is marked with `pageCopy: true` in plugin data so the UI
- * routes to the read-only `CopyView` when the user navigates to it.
+ * routes to the read-only `CopyView` when the user navigates to it. Before each
+ * clone, a previous copy with the SAME name (and only one marked `pageCopy`) is
+ * removed so repeated copies replace rather than pile up — matching the original
+ * plugin.
  *
  * Progress is reported via `create-copy-progress` messages keyed by the
  * caller's `correlationId`.
@@ -59,13 +63,21 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
 
   try {
     if (options.mode === "keys") {
+      const targetName = `${sourcePage.name} — Keys`;
+      await removeExistingCopyPages(targetName);
       const targetPage = sourcePage.clone();
-      targetPage.name = `${sourcePage.name} — Keys`;
+      targetPage.name = targetName;
       figma.root.appendChild(targetPage);
       createdPageIds.push(targetPage.id);
 
       await targetPage.loadAsync();
-      const textNodes = targetPage.findAllWithCriteria({ types: ["TEXT"] });
+      // pluginData filter: only Tolgee-tagged nodes come back, so untagged
+      // text (usually most of the page) never pays the 5-bridge-call
+      // `getNodeInfo` just to be skipped.
+      const textNodes = targetPage.findAllWithCriteria({
+        types: ["TEXT"],
+        pluginData: { keys: [TOLGEE_NODE_INFO] },
+      });
       const total = textNodes.length;
       let processed = 0;
 
@@ -97,13 +109,18 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
         const lang = options.languages[i];
         if (!lang) continue;
 
+        const targetName = `${sourcePage.name} — ${lang}`;
+        await removeExistingCopyPages(targetName);
         const targetPage = sourcePage.clone();
-        targetPage.name = `${sourcePage.name} — ${lang}`;
+        targetPage.name = targetName;
         figma.root.appendChild(targetPage);
         createdPageIds.push(targetPage.id);
 
         await targetPage.loadAsync();
-        const textNodes = targetPage.findAllWithCriteria({ types: ["TEXT"] });
+        const textNodes = targetPage.findAllWithCriteria({
+          types: ["TEXT"],
+          pluginData: { keys: [TOLGEE_NODE_INFO] },
+        });
         const translationsForLang = options.translations[lang] ?? {};
 
         const total = textNodes.length;
@@ -145,6 +162,32 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
   }
 }
 
+/** Whether a page is a previously-generated Tolgee copy (marked `pageCopy`). */
+function isCopyPage(page: PageNode): boolean {
+  const raw = page.getPluginData(TOLGEE_PLUGIN_CONFIG_NAME);
+  if (!raw) return false;
+  try {
+    return (JSON.parse(raw) as { pageCopy?: boolean }).pageCopy === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Remove any existing copy page with the given name, so a repeated copy
+ * replaces the old one instead of accumulating duplicates. Only pages marked
+ * `pageCopy: true` are removed — a user's own same-named page is left alone
+ * (matches the original plugin). Only pages whose name matches are loaded, so
+ * this doesn't force-load the whole document under dynamic-page access.
+ */
+export async function removeExistingCopyPages(name: string): Promise<void> {
+  for (const page of figma.root.children) {
+    if (page.type !== "PAGE" || page.name !== name) continue;
+    await page.loadAsync();
+    if (isCopyPage(page)) page.remove();
+  }
+}
+
 /**
  * Write plugin data onto a freshly cloned page so the UI shows the read-only
  * `CopyView`. Skips `writeConfig` so we don't leak the marker into the
@@ -171,8 +214,19 @@ async function writeTextSafely(node: TextNode, text: string): Promise<void> {
   if (node.hasMissingFont) return;
 
   const length = node.characters.length;
-  const fonts = node.getRangeAllFontNames(0, Math.max(length, 1));
-  await Promise.all(fonts.map((f) => figma.loadFontAsync(f)));
+  if (length === 0) {
+    // Range APIs throw on an empty node ((0,1) is out of bounds) — and an
+    // uncaught throw here used to abort the WHOLE copy. Load the node's
+    // single font instead.
+    const font = node.fontName;
+    if (font === figma.mixed) return;
+    await loadFontCached(font);
+  } else {
+    const fonts = node.getRangeAllFontNames(0, length);
+    // Session-cached — language copies rewrite the same font set page after
+    // page; only the first page pays the actual loads.
+    await Promise.all(fonts.map((f) => loadFontCached(f)));
+  }
 
   if (node.fontName === figma.mixed) return;
 

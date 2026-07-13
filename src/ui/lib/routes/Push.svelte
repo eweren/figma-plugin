@@ -1,13 +1,17 @@
 <script lang="ts">
   import { createQuery, useQueryClient } from "@tanstack/svelte-query";
   import type { FrameScreenshot, NodeInfo, TolgeeConfig } from "$shared/types";
+  import { ICON } from "$shared/iconSizes";
   import { appState } from "$ui/lib/stores/app.svelte";
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { nextCorrelationId, on, send } from "$ui/lib/bus";
-  import { Button, Card } from "$ui/lib/components/ui";
+  import { Button, Card, Message, Stat } from "$ui/lib/components/ui";
+  import Badge from "$ui/lib/components/ui/badge.svelte";
+  import CheckboxField from "$ui/lib/components/ui/checkboxField.svelte";
   import {
     pushDiff,
     buildRemoteMapFromKeys,
+    textOfNode,
     type PushDiff,
   } from "$ui/lib/logic/pushDiff";
   import type { SimpleImportConflictResult } from "$ui/lib/api/push";
@@ -18,6 +22,7 @@
     defaultResolutions,
     fetchCanonicalAfterPush,
     resolutionKey,
+    submitBigMeta,
     submitPush,
     uploadScreenshots,
     type PushContext,
@@ -25,7 +30,8 @@
   import PushConflictItem from "$ui/lib/components/domain/PushConflictItem.svelte";
   import type { PushConflictResolution } from "$ui/lib/logic/pushFlow";
   import PushProgress from "$ui/lib/components/domain/PushProgress.svelte";
-  import ArrowLeft from "lucide-svelte/icons/arrow-left";
+  import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
+  import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import AlertTriangle from "lucide-svelte/icons/alert-triangle";
 
   type Stage = "idle" | "uploading" | "pushing" | "conflict" | "done" | "error";
@@ -42,6 +48,22 @@
   let resolutions = $state<Record<string, PushConflictResolution>>({});
   let errorMessage = $state<string | null>(null);
   let pushedKeyCount = $state(0);
+  // Per-push screenshot toggle (default from settings, like the old plugin).
+  // When checked the push uploads screenshots; it also keeps the Upload button
+  // active when there are only screenshots to send (no text changes).
+  // (Named `includeScreenshots` to avoid colliding with the imported
+  // `uploadScreenshots` push-flow helper.)
+  let includeScreenshots = $state(
+    appState.value.config?.updateScreenshots ?? true,
+  );
+
+  // Section refs so the New/Changed stats can scroll their lists into view.
+  let newSection = $state<HTMLElement>();
+  let changedSection = $state<HTMLElement>();
+
+  function scrollTo(el: HTMLElement | undefined): void {
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   // ---- Derived ---------------------------------------------------------------
 
@@ -51,7 +73,6 @@
   // otherwise Tolgee rejects with feature_not_enabled_for_project.
   const branch = $derived(auth.value.branchingEnabled ? cfg.branch : undefined);
   const hasNamespacesEnabled = $derived(auth.value.namespacesEnabled);
-  const updateScreenshots = $derived(cfg.updateScreenshots ?? true);
   const addTags = $derived(cfg.addTags ?? false);
   const configuredTags = $derived(cfg.tags ?? []);
 
@@ -122,6 +143,26 @@
 
   const diff = $derived(diffQuery.data ?? null);
 
+  const noTextChanges = $derived(
+    (diff?.newKeys.length ?? 0) === 0 && (diff?.changedKeys.length ?? 0) === 0,
+  );
+  // Any keys at all (incl. unchanged) → screenshots can be uploaded for them, so
+  // the "Upload screenshots" toggle is offered.
+  const hasAnyKeys = $derived(
+    (diff?.newKeys.length ?? 0) +
+      (diff?.changedKeys.length ?? 0) +
+      (diff?.unchangedKeys.length ?? 0) >
+      0,
+  );
+  // Even with no text changes, screenshots can still be (re)uploaded for the
+  // existing keys, matching the old plugin. This keeps the Upload button active
+  // in that case (the push already includes unchangedKeys + their screenshots).
+  const screenshotOnlyUpload = $derived(
+    noTextChanges &&
+      includeScreenshots &&
+      (diff?.unchangedKeys.length ?? 0) > 0,
+  );
+
   function buildContext(): PushContext | null {
     const client = auth.value.client;
     if (!client) return null;
@@ -148,10 +189,18 @@
         return;
       }
       const correlationId = nextCorrelationId();
-      const off = on("screenshots-result", (msg) => {
+      // Frames stream in one message each (main-side memory + serialization
+      // stay bounded); `screenshots-done` closes the stream.
+      const collected: FrameScreenshot[] = [];
+      const offFrame = on("screenshot-frame", (msg) => {
         if (msg.correlationId !== correlationId) return;
-        off();
-        resolve(msg.screenshots);
+        collected.push(msg.screenshot);
+      });
+      const offDone = on("screenshots-done", (msg) => {
+        if (msg.correlationId !== correlationId) return;
+        offFrame();
+        offDone();
+        resolve(collected);
       });
       send({ type: "request-screenshots", correlationId, nodeIds });
     });
@@ -184,19 +233,28 @@
     errorMessage = null;
     pushedKeyCount = 0;
     const nodesToPush = nodesToPushFrom(diff);
+    // Screenshots cover EVERY layer of each pushed key (all frames it appears
+    // on), not just the deduped representative — so a key reused across frames
+    // keeps full screenshot coverage, like the original plugin. Scoped to the
+    // pushed keys so we never export a frame that only holds keys we're not
+    // pushing (no wasted exports). `mapScreenshotsForNode` attaches them by key.
+    const pushedKeys = new Set(nodesToPush.map((n) => resolutionKey(n.key, n.ns)));
+    const screenshotNodes = connectedNodes.filter((n) =>
+      pushedKeys.has(resolutionKey(n.key, n.ns)),
+    );
 
     try {
       let screenshots: FrameScreenshot[] = [];
       let uploadedById = new Map<FrameScreenshot, number>();
 
-      if (updateScreenshots && nodesToPush.length > 0) {
+      if (includeScreenshots && screenshotNodes.length > 0) {
         stage = "uploading";
         progress = {
           current: 0,
           total: null,
           message: "Capturing screenshots…",
         };
-        screenshots = await captureScreenshots(nodesToPush.map((n) => n.id));
+        screenshots = await captureScreenshots(screenshotNodes.map((n) => n.id));
         uploadedById = await uploadScreenshots(ctx, screenshots, (e) => {
           progress = e;
         });
@@ -206,7 +264,7 @@
       progress = {
         current: 0,
         total: null,
-        message: "Pushing translations…",
+        message: "Uploading translations…",
       };
 
       const result = await submitPush({
@@ -215,6 +273,9 @@
         screenshots,
         uploadedImageIdByScreenshot: uploadedById,
         resolutionMode: "RECOMMENDED",
+        // Unchanged keys ride along only to carry screenshots — never re-push
+        // (override) their untouched translation. Matches the original plugin.
+        unchangedNodeIds: new Set(diff.unchangedKeys.map((n) => n.id)),
       });
 
       if (result.unresolvedConflicts.length > 0) {
@@ -222,6 +283,12 @@
         resolutions = defaultResolutions(result.unresolvedConflicts);
         stage = "conflict";
         return;
+      }
+
+      // Register screenshot key-context for in-context suggestions (best-effort,
+      // never fails the push). Only when screenshots were actually uploaded.
+      if (includeScreenshots && screenshots.length > 0) {
+        await submitBigMeta(ctx, screenshots);
       }
 
       await finishPush(ctx, nodesToPush);
@@ -277,7 +344,7 @@
   }
 
   function handlePushError(err: unknown): void {
-    errorMessage = (err as Error)?.message ?? "Push failed.";
+    errorMessage = (err as Error)?.message ?? "Upload failed.";
     stage = "error";
     appState.setError({
       message: errorMessage,
@@ -313,10 +380,30 @@
     const canonical = await fetchCanonicalAfterPush(ctx, allNodes).catch(
       () => null,
     );
+
+    // Connect EVERY selected node that shares a pushed key — not just the
+    // per-key representative `pushDiff` kept. Without this, bulk-assigning one
+    // key to several identical strings would upload the key but leave all but
+    // the first node unconnected ("not all my keys uploaded"). Nodes share a
+    // `(key, ns)` so they all resolve to the same canonical entry. We exclude
+    // the dropped members of CONFLICTING groups (same key, different text):
+    // only their first node was actually pushed.
+    const droppedConflictIds = new Set(
+      (diff?.conflictingNodes ?? []).flatMap((g) =>
+        g.nodes.slice(1).map((n) => n.id),
+      ),
+    );
+    // Missing keys (deleted on the platform) were intentionally NOT pushed —
+    // don't re-mark them connected, they need reconnecting/removing.
+    const missingIds = new Set((diff?.missingKeys ?? []).map((n) => n.id));
+    const nodesToConnect = connectedNodes.filter(
+      (n) => !droppedConflictIds.has(n.id) && !missingIds.has(n.id),
+    );
+
     send({
       type: "set-nodes-data",
       correlationId: nextCorrelationId(),
-      nodes: allNodes.map((n) => {
+      nodes: nodesToConnect.map((n) => {
         const remote = canonical?.get(canonicalKey(n));
         return {
           id: n.id,
@@ -331,7 +418,7 @@
 
     send({
       type: "notify",
-      text: `Pushed ${pushedKeyCount} key(s) to Tolgee`,
+      text: `Uploaded ${pushedKeyCount} key(s) to Tolgee`,
     });
     // Drop the diff cache so the next visit recomputes against the new
     // canonical translations.
@@ -380,28 +467,11 @@
 </script>
 
 <div class="flex h-full flex-col">
-  <header
-    class="flex items-center justify-between border-b border-border px-3 py-2"
-  >
-    <div class="flex items-center gap-2">
-      <button
-        type="button"
-        onclick={backToIndex}
-        class="text-text-secondary hover:text-text"
-        aria-label="Back"
-      >
-        <ArrowLeft size={14} />
-      </button>
-      <h1 class="text-sm font-semibold">
-        Push to Tolgee
-        {#if language}
-          <span class="text-xs font-normal text-text-secondary">
-            ({language})
-          </span>
-        {/if}
-      </h1>
-    </div>
-  </header>
+  <ViewHeader
+    title="Upload to Tolgee"
+    subtitle={language ? `(${language})` : undefined}
+    onBack={backToIndex}
+  />
 
   <div class="flex-1 overflow-auto p-3 space-y-3">
     {#if diffQuery.isPending}
@@ -415,7 +485,7 @@
     {:else if stage === "done"}
       <Card>
         <p class="text-sm">
-          Pushed {pushedKeyCount} key(s) to Tolgee.
+          Uploaded {pushedKeyCount} key(s) to Tolgee.
         </p>
       </Card>
     {:else if stage === "uploading" || stage === "pushing"}
@@ -427,7 +497,7 @@
     {:else if stage === "conflict"}
       <Card>
         <div class="flex items-center gap-2 text-xs text-text">
-          <AlertTriangle size={14} />
+          <AlertTriangle size={ICON.inline} />
           <span class="font-medium">
             {conflicts.length} unresolved conflict(s)
           </span>
@@ -458,7 +528,7 @@
           class="rounded-md border border-yellow-400/40 bg-yellow-100 p-2 text-xs text-yellow-900"
         >
           <div class="flex items-start gap-1.5">
-            <AlertTriangle size={12} class="mt-0.5 shrink-0" />
+            <AlertTriangle size={ICON.inline} class="mt-0.5 shrink-0" />
             <div>
               <div class="font-semibold">
                 {diff.conflictingNodes.length} key(s) reuse the same name with different
@@ -471,9 +541,10 @@
               <ul class="mt-1 list-disc pl-4">
                 {#each diff.conflictingNodes as group (group.key + (group.ns ?? ""))}
                   <li>
-                    <span class="font-mono">
-                      {group.ns ? `${group.ns}.${group.key}` : group.key}
-                    </span>
+                    <span class="font-mono">{group.key}</span>
+                    {#if hasNamespacesEnabled}
+                      <span class="opacity-70">ns:{group.ns || "<none>"}</span>
+                    {/if}
                     <span class="opacity-70">
                       ({group.nodes.length} nodes)
                     </span>
@@ -485,31 +556,86 @@
         </div>
       {/if}
 
-      <Card>
-        <div class="grid grid-cols-3 gap-2 text-center">
-          <div>
-            <div class="text-lg font-semibold text-text-brand">
-              {diff.newKeys.length}
+      {#if diff.missingKeys.length > 0}
+        <Message variant="error" class="items-start! gap-2">
+          <div class="flex flex-col gap-1">
+            <div class="font-semibold">
+              {diff.missingKeys.length} connected key(s) no longer exist in Tolgee.
             </div>
-            <div class="text-[10px] text-text-secondary">New</div>
+            <p class="opacity-80">
+              They were deleted on the platform, so they'll be skipped (not
+              re-created). Reconnect them to an existing key or remove the layer.
+            </p>
+            <ul class="mt-1 list-disc pl-4">
+              {#each diff.missingKeys as n (n.id)}
+                <li>
+                  <span class="font-mono">{n.key}</span>
+                  {#if hasNamespacesEnabled}
+                    <span class="opacity-70">ns:{n.ns || "<none>"}</span>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
           </div>
-          <div>
-            <div class="text-lg font-semibold">
-              {diff.changedKeys.length}
-            </div>
-            <div class="text-[10px] text-text-secondary">Changed</div>
-          </div>
-          <div>
-            <div class="text-lg font-semibold text-text-secondary">
-              {diff.unchangedKeys.length}
-            </div>
-            <div class="text-[10px] text-text-secondary">Unchanged</div>
-          </div>
+        </Message>
+      {/if}
+
+      <Card class="border-0 bg-bg-secondary">
+        <div class="grid grid-cols-3 gap-2">
+          <!-- New / Changed scroll to their lists when there's something there;
+               Unchanged has no list, so it stays static. -->
+          <Stat
+            value={diff.newKeys.length}
+            label="New"
+            tone="secondary"
+            onclick={diff.newKeys.length > 0
+              ? () => scrollTo(newSection)
+              : undefined}
+          />
+          <Stat
+            value={diff.changedKeys.length}
+            label="Changed"
+            tone="brand"
+            onclick={diff.changedKeys.length > 0
+              ? () => scrollTo(changedSection)
+              : undefined}
+          />
+          <Stat
+            value={diff.unchangedKeys.length}
+            label="Unchanged"
+            tone="muted"
+          />
         </div>
       </Card>
 
+      {#if hasAnyKeys}
+        <!-- Per-push screenshot toggle in a card so it stays visible — when
+             there are no text changes it's the ONLY action, so it must stand out
+             (the Upload button stays active while it's on). -->
+        <div class="rounded-md border border-border bg-bg-secondary px-3 py-2.5">
+          <CheckboxField
+            label="Upload screenshots"
+            checked={includeScreenshots}
+            onChange={(v) => (includeScreenshots = v)}
+          />
+          {#if noTextChanges && includeScreenshots}
+            <p class="mt-1 pl-6 text-[11px] text-text-secondary">
+              No text changes — screenshots will still be uploaded for
+              {diff.unchangedKeys.length}
+              {diff.unchangedKeys.length === 1 ? "key" : "keys"}.
+            </p>
+          {/if}
+        </div>
+      {/if}
+
+      {#if noTextChanges && !screenshotOnlyUpload}
+        <p class="text-center text-xs text-text-secondary">
+          No changes to upload.
+        </p>
+      {/if}
+
       {#if diff.newKeys.length > 0}
-        <section>
+        <section bind:this={newSection} class="scroll-mt-2">
           <div
             class="mb-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
           >
@@ -518,11 +644,14 @@
           <ul class="space-y-1">
             {#each diff.newKeys as node (node.id)}
               <li class="rounded border border-border bg-bg p-2">
-                <div class="truncate text-xs font-mono">
-                  {node.ns ? `${node.ns}.${node.key}` : node.key}
+                <div class="flex items-center gap-1.5">
+                  <span class="min-w-0 truncate text-xs font-mono">{node.key}</span>
+                  {#if hasNamespacesEnabled}
+                    <Badge>ns:{node.ns || "<none>"}</Badge>
+                  {/if}
                 </div>
                 <div class="truncate text-[11px] text-text-secondary">
-                  {node.translation || node.characters}
+                  {textOfNode(node)}
                 </div>
               </li>
             {/each}
@@ -531,7 +660,7 @@
       {/if}
 
       {#if diff.changedKeys.length > 0}
-        <section>
+        <section bind:this={changedSection} class="scroll-mt-2">
           <div
             class="mb-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
           >
@@ -540,10 +669,13 @@
           <ul class="space-y-1">
             {#each diff.changedKeys as entry (entry.node.id)}
               <li class="rounded border border-border bg-bg p-2">
-                <div class="truncate text-xs font-mono">
-                  {entry.node.ns
-                    ? `${entry.node.ns}.${entry.node.key}`
-                    : entry.node.key}
+                <div class="flex items-center gap-1.5">
+                  <span class="min-w-0 truncate text-xs font-mono">
+                    {entry.node.key}
+                  </span>
+                  {#if hasNamespacesEnabled}
+                    <Badge>ns:{entry.node.ns || "<none>"}</Badge>
+                  {/if}
                 </div>
                 <div
                   class="truncate text-[11px] text-text-secondary line-through"
@@ -552,7 +684,7 @@
                   {entry.remoteText}
                 </div>
                 <div class="truncate text-[11px] text-text">
-                  {entry.node.translation || entry.node.characters}
+                  {textOfNode(entry.node)}
                 </div>
               </li>
             {/each}
@@ -562,7 +694,7 @@
     {/if}
   </div>
 
-  <footer class="flex justify-end gap-2 border-t border-border p-2">
+  <ViewFooter>
     {#if stage === "conflict"}
       <Button variant="ghost" onclick={backToIndex}>Cancel</Button>
       <Button onclick={applyResolutions}>Apply resolutions</Button>
@@ -570,12 +702,9 @@
       <Button onclick={backToIndex}>OK</Button>
     {:else if stage === "idle" && diff}
       <Button variant="ghost" onclick={backToIndex}>Cancel</Button>
-      <Button
-        onclick={startPush}
-        disabled={diff.newKeys.length === 0 && diff.changedKeys.length === 0}
-      >
-        Push to Tolgee
+      <Button onclick={startPush} disabled={noTextChanges && !screenshotOnlyUpload}>
+        Upload to Tolgee
       </Button>
     {/if}
-  </footer>
+  </ViewFooter>
 </div>

@@ -5,6 +5,7 @@
   import { auth } from "./lib/stores/auth.svelte";
   import { queryClient } from "./lib/stores/query.svelte";
   import { attachBus, on, send } from "./lib/bus";
+  import { flushNodeSaves } from "./lib/logic/saveQueue";
   import { validateApiKey } from "./lib/api/auth";
   import { createTolgeeClient } from "./lib/api/client";
   import { getProjectMeta } from "./lib/api/projectMeta";
@@ -61,6 +62,7 @@
       auth.setProjectFeatures({
         branchingEnabled: meta.branchingEnabled,
         namespacesEnabled: meta.namespacesFeaturesEnabled,
+        projectName: meta.name,
       });
     } catch {
       auth.setProjectFeatures({
@@ -122,6 +124,7 @@
       }
       void maybeBootstrapAuth(msg.config);
     });
+    const unsubPending = on("selection-pending", () => appState.setScanning());
     const unsubSel = on("selection-changed", (msg) =>
       appState.setSelection(msg.nodes, msg.hasUserSelection),
     );
@@ -136,6 +139,16 @@
     const unsubCmd = on("command", (_msg) => {
       // TODO: route commands (open / open-on-node)
     });
+    // Writes no longer trigger a whole-selection re-scan on the main thread;
+    // instead their results carry fresh snapshots of just the written nodes.
+    // Patch them into the selection here so every write path (inline edits,
+    // bulk actions, Pull, StringDetails) stays consistent for free.
+    const unsubNodesSet = on("nodes-set-result", (msg) => appState.patchNodes(msg.nodes));
+    const unsubApplied = on("apply-translations-result", (msg) => appState.patchNodes(msg.nodes));
+    // Figma can tear the iframe down at any moment — persist any debounced
+    // inline edits so the last ~300ms of typing isn't silently lost.
+    const flushOnHide = () => flushNodeSaves();
+    window.addEventListener("pagehide", flushOnHide);
     // Retry sending ui-ready until the host acknowledges with init.
     // Guards against the race where the host's listener isn't registered yet.
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -152,10 +165,14 @@
     return () => {
       clearTimeout(retryTimer);
       unsubInit();
+      unsubPending();
       unsubSel();
       unsubCfg();
       unsubPage();
       unsubCmd();
+      unsubNodesSet();
+      unsubApplied();
+      window.removeEventListener("pagehide", flushOnHide);
     };
   });
 

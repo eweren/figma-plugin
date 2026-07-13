@@ -1,5 +1,6 @@
 import type { NodeInfo } from "$shared/types";
 import IntlMessageFormat from "intl-messageformat";
+import { isAdvancedString } from "./manualChange";
 // Local mini-implementation of `getTolgeeFormat` from `@tginternal/editor`.
 // The upstream package transitively pulls in `@codemirror/{state,view}`
 // (~500 kB raw / ~125 kB gzip) — see `./tolgeeFormat.ts` for the rationale.
@@ -51,6 +52,12 @@ export type PushDiff = {
   changedKeys: ChangedKey[];
   unchangedKeys: NodeInfo[];
   /**
+   * Connected keys that no longer exist in Tolgee (deleted on the platform).
+   * Deliberately NOT pushed — silently re-creating a key the user removed is
+   * surprising; they should reconnect or delete the layer instead.
+   */
+  missingKeys: NodeInfo[];
+  /**
    * Groups of Figma nodes that share `(key, ns)` but disagree on the
    * translation text — the deduplication picks the first one, so the user
    * should be warned.
@@ -95,6 +102,7 @@ export function pushDiff(
   const newKeys: NodeInfo[] = [];
   const changedKeys: ChangedKey[] = [];
   const unchangedKeys: NodeInfo[] = [];
+  const missingKeys: NodeInfo[] = [];
   const conflictingNodes: ConflictingNodes[] = [];
 
   for (const [, group] of groups) {
@@ -103,8 +111,8 @@ export function pushDiff(
 
     // Flag any group whose text differs across duplicates.
     if (group.length > 1) {
-      const firstText = textOfNode(first);
-      const hasMismatch = group.some((n) => textOfNode(n) !== firstText);
+      const firstText = conflictText(first);
+      const hasMismatch = group.some((n) => conflictText(n) !== firstText);
       if (hasMismatch) {
         conflictingNodes.push({
           key: first.key,
@@ -118,7 +126,12 @@ export function pushDiff(
     const remoteEntry = remote[nsLookup]?.[first.key];
 
     if (!remoteEntry) {
-      newKeys.push(first);
+      // Absent remotely. If EVERY node on this key is connected, the key was
+      // deleted on the platform → skip it (don't re-create). If any node is
+      // unconnected, it's a genuinely new local key someone wants created, so
+      // don't drop it just because a stale connected node shares the key.
+      if (group.every((n) => n.connected)) missingKeys.push(first);
+      else newKeys.push(first);
       continue;
     }
 
@@ -129,7 +142,7 @@ export function pushDiff(
     }
   }
 
-  return { newKeys, changedKeys, unchangedKeys, conflictingNodes };
+  return { newKeys, changedKeys, unchangedKeys, missingKeys, conflictingNodes };
 }
 
 /**
@@ -139,8 +152,41 @@ export function pushDiff(
  *   - prefer the explicit Tolgee translation when present
  *   - otherwise fall back to the rendered `characters` value
  */
-function textOfNode(node: NodeInfo): string {
-  return node.translation || node.characters || "";
+export function textOfNode(node: NodeInfo): string {
+  // PLAIN strings: the live `characters` ARE the value, and they reflect direct
+  // Figma-canvas edits that the stale stored `translation` would miss (so a
+  // connected string edited in Figma is correctly detected as changed + the new
+  // text is what gets pushed — matching the old plugin). ADVANCED strings: the
+  // stored `translation` is the authoritative ICU code (`characters` is only its
+  // rendered form, which must NOT be pushed as the value).
+  return isAdvancedString(node)
+    ? node.translation || node.characters || ""
+    : node.characters || node.translation || "";
+}
+
+/**
+ * Text used to decide whether two Figma layers that share one `(key, ns)`
+ * genuinely CONFLICT (and so only one could upload).
+ *
+ * For ADVANCED strings (plural / params / markup) the authoritative value is the
+ * shared Tolgee ICU in `translation` — the canvas `characters` is only a derived
+ * render, so two forms of one plural ("1 woman" / "10 women") must NOT count as
+ * a conflict. When the ICU is absent (e.g. not pulled yet) there is no
+ * distinguishing value, so such layers simply don't conflict.
+ *
+ * PLAIN strings conflict on their canvas `characters` — two different Figma
+ * texts mapped to one key ("brown 111" vs "brown") is a real conflict.
+ *
+ * Distinct from `textOfNode` (which keeps a `characters` fallback for detecting
+ * plain canvas edits); this one deliberately does NOT fall back for advanced
+ * strings. Shared by the Push diff and the Index warning banner so they agree.
+ */
+export function conflictText(node: NodeInfo): string {
+  // ADVANCED: the ICU only — no `characters` fallback (a render is derived, so
+  // two plural forms of one key never conflict). PLAIN: same as `textOfNode`.
+  return isAdvancedString(node)
+    ? (node.translation ?? "")
+    : node.characters || node.translation || "";
 }
 
 /**

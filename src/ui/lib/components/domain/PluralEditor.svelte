@@ -5,7 +5,7 @@
     getPluralVariants,
     getVariantExample,
   } from "$ui/lib/logic/tolgeeFormat";
-  import IcuEditor from "$ui/lib/components/domain/IcuEditor.svelte";
+  import PluralVariantInput from "$ui/lib/components/domain/PluralVariantInput.svelte";
 
   type Props = {
     /** Raw ICU plural source. Two-way bound — emitted whenever any variant edits. */
@@ -14,18 +14,16 @@
     locale: string;
     /** Plural parameter name that drives the ICU expression. */
     parameter: string;
-    /** Optional placeholder shown when a variant is empty. */
+    /** Optional placeholder shown when a variant is empty. Hints that `#` is
+     *  the count, e.g. "# text (example)". */
     placeholder?: string;
-    /** Optional rows per variant editor. */
-    rows?: number;
   };
 
   let {
     value = $bindable(""),
     locale,
     parameter,
-    placeholder = "Translation…",
-    rows = 2,
+    placeholder = "# text (example)",
   }: Props = $props();
 
   // Parse the incoming ICU into a `{parameter, variants}` map. We re-derive
@@ -61,22 +59,25 @@
     {@const exampleValue = getVariantExample(locale, variant)}
     {@const content =
       (parsed.variants as Record<string, string | undefined>)[variant] ?? ""}
-    <div class="grid grid-cols-[60px_1fr] items-start gap-2">
-      <div
-        class="flex items-baseline gap-1 pt-1 text-[10px] text-text-secondary"
+    <!-- Variant form as a rounded grey pill on the left (e.g. "One"), then the
+         body field. The ICU `#` count renders inside the field as a green chip
+         showing the example value (e.g. "#1"), like Tolgee's plural editor. -->
+    <div class="flex items-center gap-2">
+      <!-- Fixed width so every form pill is the same size and the variant inputs
+           all start at the same left edge. -->
+      <span
+        class="w-14 shrink-0 rounded-full bg-bg-secondary px-1 py-1 text-center text-[11px] font-medium capitalize text-text-secondary"
       >
-        <span class="font-semibold uppercase tracking-wide">{variant}</span>
-        {#if exampleValue !== undefined}
-          <span class="text-(--color-text-tertiary)">({exampleValue})</span>
-        {/if}
+        {variant}
+      </span>
+      <div class="min-w-0 flex-1">
+        <PluralVariantInput
+          value={content}
+          onChange={(next) => commitVariant(variant, next)}
+          hashLabel={exampleValue !== undefined ? `#${exampleValue}` : "#"}
+          {placeholder}
+        />
       </div>
-      <IcuEditor
-        value={content}
-        onChange={(next) => commitVariant(variant, next)}
-        nested
-        {placeholder}
-        {rows}
-      />
     </div>
   {/each}
 </div>

@@ -11,6 +11,8 @@ const manifestPath = path.join(distDir, 'manifest.json');
 
 const manifest = {
   api: '1.0.0',
+  // Matches the published Tolgee plugin's identity, so a local/dev build is the
+  // same plugin to Figma (shares its stored data) rather than a separate one.
   id: '1212381421658754793',
   name: 'Tolgee',
   main: 'main.js',
@@ -26,11 +28,9 @@ const manifest = {
     allowedDomains: ['*'],
     reasoning: 'Self-hosted Tolgee instances may run on arbitrary domains.',
   },
-  menu: [
-    { name: 'Open Tolgee', command: 'open' },
-    { separator: true },
-    { name: 'Toggle Canvas Annotations', command: 'toggle-annotations' },
-  ],
+  // No `menu`: with one, Figma shows a submenu on launch instead of opening the
+  // plugin directly. The "Toggle Canvas Annotations" quick action lived here —
+  // move it into the UI (Settings / an Annotations tab) if it's still wanted.
   relaunchButtons: [
     { command: 'open-on-node', name: 'Edit Tolgee key', multipleSelection: false },
   ],

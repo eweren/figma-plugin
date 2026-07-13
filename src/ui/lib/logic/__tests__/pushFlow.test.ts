@@ -3,6 +3,7 @@ import type { TolgeeClient } from "$ui/lib/api/client";
 import type { SimpleImportConflictResult } from "$ui/lib/api/push";
 import {
   buildPayload,
+  buildRelatedKeys,
   canonicalKey,
   defaultResolutions,
   resolutionKey,
@@ -48,6 +49,20 @@ const ctx: PushContext = {
   language: "en",
   hasNamespacesEnabled: false,
 };
+
+function makeScreenshot(keys: Array<{ key: string; ns?: string }>): FrameScreenshot {
+  return {
+    image: new Uint8Array(),
+    info: {} as FrameScreenshot["info"],
+    keys: keys.map((k, i) => ({
+      ...makeNode({ id: `k${i}`, key: k.key, ns: k.ns }),
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    })) as FrameScreenshot["keys"],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // canonicalKey
@@ -184,6 +199,25 @@ describe("buildPayload", () => {
     expect(item?.translations).toEqual({});
   });
 
+  it("sends translations: {} for an UNCHANGED node (never re-overrides it)", () => {
+    const changed = makeNode({ id: "a", key: "changed", translation: "New" });
+    const unchanged = makeNode({ id: "b", key: "same", translation: "Same" });
+    const items = buildPayload({
+      ctx,
+      nodes: [changed, unchanged],
+      screenshots: noScreenshots,
+      uploadedImageIdByScreenshot: emptyMap,
+      unchangedNodeIds: new Set(["b"]),
+    });
+    // changed node still pushes its text with OVERRIDE...
+    expect(items[0]?.translations).toEqual({
+      en: { text: "New", resolution: "OVERRIDE" },
+    });
+    // ...the unchanged one carries no translation at all.
+    expect(items[1]?.translations).toEqual({});
+    expect(items[1]?.name).toBe("same");
+  });
+
   it("falls back to node.characters when translation is empty", () => {
     const node = makeNode({ key: "label", translation: "", characters: "Fallback" });
     const [item] = buildPayload({
@@ -288,5 +322,32 @@ describe("buildPayload", () => {
     expect(result).toHaveLength(2);
     expect(result[0]?.name).toBe("a");
     expect(result[1]?.name).toBe("b");
+  });
+});
+
+describe("buildRelatedKeys", () => {
+  it("lists a screenshot's keys in order, dropping empty keys", () => {
+    const s = makeScreenshot([{ key: "a" }, { key: "" }, { key: "b" }]);
+    const rel = buildRelatedKeys(ctx, s);
+    expect(rel.map((k) => k.keyName)).toEqual(["a", "b"]);
+  });
+
+  it("includes namespace only when namespaces are enabled", () => {
+    const s = makeScreenshot([{ key: "a", ns: "common" }]);
+    expect(buildRelatedKeys({ ...ctx, hasNamespacesEnabled: true }, s)[0]?.namespace).toBe(
+      "common",
+    );
+    expect(buildRelatedKeys(ctx, s)[0]?.namespace).toBeUndefined();
+  });
+
+  it("carries the branch on each related key when set", () => {
+    const s = makeScreenshot([{ key: "a" }]);
+    expect(buildRelatedKeys({ ...ctx, branch: "feat" }, s)[0]?.branch).toBe("feat");
+    expect(buildRelatedKeys(ctx, s)[0]?.branch).toBeUndefined();
+  });
+
+  it("caps at 100 keys", () => {
+    const s = makeScreenshot(Array.from({ length: 150 }, (_, i) => ({ key: `k${i}` })));
+    expect(buildRelatedKeys(ctx, s)).toHaveLength(100);
   });
 });

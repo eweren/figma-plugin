@@ -8,6 +8,7 @@ type AuthState = {
   apiUrl: string;
   apiKey: string;
   projectId: number | null;
+  projectName: string | null;
   scopes: string[];
   authenticated: boolean;
   branchingEnabled: boolean;
@@ -22,6 +23,7 @@ function createAuth() {
     apiUrl: "",
     apiKey: "",
     projectId: null,
+    projectName: null,
     scopes: [],
     authenticated: false,
     branchingEnabled: false,
@@ -51,9 +53,13 @@ function createAuth() {
     setProjectFeatures(features: {
       branchingEnabled: boolean;
       namespacesEnabled: boolean;
+      projectName?: string;
     }): void {
       state.branchingEnabled = features.branchingEnabled;
       state.namespacesEnabled = features.namespacesEnabled;
+      if (features.projectName !== undefined) {
+        state.projectName = features.projectName;
+      }
     },
     setLanguages(langs: LanguageInfo[]): void {
       state.languages = langs;
@@ -66,6 +72,7 @@ function createAuth() {
       state.apiUrl = "";
       state.apiKey = "";
       state.projectId = null;
+      state.projectName = null;
       state.scopes = [];
       state.authenticated = false;
       state.branchingEnabled = false;

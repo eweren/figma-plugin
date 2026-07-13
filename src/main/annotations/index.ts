@@ -5,7 +5,7 @@ export {
   syncCurrentPage,
   clearCurrentPage,
 } from "./sync";
-export { scheduleReconcile } from "./reconcile";
+export { scheduleReconcile, cancelReconcile } from "./reconcile";
 
 /**
  * Setting key used inside `tolgee_config`-flavoured persistence. Currently

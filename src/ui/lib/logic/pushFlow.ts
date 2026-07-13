@@ -3,13 +3,16 @@ import type { TolgeeClient } from "$ui/lib/api/client";
 import { fetchRemoteKeys } from "$ui/lib/api/keysByName";
 import {
   type PushKeysResult,
+  type RelatedKeyDto,
   type SimpleImportConflictResult,
   type SingleStepImportResolvableItemRequest,
   pushKeys,
+  storeBigMeta,
 } from "$ui/lib/api/push";
 import type { components } from "$ui/lib/api/schema.generated";
 import { uploadScreenshot } from "$ui/lib/api/screenshots";
 import { applyTags } from "$ui/lib/api/tags";
+import { textOfNode } from "./pushDiff";
 
 /**
  * How the user resolved a translation conflict. Lives here (not in the
@@ -98,7 +101,7 @@ function mapScreenshotsForNode(
     const uploadedImageId = uploadedImageIdByScreenshot.get(screenshot);
     if (uploadedImageId === undefined) continue;
     out.push({
-      text: node.translation || node.characters,
+      text: textOfNode(node),
       uploadedImageId,
       positions,
     });
@@ -112,6 +115,11 @@ export type BuildPayloadOptions = {
   screenshots: FrameScreenshot[];
   uploadedImageIdByScreenshot: Map<FrameScreenshot, number>;
   resolutionFor?: (key: string, ns: string | undefined) => PushConflictResolution | undefined;
+  /** Node ids whose translation is UNCHANGED vs the server. Their payload item
+   *  carries screenshots but an empty `translations` — so the push never
+   *  re-overrides an untouched (and possibly REVIEWED) translation. Matches the
+   *  published plugin, which sends `translations: {}` for unchanged keys. */
+  unchangedNodeIds?: Set<string>;
 };
 
 export function buildPayload(opts: BuildPayloadOptions): SingleStepImportResolvableItemRequest[] {
@@ -119,16 +127,19 @@ export function buildPayload(opts: BuildPayloadOptions): SingleStepImportResolva
 
   return nodes.map((node) => {
     const resolution = resolutionFor?.(node.key, node.ns);
-    const text = node.translation || node.characters || "";
+    const text = textOfNode(node);
     const screenshotsForNode = mapScreenshotsForNode(
       node,
       screenshots,
       uploadedImageIdByScreenshot,
     );
 
-    // `KEEP` -> omit translations (only updates screenshots/tags).
+    // `KEEP` (user chose to keep the server value on a conflict) OR an UNCHANGED
+    // key -> omit translations (only updates screenshots/tags), never touching
+    // the stored translation.
+    const isUnchanged = opts.unchangedNodeIds?.has(node.id) ?? false;
     const translations =
-      resolution === "KEEP"
+      resolution === "KEEP" || isUnchanged
         ? {}
         : {
             [ctx.language]: {
@@ -196,6 +207,7 @@ export type SubmitPushOptions = {
   uploadedImageIdByScreenshot: Map<FrameScreenshot, number>;
   resolutionMode: "RECOMMENDED" | "FORCE_OVERRIDE";
   resolutionFor?: BuildPayloadOptions["resolutionFor"];
+  unchangedNodeIds?: Set<string>;
 };
 
 export async function submitPush(opts: SubmitPushOptions): Promise<PushKeysResult> {
@@ -205,12 +217,48 @@ export async function submitPush(opts: SubmitPushOptions): Promise<PushKeysResul
     screenshots: opts.screenshots,
     uploadedImageIdByScreenshot: opts.uploadedImageIdByScreenshot,
     resolutionFor: opts.resolutionFor,
+    unchangedNodeIds: opts.unchangedNodeIds,
   });
   return pushKeys(opts.ctx.client, payload, {
     branch: opts.ctx.branch || undefined,
     resolutionMode: opts.resolutionMode,
     errorOnUnresolvedConflict: false,
   });
+}
+
+/** The `relatedKeysInOrder` for one screenshot: the keys it contains, in the
+ *  order captured, capped at 100 (matching the original plugin). */
+export function buildRelatedKeys(
+  ctx: PushContext,
+  screenshot: FrameScreenshot,
+): RelatedKeyDto[] {
+  return screenshot.keys
+    .filter((k) => k.key)
+    .map((k) => ({
+      keyName: k.key,
+      namespace: ctx.hasNamespacesEnabled ? k.ns || undefined : undefined,
+      branch: ctx.branch || undefined,
+    }))
+    .slice(0, 100);
+}
+
+/**
+ * Registers screenshot key-context ("related keys in order") with Tolgee via
+ * `POST /v2/projects/big-meta`, once per screenshot — feeding Tolgee's
+ * in-context translation suggestions, like the original plugin. Best-effort:
+ * the translations are already saved, so a failure here is swallowed and never
+ * fails the push. Runs the (lightweight, image-free) calls concurrently.
+ */
+export async function submitBigMeta(
+  ctx: PushContext,
+  screenshots: FrameScreenshot[],
+): Promise<void> {
+  await Promise.allSettled(
+    screenshots
+      .map((s) => buildRelatedKeys(ctx, s))
+      .filter((keys) => keys.length > 0)
+      .map((keys) => storeBigMeta(ctx.client, keys)),
+  );
 }
 
 export type ApplyTagsOptions = {

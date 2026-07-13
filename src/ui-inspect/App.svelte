@@ -6,6 +6,7 @@
     buildProjectDashboardLink,
   } from "$inspect/lib/deeplink";
   import type { NodeInfo, TolgeeConfig } from "$shared/types";
+  import { ICON } from "$shared/iconSizes";
   import Tag from "lucide-svelte/icons/tag";
   import Languages from "lucide-svelte/icons/languages";
   import ExternalLink from "lucide-svelte/icons/external-link";
@@ -130,7 +131,7 @@
         class="flex h-full flex-col items-center justify-center gap-2 px-6 py-8 text-center"
       >
         <Plug
-          size={28}
+          size={ICON.hero}
           class="text-icon-secondary"
           aria-hidden="true"
         />
@@ -148,7 +149,7 @@
         class="flex h-full flex-col items-center justify-center gap-2 px-6 py-8 text-center"
       >
         <MousePointer
-          size={28}
+          size={ICON.hero}
           class="text-icon-secondary"
           aria-hidden="true"
         />
@@ -162,7 +163,7 @@
             onclick={() => openExternal(projectLink)}
           >
             Open project in Tolgee
-            <ExternalLink size={11} aria-hidden="true" />
+            <ExternalLink size={ICON.inline} aria-hidden="true" />
           </button>
         {/if}
       </div>
@@ -183,7 +184,7 @@
               class="flex items-start gap-2 border-b border-border px-3 py-2"
             >
               <Tag
-                size={12}
+                size={ICON.inline}
                 class="mt-0.5 shrink-0 text-icon-secondary"
                 aria-hidden="true"
               />
@@ -209,7 +210,7 @@
             <!-- Card body: translation -->
             <div class="flex items-start gap-2 px-3 py-2">
               <Languages
-                size={12}
+                size={ICON.inline}
                 class="mt-0.5 shrink-0 text-icon-secondary"
                 aria-hidden="true"
               />
@@ -234,7 +235,7 @@
                 disabled={!deeplink}
                 onclick={() => openExternal(deeplink)}
               >
-                <ExternalLink size={11} aria-hidden="true" />
+                <ExternalLink size={ICON.inline} aria-hidden="true" />
                 Open in Tolgee
               </button>
               <button
@@ -245,10 +246,10 @@
                 aria-label="Copy key"
               >
                 {#if copiedSlot === keySlot}
-                  <Check size={11} aria-hidden="true" />
+                  <Check size={ICON.inline} aria-hidden="true" />
                   Copied!
                 {:else}
-                  <Copy size={11} aria-hidden="true" />
+                  <Copy size={ICON.inline} aria-hidden="true" />
                   Copy key
                 {/if}
               </button>
@@ -260,10 +261,10 @@
                 aria-label="Copy translation"
               >
                 {#if copiedSlot === translationSlot}
-                  <Check size={11} aria-hidden="true" />
+                  <Check size={ICON.inline} aria-hidden="true" />
                   Copied!
                 {:else}
-                  <Copy size={11} aria-hidden="true" />
+                  <Copy size={ICON.inline} aria-hidden="true" />
                   Copy translation
                 {/if}
               </button>
@@ -285,7 +286,7 @@
         onclick={() => openExternal(projectLink)}
       >
         Open project
-        <ExternalLink size={11} aria-hidden="true" />
+        <ExternalLink size={ICON.inline} aria-hidden="true" />
       </button>
     </footer>
   {/if}

@@ -1,7 +1,6 @@
-import { formatIcuMessage } from "$shared/icu";
 import type { NodeInfo } from "$shared/types";
 import type { PulledKey } from "$ui/lib/api/pull";
-import { getTolgeeFormat } from "$ui/lib/logic/tolgeeFormat";
+import { renderIcuForNode } from "$ui/lib/logic/interpolate";
 
 export type PullDiffResult = {
   /** Nodes whose remote translation differs from the local `translation`. */
@@ -108,37 +107,21 @@ export function pullDiff(
 
 /**
  * Renders the final string that will land in `TextNode.characters` for a
- * single pulled translation. Uses the node's known param values plus the
- * plural parameter (filled with `pluralParamValue ?? "1"`).
+ * single pulled translation, via the shared render core (`renderIcuForNode`).
+ * For a plural, the variable's sample COUNT comes from the node (so each layer
+ * keeps its own form — "1 woman" / "10 women"), the variable NAME from the ICU,
+ * and any other named param is seeded with its own name so nothing renders as a
+ * literal `{brace}`.
  *
- * On any ICU error the raw `remoteText` is returned with the captured
- * `Error` so the UI can warn but still write a sensible string.
+ * On a formatting error, keeps the node's CURRENT canvas text (never dumps raw
+ * ICU onto the design) and returns the captured `Error` so the caller can warn
+ * — matching the original pull behaviour.
  */
 export function formatNodeText(
   node: NodeInfo,
   remoteText: string,
   language: string,
 ): { text: string; error?: Error } {
-  const params: Record<string, string> = { ...(node.paramsValues ?? {}) };
-
-  // The plural parameter name varies by key. Parse the remote ICU once to
-  // discover the actual parameter name and inject `pluralParamValue` under
-  // that name. If parsing fails (e.g. non-plural / malformed), fall back to
-  // the conventional `count` so we still feed *something* sensible into
-  // `formatIcuMessage` — it'll throw on a missing variable and the caller
-  // surfaces the error.
-  if (node.pluralParamValue != null) {
-    const parsed = getTolgeeFormat(remoteText, Boolean(node.isPlural), false);
-    const paramName = parsed.parameter ?? "count";
-    if (!(paramName in params)) {
-      params[paramName] = node.pluralParamValue;
-    }
-  }
-
-  const formatted = formatIcuMessage(remoteText, params, language || "en");
-
-  if (formatted.error) {
-    return { text: remoteText, error: formatted.error };
-  }
-  return { text: formatted.result };
+  const out = renderIcuForNode(remoteText, node, language);
+  return out.error ? { text: node.characters, error: out.error } : out;
 }

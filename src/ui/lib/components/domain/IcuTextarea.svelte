@@ -52,19 +52,26 @@
         // and are just coloured normally.
         if (t.text.startsWith("{") && t.text.endsWith("}") && esc.length >= 2) {
           const inner = esc.slice(1, -1);
-          return `<span class="tok-var"><span class="tok-inv">{</span>${inner}<span class="tok-inv">}</span></span>`;
+          // Pill wraps ONLY the name; the (transparent) braces sit OUTSIDE it as
+          // siblings, giving the pill a 1-char breathing gap from neighbouring
+          // text without shifting any column (alignment stays exact).
+          return `<span class="tok-inv">{</span><span class="tok-var">${inner}</span><span class="tok-inv">}</span>`;
         }
         return `<span class="tok-var">${esc}</span>`;
       }
 
       case "tag": {
-        // HTML tags like `<strong>`, `</strong>`, `<br/>` — hide angle
-        // brackets and slashes, show only the tag name.
+        // HTML tags like `<strong>`, `</strong>`, `<br/>` — hide the angle
+        // brackets, but KEEP the leading slash of a CLOSING tag visible so
+        // `</b>` reads as a "/b" pill, distinct from the opening "b" pill (the
+        // slash already occupies its column, so showing it preserves alignment).
         // After escaping: `&lt;strong&gt;`, `&lt;/strong&gt;`, `&lt;br/&gt;`
-        const m = esc.match(/^(&lt;\/?)([\w]+)([\s/]*)(&gt;)$/i);
+        const m = esc.match(/^(&lt;)(\/?)([\w]+)([\s/]*)(&gt;)$/i);
         if (m) {
-          const [, prefix, name, mid, suffix] = m;
-          return `<span class="tok-tag"><span class="tok-inv">${prefix}</span>${name}<span class="tok-inv">${mid}${suffix}</span></span>`;
+          const [, lt, slash, name, mid, gt] = m;
+          // Pill wraps only `/name`; the (transparent) angle brackets sit OUTSIDE
+          // it as siblings → a 1-char breathing gap, alignment preserved.
+          return `<span class="tok-inv">${lt}</span><span class="tok-tag">${slash}${name}</span><span class="tok-inv">${mid}${gt}</span>`;
         }
         return `<span class="tok-tag">${esc}</span>`;
       }
@@ -175,7 +182,8 @@
   }
 
   .icu-ta::placeholder {
-    color: var(--color-text-secondary);
+    /* Lighter placeholder, matching the inputs' `placeholder:text-text-secondary/60`. */
+    color: color-mix(in srgb, var(--color-text-secondary) 60%, transparent);
     opacity: 1;
   }
 
@@ -187,9 +195,13 @@
   /*
    * Token styles — scoped to .icu-wrap.
    *
-   * RULE: no padding or border on overlay spans — they shift subsequent
-   * characters and break the pre↔textarea pixel alignment.
-   * Visual "border" is done with box-shadow (layout-neutral).
+   * RULE: never change an overlay span's net inline WIDTH — it would shift
+   * following characters and break the pre↔textarea pixel alignment. The pills
+   * get a little inner breathing room with `padding-inline` CANCELLED by an
+   * equal negative `margin-inline`: the background grows but the layout width
+   * stays zero-sum, so the caret keeps aligning. (No padding-BLOCK — that would
+   * grow the line height and break vertical alignment.) The "border" is a
+   * layout-neutral box-shadow.
    */
 
   /* Variable placeholder `{name}` — blue pill, braces invisible */
@@ -198,6 +210,8 @@
     background: color-mix(in srgb, #2563eb 16%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, #2563eb 50%, transparent);
     border-radius: 3px;
+    padding-inline: 0.3em;
+    margin-inline: -0.3em;
   }
 
   /* HTML inline tag `<strong>`, `</strong>` etc. — green pill, brackets invisible */
@@ -206,6 +220,8 @@
     background: color-mix(in srgb, #16a34a 16%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, #16a34a 50%, transparent);
     border-radius: 3px;
+    padding-inline: 0.3em;
+    margin-inline: -0.3em;
   }
 
   /* Makes `{`, `}`, `<`, `>`, `/` invisible inside pills. */
@@ -224,5 +240,7 @@
     background: color-mix(in srgb, #16a34a 16%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, #16a34a 50%, transparent);
     border-radius: 3px;
+    padding-inline: 0.3em;
+    margin-inline: -0.3em;
   }
 </style>

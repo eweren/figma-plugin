@@ -1,6 +1,6 @@
 import type { TolgeeConfig } from "$shared/types";
 
-import { mergeConfig, splitConfig } from "./merge";
+import { mergeConfig, pickGlobalSettings, splitConfig } from "./merge";
 import {
   deleteGlobalSettings,
   readDocumentSettings,
@@ -12,15 +12,26 @@ import {
 } from "./storage";
 
 /**
- * Whether the active manifest opts in to dynamic-page loading. When `true`,
- * any page other than `figma.currentPage` must be `loadAsync()`-ed before its
- * pluginData/children can be read. We probe via duck-typing because the field
- * is only present on newer plugin-typings versions and we don't want a hard
- * dependency on it.
+ * This plugin's manifest ships with `documentAccess: "dynamic-page"` (see
+ * scripts/build-manifest.mjs), so pages must be `loadAsync()`-ed before their
+ * pluginData is touched. A constant — the previous runtime probe read
+ * `figma.documentAccess`, which does not exist in the Plugin API, so it was
+ * always `false` and silently disabled every dynamic-page branch below.
  */
-function isDynamicPageAccess(): boolean {
-  const access = (figma as unknown as { documentAccess?: string }).documentAccess;
-  return access === "dynamic-page";
+const DYNAMIC_PAGE_ACCESS = true;
+
+/**
+ * Merged-config cache. The config is read on EVERY selection scan (each
+ * debounced selectionchange), and a miss costs a clientStorage async hop plus
+ * three pluginData reads + JSON parses. All main-thread writes funnel through
+ * `writeConfig`/`resetConfig`, and page scope changes with the current page —
+ * those three events invalidate. (A second Figma window editing the shared
+ * clientStorage mid-session is the one accepted miss.)
+ */
+let cachedConfig: Promise<Partial<TolgeeConfig>> | null = null;
+
+export function invalidateConfigCache(): void {
+  cachedConfig = null;
 }
 
 /**
@@ -31,10 +42,23 @@ function isDynamicPageAccess(): boolean {
  * loaded before its pluginData is safe to read.
  */
 export async function readMergedConfig(): Promise<Partial<TolgeeConfig>> {
-  if (isDynamicPageAccess()) {
+  if (!cachedConfig) {
+    cachedConfig = readMergedConfigUncached();
+    // Don't cache a failed read — the next caller retries.
+    cachedConfig.catch(() => {
+      cachedConfig = null;
+    });
+  }
+  return cachedConfig;
+}
+
+async function readMergedConfigUncached(): Promise<Partial<TolgeeConfig>> {
+  if (DYNAMIC_PAGE_ACCESS) {
     await figma.currentPage.loadAsync();
   }
-  const global = await readGlobalSettings();
+  // Filter global to its legit keys so any document-level settings leaked into
+  // global by an earlier build don't pre-fill this document.
+  const global = pickGlobalSettings(await readGlobalSettings());
   const doc = readDocumentSettings();
   const page = readPageSettings(figma.currentPage);
   return mergeConfig(global, doc, page);
@@ -49,9 +73,10 @@ export async function readMergedConfig(): Promise<Partial<TolgeeConfig>> {
  * the calling handler decides whether/how to notify subscribers.
  */
 export async function writeConfig(partial: Partial<TolgeeConfig>): Promise<void> {
+  invalidateConfigCache();
   const split = splitConfig(partial);
 
-  if (isDynamicPageAccess()) {
+  if (DYNAMIC_PAGE_ACCESS) {
     await figma.currentPage.loadAsync();
   }
 
@@ -59,7 +84,9 @@ export async function writeConfig(partial: Partial<TolgeeConfig>): Promise<void>
   const currentDoc = readDocumentSettings();
   const currentPage = readPageSettings(figma.currentPage);
 
-  const nextGlobal = { ...currentGlobal, ...split.global };
+  // `pickGlobalSettings` also drops any leaked document-level keys a previous
+  // build may have written into global, cleaning them up on this save.
+  const nextGlobal = pickGlobalSettings({ ...currentGlobal, ...split.global });
   const nextDoc = { ...currentDoc, ...split.doc };
   const nextPage = { ...currentPage, ...split.page };
 
@@ -73,24 +100,18 @@ export async function writeConfig(partial: Partial<TolgeeConfig>): Promise<void>
  * current document. Does not emit any events — callers handle notifications.
  */
 export async function resetConfig(): Promise<void> {
+  invalidateConfigCache();
   await deleteGlobalSettings();
   // Empty-object writes delete the underlying pluginData entry (see
   // `./storage.ts`).
   writeDocumentSettings({});
 
-  if (isDynamicPageAccess()) {
-    // Iterate every page so settings written under "documentAccess: full"
-    // (or by older versions of the plugin) don't get left behind. Each page
-    // must be loaded before its pluginData is mutated under dynamic-page.
-    for (const page of figma.root.children) {
-      if (page.type !== "PAGE") continue;
-      await page.loadAsync();
-      writePageSettings(page, {});
-    }
-  } else {
-    for (const page of figma.root.children) {
-      if (page.type !== "PAGE") continue;
-      writePageSettings(page, {});
-    }
+  // Iterate every page so settings written under "documentAccess: full"
+  // (or by older versions of the plugin) don't get left behind. Each page
+  // must be loaded before its pluginData is mutated under dynamic-page.
+  for (const page of figma.root.children) {
+    if (page.type !== "PAGE") continue;
+    await page.loadAsync();
+    writePageSettings(page, {});
   }
 }

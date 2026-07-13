@@ -1,71 +1,207 @@
 <script lang="ts">
   import { appState } from "$ui/lib/stores/app.svelte";
   import { send, nextCorrelationId } from "$ui/lib/bus";
-  import { Button, Input, Label, Switch } from "$ui/lib/components/ui";
+  import { ICON } from "$shared/iconSizes";
+  import { Button, Input, Label, Message } from "$ui/lib/components/ui";
+  import CheckboxField from "$ui/lib/components/ui/checkboxField.svelte";
+  import * as Tooltip from "$ui/lib/components/ui/tooltip";
+  import Info from "lucide-svelte/icons/info";
+  import { hasManualChange } from "$ui/lib/logic/manualChange";
+  import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
+  import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import IcuPreview from "$ui/lib/components/domain/IcuPreview.svelte";
   import ParamsEditor from "$ui/lib/components/domain/ParamsEditor.svelte";
   import IcuEditor from "$ui/lib/components/domain/IcuEditor.svelte";
   import PluralEditor from "$ui/lib/components/domain/PluralEditor.svelte";
-  import { formatIcuMessage } from "$shared/icu";
+  import {
+    getVariantExample,
+    getPluralCategory,
+    getTolgeeFormat,
+    tolgeeFormatGenerateIcu,
+  } from "$ui/lib/logic/tolgeeFormat";
+  import { renderIcuForNode } from "$ui/lib/logic/interpolate";
   import type { NodeInfo } from "$shared/types";
 
   const route = $derived(appState.value.route);
-  const node = $derived<NodeInfo | null>(
-    route.name === "stringDetails"
-      ? (route as { name: "stringDetails"; node: NodeInfo }).node
-      : null,
-  );
+  // Follow the LIVE selection instead of the snapshot captured at navigate time:
+  // show the fresh copy of the node we opened, and switch to the canvas node
+  // when the selection narrows to a single other node (matching the original,
+  // which re-derived the detail from `selectedNodes`). The prefill effect below
+  // offers to save unsaved edits before switching.
+  const node = $derived.by<NodeInfo | null>(() => {
+    if (route.name !== "stringDetails") return null;
+    const sel = appState.value.selectedNodes;
+    const anchor = route.node;
+    return sel.find((n) => n.id === anchor.id) ?? (sel.length === 1 ? sel[0] : anchor);
+  });
 
   let translation = $state("");
+  // Editable key name (namespace stays a project-level setting, shown as a
+  // read-only prefix). Saving sends it back so the detail view can rename /
+  // connect the node.
+  let keyName = $state("");
   let isPlural = $state(false);
-  let pluralParamValue = $state("count");
+  // Plural variable NAME — read from the ICU (an existing key keeps its own),
+  // "value" when turning a plain string into a plural. The sample COUNT is
+  // edited as this variable's "Values for Figma" entry (`paramsValues[name]`).
+  let pluralName = $state("value");
   let paramsValues = $state<Record<string, string>>({});
+
+  // Tolgee formatting docs linked from the Translation (i) hint (same URL the
+  // old plugin used).
+  const FORMAT_DOCS_URL =
+    "https://docs.tolgee.io/platform/projects_and_organizations/editing_translations";
+  function openFormatDocs(): void {
+    send({ type: "open-external", url: FORMAT_DOCS_URL });
+  }
   // Tracks which node id we have prefilled for so the effect doesn't clobber
-  // user edits on re-runs (e.g. when paramsValues updates).
+  // user edits on re-runs (e.g. when paramsValues updates), plus the node and a
+  // baseline of its loaded values so we can detect unsaved edits when the
+  // selection switches to a different node.
   let prefilledForId = $state<string | null>(null);
+  let prefilledNode: NodeInfo | null = null;
+  let baseline = { translation: "", keyName: "", params: "{}" };
+
+  function isDirty(): boolean {
+    return (
+      translation !== baseline.translation ||
+      keyName !== baseline.keyName ||
+      JSON.stringify(paramsValues) !== baseline.params
+    );
+  }
 
   $effect(() => {
     const n = node;
     if (!n) {
       prefilledForId = null;
+      prefilledNode = null;
       return;
     }
     if (prefilledForId === n.id) return;
 
+    // Selection switched to a different node — offer to save unsaved edits to
+    // the previous one before loading the new one (matches the original).
+    if (prefilledNode && isDirty()) {
+      const label = baseline.keyName || prefilledNode.key || "this string";
+      if (confirm(`You have unsaved changes for "${label}". Save them?`)) {
+        sendSave(prefilledNode);
+      }
+    }
+
     translation = n.translation || n.characters;
+    keyName = n.key ?? "";
     isPlural = n.isPlural ?? false;
-    pluralParamValue = n.pluralParamValue ?? "count";
     paramsValues = { ...(n.paramsValues ?? {}) };
+    // Name from the ICU; "value" for a not-yet-plural string.
+    pluralName = getTolgeeFormat(translation, true, false).parameter ?? "value";
+    // Migrate an original-plugin plural (sample count stored in
+    // `pluralParamValue` as a number, no named sample) into the editable field.
+    if (
+      isPlural &&
+      !(pluralName in paramsValues) &&
+      n.pluralParamValue &&
+      /^\d+$/.test(n.pluralParamValue)
+    ) {
+      paramsValues = { ...paramsValues, [pluralName]: n.pluralParamValue };
+    }
+    if (isPlural) seedPluralValue();
+    // Baseline of the freshly loaded values, so `isDirty` reflects only the
+    // user's own edits from here on.
+    baseline = { translation, keyName, params: JSON.stringify(paramsValues) };
     prefilledForId = n.id;
+    prefilledNode = n;
   });
 
-  function save(): void {
-    const n = node;
-    if (!n) return;
-    // Render the ICU translation with the user-provided sample params so the
-    // text that lands on the Figma canvas matches what a runtime renderer
-    // would show. Falls back to the raw translation on parse errors so we
-    // never write garbage / nothing.
-    const rendered = formatIcuMessage(translation, paramsValues, language);
-    const text = rendered.result || translation || n.characters;
-    // apply-translations writes both `text` (TextNode.characters) and the
-    // full plugin-data payload in one round-trip, then re-emits the selection
-    // so the UI re-reads the fresh NodeInfo without an extra fetch.
+  // Default value for the plural variable so the Preview renders a real form
+  // straight away (the locale's "other" example — 10 for en/cs, matching the
+  // `#10` chip). The user can clear or change it.
+  function pluralPreviewDefault(): string {
+    return String(getVariantExample(language, "other") ?? 10);
+  }
+
+  // Seed the plural variable's preview value if it isn't set yet — on load of a
+  // plural string, or when Plural is toggled on.
+  function seedPluralValue(): void {
+    const pv = pluralName || "value";
+    if (!paramsValues[pv]) {
+      paramsValues = { ...paramsValues, [pv]: pluralPreviewDefault() };
+    }
+  }
+
+  // Turning a PLAIN string into a plural: if it has exactly ONE number > 1
+  // (a genuine plural count, e.g. "6 days"), move that number into the plural
+  // value and put the sentence in the "other" form with `#` in its place →
+  // other "# days", value 6. None / several numbers / ≤1 → returns false so the
+  // caller falls back to the default value. Skips text that's already a plural.
+  function makePluralFromNumber(): boolean {
+    const text = translation;
+    if (/,\s*plural\b/i.test(text)) return false;
+    const matches = [...text.matchAll(/\d+(?:[.,]\d+)*/g)];
+    if (matches.length !== 1) return false;
+    const m = matches[0];
+    if (!m) return false;
+    const raw = m[0];
+    const num = Number(raw.replace(/,/g, ""));
+    if (!Number.isFinite(num)) return false;
+    const idx = m.index ?? 0;
+    const body = `${text.slice(0, idx)}#${text.slice(idx + raw.length)}`;
+    const pv = pluralName || "value";
+    // Put the sentence in the form the number actually selects: en 1→one,
+    // 6→other; cs 2→few, 5→other.
+    const category = getPluralCategory(language, num);
+    translation = tolgeeFormatGenerateIcu(
+      { parameter: pv, variants: { [category]: body } },
+      false,
+    );
+    paramsValues = { ...paramsValues, [pv]: String(num) };
+    return true;
+  }
+
+  // Persist the current edit state onto `target` (usually the shown node, but
+  // also the PREVIOUS node when the selection switched mid-edit). Does NOT
+  // navigate — callers decide.
+  function sendSave(target: NodeInfo): void {
+    // The plural variable's sample COUNT (edited as its "Values for Figma"
+    // entry) is persisted as `pluralParamValue` — a number, matching the
+    // original — so pull / preview / manual-change all render the same form.
+    const count = isPlural ? (paramsValues[pluralName] ?? "1") : undefined;
+    // Render via the shared core so the canvas text matches pull and preview.
+    // Falls back to the raw translation on parse errors so we never write
+    // garbage / nothing.
+    const rendered = renderIcuForNode(
+      translation,
+      { isPlural, translation, characters: target.characters, paramsValues, pluralParamValue: count },
+      language,
+    );
+    const text = rendered.text || translation || target.characters;
+    // apply-translations writes both `text` (TextNode.characters) and the full
+    // plugin-data payload in one round-trip. The key is just WRITTEN (like the
+    // bulk "Edit key name" op) — we never touch `connected`, so editing the key
+    // here doesn't auto-connect an unconnected string, and saving a connected
+    // string's translation doesn't disconnect it (omitting `connected` preserves
+    // the node's existing state main-side).
     send({
       type: "apply-translations",
       correlationId: nextCorrelationId(),
       updates: [
         {
-          id: n.id,
+          id: target.id,
           text,
           translation,
           isPlural,
-          pluralParamValue: isPlural ? pluralParamValue : undefined,
+          pluralParamValue: count,
           paramsValues,
-          ...(!n.connected && { key: n.key, ns: n.ns, connected: true }),
+          key: keyName.trim(),
+          ns: target.ns,
         },
       ],
     });
+  }
+
+  function save(): void {
+    const n = node;
+    if (!n) return;
+    sendSave(n);
     appState.navigate({ name: "index" });
   }
 
@@ -73,58 +209,206 @@
     appState.navigate({ name: "index" });
   }
 
+  // Restore the Figma canvas from the stored translation, discarding a manual
+  // in-Figma edit of an advanced string. Reuses the SAME `apply-translations`
+  // message Save already sends — nothing new in the main thread — but writes
+  // back the *stored* translation (not the local edit state) so it's a true
+  // revert. Renders with the stored params, falling back to raw on parse error.
+  function revertInDesign(): void {
+    const n = node;
+    if (!n) return;
+    const rendered = renderIcuForNode(n.translation, n, language);
+    const text = rendered.text || n.translation || n.characters;
+    send({
+      type: "apply-translations",
+      correlationId: nextCorrelationId(),
+      updates: [
+        {
+          id: n.id,
+          text,
+          translation: n.translation,
+          isPlural: n.isPlural,
+          pluralParamValue: n.isPlural ? n.pluralParamValue : undefined,
+          paramsValues: n.paramsValues ?? {},
+        },
+      ],
+    });
+    appState.navigate({ name: "index" });
+  }
+
   const language = $derived(appState.value.config?.language ?? "en");
+
+  // Advanced connected string whose canvas text was edited directly in Figma →
+  // diverged from the stored translation (formatting lost). Read-only; surfaces
+  // warning + revert.
+  const manualChange = $derived(node ? hasManualChange(node, language) : false);
+
+  // Advanced format = plural OR has ICU params OR inline markup. When it's
+  // advanced but NOT a manual-change divergence, we show a calm teal NOTICE
+  // (vs the red warning) so the user knows to edit it via the plugin.
+  const isAdvanced = $derived(
+    isPlural ||
+      /\{[^}]*\}/.test(translation) ||
+      /<\/?[a-z][^>]*>/i.test(translation),
+  );
+  const showAdvancedNotice = $derived(!manualChange && isAdvanced);
+
+  // How many editable "Values for Figma" the translation has (named ICU params,
+  // incl. the plural variable) — drives the side-by-side values+preview layout.
+  const figmaParamCount = $derived.by(() => {
+    const re = /\{(\w+)(?:,[^}]*)?\}/g;
+    const names = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(translation)) !== null) {
+      const name = m[1];
+      if (!name || name === "#" || /^\d+$/.test(name)) continue;
+      names.add(name);
+    }
+    return names.size;
+  });
 </script>
 
 {#if !node}
   <div class="p-4 text-xs text-text-secondary">No node selected.</div>
 {:else}
   <div class="flex flex-col h-full">
-    <header
-      class="border-b border-border px-3 py-2 flex items-center justify-between"
-    >
-      <h1 class="text-sm font-semibold">String details</h1>
-      <button
-        type="button"
-        onclick={cancel}
-        class="text-xs text-text-secondary hover:text-text"
-      >
-        Cancel
-      </button>
-    </header>
+    <ViewHeader title="String details" onBack={cancel} />
 
     <div class="flex-1 overflow-auto p-3 space-y-3">
+      <Tooltip.Provider delayDuration={200}>
+      {#if manualChange}
+        <!-- Icon aligned to the first text line; text sits beside it. The Revert
+             action gets an outlined solid-surface button so it reads clearly on
+             the red tint (a plain secondary button blended in). -->
+        <Message variant="error" class="items-start! gap-2">
+          <div class="flex flex-col items-start gap-2">
+            <p class="leading-snug">
+              This string was edited in Figma and no longer matches its
+              formatting. Revert to restore it.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              class="bg-bg!"
+              onclick={revertInDesign}
+            >
+              Revert string in design
+            </Button>
+          </div>
+        </Message>
+      {:else if showAdvancedNotice}
+        <!-- Calm teal notice: the string is advanced (plural / params / markup)
+             but not diverged — just a heads-up to edit it via the plugin. -->
+        <Message variant="secondary" icon={Info}>
+          Advanced text format detected. Edit the string via the plugin to
+          preserve formatting.
+        </Message>
+      {/if}
+
       <div>
-        <Label>Key</Label>
-        <p class="mt-1 font-mono text-xs break-all">
-          {node.ns ? `${node.ns}.` : ""}{node.key || "(no key)"}
-        </p>
+        <Label for="string-details-key">Key</Label>
+        <div class="mt-1 flex items-center gap-1">
+          {#if node.ns}
+            <span class="shrink-0 font-mono text-xs text-text-secondary">
+              {node.ns}.
+            </span>
+          {/if}
+          <Input
+            id="string-details-key"
+            bind:value={keyName}
+            placeholder="Key name"
+            class="w-full font-mono"
+          />
+        </div>
       </div>
 
-      <div class="flex items-center justify-between gap-2">
+      <!-- Plural on its own row (checkbox-left). Locked for connected keys —
+           change it in Tolgee. -->
+      <CheckboxField
+        label="Plural"
+        checked={isPlural}
+        onChange={(v) => {
+          isPlural = v;
+          // Toggling on: try to seed from a single >1 number in the text;
+          // otherwise fall back to the default preview value.
+          if (v && !makePluralFromNumber()) seedPluralValue();
+        }}
+        disabled={node.connected}
+      >
+        {#snippet trailing()}
+          {#if node.connected}
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <span
+                    {...props}
+                    class="text-text-secondary transition-colors hover:text-text-brand"
+                    role="button"
+                    tabindex={-1}
+                    aria-label="Why plural is locked"
+                  >
+                    <Info size={ICON.inline} />
+                  </span>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.Content
+                side="bottom"
+                align="start"
+                class="max-w-[15rem] leading-snug"
+              >
+                You can't change this here. Change it in your Tolgee platform.
+              </Tooltip.Content>
+            </Tooltip.Root>
+          {/if}
+        {/snippet}
+      </CheckboxField>
+
+      <div class="flex items-center gap-1.5">
         <Label>Translation ({language})</Label>
-        <div class="flex items-center gap-2">
-          <Switch bind:checked={isPlural} id="string-details-plural" />
-          <Label for="string-details-plural" class="text-[10px]">Plural</Label>
-        </div>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <span
+                {...props}
+                class="text-text-secondary transition-colors hover:text-text-brand"
+                role="button"
+                tabindex={-1}
+                aria-label="Formatting help"
+              >
+                <Info size={ICON.inline} />
+              </span>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content
+            side="bottom"
+            align="start"
+            class="max-w-[17rem] space-y-1.5 leading-snug"
+          >
+            <p>
+              You can use basic HTML tags such as
+              <code>&lt;strong&gt;</code>, <code>&lt;b&gt;</code>,
+              <code>&lt;em&gt;</code>, <code>&lt;i&gt;</code>,
+              <code>&lt;u&gt;</code>, <code>&lt;br&gt;</code> and also parameters
+              as <code>&#123;parameter&#125;</code> and <code>#</code> as plural
+              placeholder.
+            </p>
+            <button
+              type="button"
+              class="text-text-brand hover:underline"
+              onclick={openFormatDocs}
+            >
+              Read the docs
+            </button>
+          </Tooltip.Content>
+        </Tooltip.Root>
       </div>
 
       {#if isPlural}
-        <div>
-          <Label for="string-details-param">Plural parameter</Label>
-          <Input
-            id="string-details-param"
-            bind:value={pluralParamValue}
-            placeholder="count"
-            class="mt-1 w-full"
-          />
-        </div>
         <div class="mt-1">
           <PluralEditor
             bind:value={translation}
             locale={language || "en"}
-            parameter={pluralParamValue || "count"}
-            rows={2}
+            parameter={pluralName || "value"}
           />
         </div>
       {:else}
@@ -138,18 +422,33 @@
         </div>
       {/if}
 
-      <ParamsEditor
-        {translation}
-        values={paramsValues}
-        onChange={(v) => (paramsValues = v)}
-      />
-
-      <IcuPreview {translation} params={paramsValues} {language} />
+      <!-- Values for Figma + Preview side by side (like the old plugin); preview
+           alone full-width when there are no params to fill. -->
+      {#if figmaParamCount > 0}
+        <div class="flex gap-3">
+          <div class="min-w-0 flex-1">
+            <ParamsEditor
+              {translation}
+              values={paramsValues}
+              onChange={(v) => (paramsValues = v)}
+            />
+          </div>
+          <div class="min-w-0 flex-1">
+            <!-- h-full so the grey preview box matches the params column height. -->
+            <IcuPreview
+              {translation}
+              params={paramsValues}
+              {language}
+              class="h-full"
+            />
+          </div>
+        </div>
+      {:else}
+        <IcuPreview {translation} params={paramsValues} {language} />
+      {/if}
+      </Tooltip.Provider>
     </div>
 
-    <footer class="border-t border-border p-2 flex justify-end gap-2">
-      <Button variant="ghost" onclick={cancel}>Cancel</Button>
-      <Button onclick={save}>Save</Button>
-    </footer>
+    <ViewFooter onCancel={cancel} confirmLabel="Save" onConfirm={save} />
   </div>
 {/if}

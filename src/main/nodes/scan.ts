@@ -27,30 +27,90 @@ export const scanConnectedNodes = async (): Promise<TextNode[]> => {
   });
 };
 
-const collectTextNodes = (node: SceneNode, out: TextNode[]): void => {
+/** A scanned text node plus whether any ANCESTOR within the scanned selection
+ *  is hidden — computed once during traversal (threaded down), so the ignore
+ *  filter never has to walk each node's parent chain (matches the original
+ *  plugin's `ancestorHidden` approach; the per-node walk was "expensive"). */
+export type ScannedTextNode = { node: TextNode; ancestorHidden: boolean };
+
+// The plugin sandbox and the Figma canvas share scheduling — a long
+// uninterrupted walk over a huge subtree freezes the whole editor. Yielding
+// to the event loop every couple hundred visited nodes keeps Figma responsive
+// while costing nothing on small selections (no yield ever fires).
+const YIELD_EVERY = 200;
+
+const collectTextNodes = async (
+  node: SceneNode,
+  out: ScannedTextNode[],
+  ancestorHidden: boolean,
+  progress: { visited: number },
+): Promise<void> => {
+  progress.visited++;
+  if (progress.visited % YIELD_EVERY === 0) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
   if (node.type === "TEXT") {
-    out.push(node);
+    out.push({ node, ancestorHidden });
     return;
   }
   if ("children" in node) {
+    // A container's own hidden state makes its whole subtree "ancestor-hidden".
+    const childAncestorHidden = ancestorHidden || node.visible === false;
     for (const child of node.children) {
-      collectTextNodes(child, out);
+      await collectTextNodes(child, out, childAncestorHidden, progress);
     }
   }
 };
 
 /**
- * Walk the current selection and return every reachable `TextNode`. Containers
- * (frames, groups, components, instances, …) are descended into so the user
- * can select an arbitrary subtree and still get all its text nodes back.
+ * Walk the current selection and return every reachable `TextNode`, each tagged
+ * with whether an ancestor inside the selection is hidden. Containers (frames,
+ * groups, components, instances, …) are descended into so the user can select
+ * an arbitrary subtree and still get all its text nodes back.
+ *
+ * Two strategies:
+ * - FAST (default): `findAllWithCriteria` per selection root. The traversal
+ *   runs inside the Figma engine — the JS side never touches the (often tens
+ *   of thousands of) vector/shape nodes a design section contains, so a
+ *   100-key section costs ~100 bridge crossings instead of ~100k. Usable
+ *   whenever `ancestorHidden` isn't needed.
+ * - RECURSIVE: JS walk that threads `ancestorHidden` down — required only for
+ *   the opt-in "ignore hidden layers including children" filter, which needs
+ *   to know whether any ancestor within the selection is hidden.
  */
-export const scanSelectedTextNodes = async (): Promise<TextNode[]> => {
+export const scanSelectedTextNodes = async (
+  needsAncestorHidden: boolean,
+): Promise<ScannedTextNode[]> => {
   // `figma.currentPage` is implicitly loaded — selection access requires it —
   // but calling `loadAsync` again is cheap and keeps the contract explicit.
   await figma.currentPage.loadAsync();
-  const out: TextNode[] = [];
+  const out: ScannedTextNode[] = [];
+
+  if (!needsAncestorHidden) {
+    let roots = 0;
+    for (const node of figma.currentPage.selection) {
+      if (node.type === "TEXT") {
+        out.push({ node, ancestorHidden: false });
+      } else if ("findAllWithCriteria" in node) {
+        const found = node.findAllWithCriteria({ types: ["TEXT"] });
+        for (const text of found) {
+          out.push({ node: text, ancestorHidden: false });
+        }
+      }
+      // The per-root search runs engine-side; a periodic breather between
+      // roots covers multi-container selections without taxing the common
+      // "hundreds of individually selected texts" case with per-root hops.
+      roots++;
+      if (roots % 25 === 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+    }
+    return out;
+  }
+
+  const progress = { visited: 0 };
   for (const node of figma.currentPage.selection) {
-    collectTextNodes(node, out);
+    await collectTextNodes(node, out, false, progress);
   }
   return out;
 };

@@ -168,15 +168,42 @@ describe("pullDiff", () => {
 });
 
 describe("formatNodeText", () => {
-  it("formats a plural ICU message using node.pluralParamValue", () => {
+  it("formats a plural using the named sample from paramsValues (this UI's edit path)", () => {
     const node = makeNode({
       key: "items",
-      pluralParamValue: "3",
+      paramsValues: { count: "3" }, // count edited as the plural var's sample
       isPlural: true,
     });
     const out = formatNodeText(node, "{count, plural, one {1 item} other {# items}}", "en");
     expect(out.text).toBe("3 items");
     expect(out.error).toBeUndefined();
+  });
+
+  it("uses a numeric pluralParamValue as the sample COUNT (original-file compat)", () => {
+    // Files written by the published plugin store the count in pluralParamValue.
+    const node = makeNode({
+      key: "items",
+      pluralParamValue: "10",
+      isPlural: true,
+    });
+    const out = formatNodeText(node, "{count, plural, one {1 item} other {# items}}", "en");
+    expect(out.error).toBeUndefined();
+    expect(out.text).toBe("10 items");
+  });
+
+  it("defaults the plural count to 1 when nothing is stored", () => {
+    const node = makeNode({ key: "items", isPlural: true });
+    const out = formatNodeText(node, "{count, plural, one {# item} other {# items}}", "en");
+    expect(out.error).toBeUndefined();
+    expect(out.text).toBe("1 item");
+  });
+
+  it("ignores a non-numeric pluralParamValue left over as a name (no 'value items')", () => {
+    const node = makeNode({ key: "items", pluralParamValue: "value", isPlural: true });
+    const out = formatNodeText(node, "{count, plural, one {1 item} other {# items}}", "en");
+    expect(out.error).toBeUndefined();
+    expect(out.text).toBe("1 item");
+    expect(out.text).not.toContain("value");
   });
 
   it("formats with explicit paramsValues taking precedence", () => {
@@ -189,11 +216,19 @@ describe("formatNodeText", () => {
     expect(out.error).toBeUndefined();
   });
 
+  it("seeds a missing named param with its own name (never literal braces)", () => {
+    const node = makeNode({ key: "greet" }); // no sample stored
+    const out = formatNodeText(node, "Hello, {name}!", "en");
+    expect(out.text).toBe("Hello, name!");
+    expect(out.text).not.toContain("{");
+    expect(out.error).toBeUndefined();
+  });
+
   it("does not overwrite an existing `count` in paramsValues", () => {
-    // pluralParamValue should not replace an explicit `count` already provided.
+    // An explicit sample value in paramsValues wins over the seeded default.
     const node = makeNode({
       key: "items",
-      pluralParamValue: "99",
+      pluralParamValue: "count",
       paramsValues: { count: "7" },
       isPlural: true,
     });
@@ -202,14 +237,15 @@ describe("formatNodeText", () => {
     expect(out.error).toBeUndefined();
   });
 
-  it("returns the raw text and an Error on malformed ICU", () => {
+  it("keeps the node's canvas text (not raw ICU) and reports the Error on malformed ICU", () => {
     const node = makeNode({
       key: "broken",
+      characters: "current canvas text",
       paramsValues: { name: "Alice" },
     });
-    const malformed = "Hello {name";
-    const out = formatNodeText(node, malformed, "en");
-    expect(out.text).toBe(malformed);
+    const out = formatNodeText(node, "Hello {name", "en");
+    expect(out.text).toBe("current canvas text");
+    expect(out.text).not.toContain("{name");
     expect(out.error).toBeInstanceOf(Error);
   });
 

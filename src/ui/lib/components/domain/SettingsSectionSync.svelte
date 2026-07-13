@@ -1,71 +1,161 @@
 <script lang="ts">
   import type { TolgeeConfig } from "$shared/types";
+  import { ICON } from "$shared/iconSizes";
   import Input from "$ui/lib/components/ui/input.svelte";
-  import Label from "$ui/lib/components/ui/label.svelte";
-  import Switch from "$ui/lib/components/ui/switch.svelte";
+  import CheckboxField from "$ui/lib/components/ui/checkboxField.svelte";
+  import * as Tooltip from "$ui/lib/components/ui/tooltip";
+  import Info from "lucide-svelte/icons/info";
 
   type Props = { form: Partial<TolgeeConfig> };
   let { form = $bindable() }: Props = $props();
 
+  const ignoreNumbers = $derived(form.ignoreNumbers ?? true);
   const ignoreHiddenLayers = $derived(form.ignoreHiddenLayers ?? true);
+  const ignoreTextLayers = $derived(form.ignoreTextLayers ?? false);
 </script>
 
-<div class="space-y-4">
-  <section class="space-y-2">
-    <h2 class="text-xs font-semibold text-text">Ignore strings</h2>
+<Tooltip.Provider delayDuration={200}>
+  <section class="space-y-2.5">
+    <h2
+      class="text-xs font-semibold uppercase tracking-wide text-primary"
+    >
+      Ignore strings
+    </h2>
 
-    <div class="flex items-center justify-between gap-2">
-      <Label for="settings-ignore-numbers">Ignore pure numbers</Label>
-      <Switch
-        id="settings-ignore-numbers"
-        checked={form.ignoreNumbers ?? true}
-        onCheckedChange={(v) => (form.ignoreNumbers = v)}
-      />
-    </div>
+    <CheckboxField
+      label="Numbers"
+      checked={ignoreNumbers}
+      onChange={(v) => (form.ignoreNumbers = v)}
+    >
+      {#snippet trailing()}
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <span
+                {...props}
+                class="text-text-secondary transition-colors hover:text-text-brand"
+                role="button"
+                tabindex={-1}
+                aria-label="What ignoring numbers does"
+              >
+                <Info size={ICON.inline} />
+              </span>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content
+            side="left"
+            align="center"
+            class="max-w-[15rem] space-y-1.5 leading-snug"
+          >
+            <p>Skips strings made only of digits — "100", "42".</p>
+            <p>
+              Enable "Including formatted numbers" to also skip decimals,
+              separators and signs like "1,234.00" or "+420".
+            </p>
+          </Tooltip.Content>
+        </Tooltip.Root>
+      {/snippet}
+    </CheckboxField>
 
-    <div class="flex items-center justify-between gap-2">
-      <Label for="settings-ignore-hidden">Ignore hidden layers</Label>
-      <Switch
-        id="settings-ignore-hidden"
-        checked={ignoreHiddenLayers}
-        onCheckedChange={(v) => (form.ignoreHiddenLayers = v)}
-      />
-    </div>
-
-    {#if ignoreHiddenLayers}
-      <div class="flex items-center justify-between gap-2 pl-3">
-        <Label for="settings-ignore-hidden-children">
-          Including all child texts
-        </Label>
-        <Switch
-          id="settings-ignore-hidden-children"
-          checked={form.ignoreHiddenLayersIncludingChildren ?? false}
-          onCheckedChange={(v) =>
-            (form.ignoreHiddenLayersIncludingChildren = v)}
-        />
-      </div>
+    {#if ignoreNumbers}
+      <CheckboxField
+        class="pl-6"
+        label="Including formatted numbers"
+        checked={form.ignoreFormattedNumbers ?? false}
+        onChange={(v) => (form.ignoreFormattedNumbers = v)}
+      >
+        {#snippet trailing()}
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+                <span
+                  {...props}
+                  class="text-text-secondary transition-colors hover:text-text-brand"
+                  role="button"
+                  tabindex={-1}
+                  aria-label="What ignoring formatted numbers does"
+                >
+                  <Info size={ICON.inline} />
+                </span>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content
+              side="left"
+              align="center"
+              class="max-w-[15rem] space-y-1.5 leading-snug"
+            >
+              <p>
+                Also skips numbers with decimals, thousands separators and signs
+                — "1,234.00", "3.14", "+420", "-5".
+              </p>
+              <p>"12 apples" is still kept.</p>
+            </Tooltip.Content>
+          </Tooltip.Root>
+        {/snippet}
+      </CheckboxField>
     {/if}
 
-    <div class="flex items-center justify-between gap-2">
-      <Label for="settings-ignore-text-layers">
-        Ignore text layers with prefix
-      </Label>
-      <Switch
-        id="settings-ignore-text-layers"
-        checked={form.ignoreTextLayers ?? false}
-        onCheckedChange={(v) => (form.ignoreTextLayers = v)}
-      />
-    </div>
+    <CheckboxField
+      label="Hidden layers"
+      checked={ignoreHiddenLayers}
+      onChange={(v) => (form.ignoreHiddenLayers = v)}
+    >
+      {#snippet trailing()}
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <span
+                {...props}
+                class="text-text-secondary transition-colors hover:text-text-brand"
+                role="button"
+                tabindex={-1}
+                aria-label="What ignoring hidden layers does"
+              >
+                <Info size={ICON.inline} />
+              </span>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content
+            side="left"
+            align="center"
+            class="max-w-[15rem] space-y-1.5 leading-snug"
+          >
+            <p>Skips layers with visibility turned off in Figma.</p>
+            <p>
+              With "Including all child texts" enabled, all text layers inside
+              hidden layers are also ignored, even if individually set to
+              visible.
+            </p>
+            <p>Otherwise, only the hidden layer itself is ignored.</p>
+          </Tooltip.Content>
+        </Tooltip.Root>
+      {/snippet}
+    </CheckboxField>
 
-    <div class="space-y-1">
-      <Label for="settings-ignore-prefix">Ignore prefix</Label>
-      <Input
-        id="settings-ignore-prefix"
-        placeholder="e.g. _"
-        bind:value={form.ignorePrefix}
-        class="w-full"
+    {#if ignoreHiddenLayers}
+      <CheckboxField
+        class="pl-6"
+        label="Including all child texts"
+        checked={form.ignoreHiddenLayersIncludingChildren ?? false}
+        onChange={(v) => (form.ignoreHiddenLayersIncludingChildren = v)}
       />
-    </div>
+    {/if}
+
+    <CheckboxField
+      label="Text layers with prefix"
+      checked={ignoreTextLayers}
+      onChange={(v) => (form.ignoreTextLayers = v)}
+    >
+      {#snippet trailing()}
+        {#if ignoreTextLayers}
+          <Input
+            aria-label="Ignore prefix"
+            placeholder="e.g. _"
+            bind:value={form.ignorePrefix}
+            class="h-6 flex-1"
+          />
+        {/if}
+      {/snippet}
+    </CheckboxField>
   </section>
-
-</div>
+</Tooltip.Provider>

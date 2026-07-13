@@ -14,7 +14,7 @@
 
 <Card>
   <div class="text-xs font-semibold text-text">
-    Pull summary ({language || "—"})
+    Download summary ({language || "—"})
   </div>
   <ul class="mt-2 grid grid-cols-3 gap-2 text-center">
     <li class="rounded border border-border bg-bg-secondary p-2">

@@ -29,6 +29,13 @@ describe("applyCasing", () => {
     expect(applyCasing("My Frame Title", "noSpaces")).toBe("MyFrameTitle");
   });
 
+  it("keeps the original format for \"\" / undefined (no transformation)", () => {
+    // "keep original format" — the default, matching the original plugin. Must
+    // NOT snake_case, or configs that kept the original would be transformed.
+    expect(applyCasing("My Frame Title", "")).toBe("My Frame Title");
+    expect(applyCasing("My Frame Title", undefined)).toBe("My Frame Title");
+  });
+
   it("returns empty string for empty input", () => {
     const casings: Casing[] = [
       "snake_case",
@@ -111,10 +118,59 @@ describe("formatKey", () => {
     expect(formatKey("", { frame: "Anything", elementName: "Whatever" }, "snake_case")).toBe("");
   });
 
-  it("leaves placeholder positions empty when value is missing", () => {
-    // No values supplied — placeholders should still be replaced (with "")
-    // so the separator survives but values disappear.
-    expect(formatKey("{frame}_{elementName}", {}, "snake_case")).toBe("_");
+  it("collapses to empty when every placeholder value is missing", () => {
+    // Both empty → the placeholders AND the separator between them are removed,
+    // rather than leaving a bare "_".
+    expect(formatKey("{frame}_{elementName}", {}, "snake_case")).toBe("");
+  });
+
+  it("drops the separator BEFORE an empty middle placeholder", () => {
+    expect(
+      formatKey(
+        "{frame}.{component}.{elementName}",
+        { frame: "Hero", elementName: "title" },
+        "snake_case",
+      ),
+    ).toBe("hero.title");
+  });
+
+  it("drops the separator AFTER a leading empty placeholder", () => {
+    // No component → no dangling leading dot.
+    expect(
+      formatKey("{component}.{elementName}", { elementName: "log in" }, "snake_case"),
+    ).toBe("log_in");
+  });
+
+  it("drops the separator BEFORE a trailing empty placeholder", () => {
+    expect(
+      formatKey("{elementName}.{component}", { elementName: "log in" }, "snake_case"),
+    ).toBe("log_in");
+  });
+
+  it("collapses consecutive empty placeholders and their separators", () => {
+    expect(
+      formatKey(
+        "{component}.{instance}.{elementName}",
+        { elementName: "title" },
+        "snake_case",
+      ),
+    ).toBe("title");
+  });
+
+  it("keeps a literal prefix when the following placeholder is empty", () => {
+    expect(
+      formatKey("app.{component}.{elementName}", { elementName: "title" }, "snake_case"),
+    ).toBe("app.title");
+  });
+
+  it("substitutes the {instance} placeholder", () => {
+    expect(
+      formatKey(
+        "{component}.{instance}.{elementName}",
+        { component: "Button", instance: "Primary Button", elementName: "label" },
+        "snake_case",
+      ),
+    ).toBe("button.primary_button.label");
   });
 
   it("preserves special chars '/', '.', '-' in placeholder values", () => {

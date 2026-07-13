@@ -4,6 +4,7 @@ import type { components } from "$ui/lib/api/schema.generated";
 export type SingleStepImportResolvableItemRequest =
   components["schemas"]["SingleStepImportResolvableItemRequest"];
 export type SimpleImportConflictResult = components["schemas"]["SimpleImportConflictResult"];
+export type RelatedKeyDto = components["schemas"]["RelatedKeyDto"];
 
 export type PushOptions = {
   branch?: string;
@@ -68,4 +69,22 @@ export async function pushKeys(
   return {
     unresolvedConflicts: raw.unresolvedConflicts ?? [],
   };
+}
+
+/**
+ * Registers "big meta" — the related keys that appear together (in order) in a
+ * screenshot — via `POST /v2/projects/big-meta`. This feeds Tolgee's in-context
+ * translation suggestions. The branch (if any) is carried per key on
+ * `RelatedKeyDto.branch`.
+ */
+export async function storeBigMeta(
+  client: TolgeeClient,
+  relatedKeysInOrder: RelatedKeyDto[],
+): Promise<void> {
+  const { error, response } = await client.POST("/v2/projects/big-meta", {
+    body: { relatedKeysInOrder },
+  });
+  if (error) {
+    throw new Error(`Storing big-meta failed (status ${response?.status ?? "?"})`);
+  }
 }

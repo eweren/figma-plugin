@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { ICON } from "$shared/iconSizes";
   import { Input, Label } from "$ui/lib/components/ui";
+  import * as Tooltip from "$ui/lib/components/ui/tooltip";
+  import Info from "lucide-svelte/icons/info";
 
   type Props = {
     translation: string;
@@ -40,10 +43,40 @@
 
 {#if placeholders.length > 0}
   <div class="space-y-2">
-    <Label>Parameters</Label>
+    <Tooltip.Provider delayDuration={200}>
+      <div class="flex items-center gap-1.5">
+        <Label>Values for Figma</Label>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <span
+                {...props}
+                class="text-text-secondary transition-colors hover:text-text-brand"
+                role="button"
+                tabindex={-1}
+                aria-label="What values for Figma are"
+              >
+                <Info size={ICON.inline} />
+              </span>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content
+            side="bottom"
+            align="start"
+            class="max-w-[15rem] leading-snug"
+          >
+            These values are only used to preview the translation in Figma. They
+            won't be saved.
+          </Tooltip.Content>
+        </Tooltip.Root>
+      </div>
+    </Tooltip.Provider>
     {#each placeholders as p (p)}
       <div class="flex items-center gap-2">
-        <span class="text-xs font-mono w-20 truncate" title={p}>{p}</span>
+        <span
+          class="max-w-32 shrink-0 truncate font-mono text-xs"
+          title={p}>{p}</span
+        >
         <Input
           value={values[p] ?? ""}
           oninput={(e) =>

@@ -72,15 +72,30 @@ describe("pushDiff", () => {
     expect(diff.unchangedKeys).toEqual([]);
   });
 
-  it("marks a node as new when remote has no entry for the key", () => {
+  it("marks an UNCONNECTED node as new when remote has no entry for the key", () => {
     const node = makeNode({
       id: "n1",
-      key: "missing-key",
+      key: "new-key",
       translation: "Hello",
+      connected: false,
     });
     const diff = pushDiff([node], {}, { hasNamespacesEnabled: false });
     expect(diff.newKeys).toHaveLength(1);
     expect(diff.newKeys[0]).toBe(node);
+    expect(diff.missingKeys).toEqual([]);
+  });
+
+  it("marks a CONNECTED node as missing (not new) when remote has no entry — the key was deleted on the platform", () => {
+    const node = makeNode({
+      id: "n1",
+      key: "deleted-key",
+      translation: "Hello",
+      connected: true,
+    });
+    const diff = pushDiff([node], {}, { hasNamespacesEnabled: false });
+    expect(diff.missingKeys).toHaveLength(1);
+    expect(diff.missingKeys[0]).toBe(node);
+    expect(diff.newKeys).toEqual([]);
   });
 
   it("reports two nodes with the same (key, ns) but different text as conflicting", () => {
@@ -116,6 +131,52 @@ describe("pushDiff", () => {
       id: "b",
       key: "shared",
       translation: "Hello",
+    });
+    const diff = pushDiff([nodeA, nodeB], {}, { hasNamespacesEnabled: false });
+    expect(diff.conflictingNodes).toEqual([]);
+  });
+
+  it("does NOT report plural VARIANTS as conflicting (same key + ICU, different rendered text)", () => {
+    // Two Figma layers legitimately share one plural key: identical ICU in
+    // `translation`, but each renders a different sample form ("1 woman" /
+    // "10 women") in `characters`. `textOfNode` uses the ICU for plural/advanced
+    // strings, so this must NOT trip the same-key conflict heuristic.
+    const icu = "{count, plural, one {# woman} other {# women}}";
+    const nodeA = makeNode({
+      id: "a",
+      key: "plural-W",
+      isPlural: true,
+      translation: icu,
+      characters: "1 woman",
+    });
+    const nodeB = makeNode({
+      id: "b",
+      key: "plural-W",
+      isPlural: true,
+      translation: icu,
+      characters: "10 women",
+    });
+    const diff = pushDiff([nodeA, nodeB], {}, { hasNamespacesEnabled: false });
+    expect(diff.conflictingNodes).toEqual([]);
+  });
+
+  it("does NOT report plural variants as conflicting even without a stored ICU translation", () => {
+    // The screenshot case: two plural layers on one key, no ICU pulled yet, so
+    // `translation` is empty and only the rendered `characters` differ. A plural
+    // render is derived, never authoritative, so this must not be a conflict.
+    const nodeA = makeNode({
+      id: "a",
+      key: "plural-W",
+      isPlural: true,
+      translation: "",
+      characters: "1 woman",
+    });
+    const nodeB = makeNode({
+      id: "b",
+      key: "plural-W",
+      isPlural: true,
+      translation: "",
+      characters: "10 women",
     });
     const diff = pushDiff([nodeA, nodeB], {}, { hasNamespacesEnabled: false });
     expect(diff.conflictingNodes).toEqual([]);

@@ -2,12 +2,15 @@
   import type { TolgeeConfig } from "$shared/types";
   import { appState } from "$ui/lib/stores/app.svelte";
   import { send } from "$ui/lib/bus";
-  import Button from "$ui/lib/components/ui/button.svelte";
   import * as Tabs from "$ui/lib/components/ui/tabs";
+  import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
+  import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import SettingsSectionConnection from "$ui/lib/components/domain/SettingsSectionConnection.svelte";
   import SettingsSectionProject from "$ui/lib/components/domain/SettingsSectionProject.svelte";
+  import SettingsSectionKeys from "$ui/lib/components/domain/SettingsSectionKeys.svelte";
   import SettingsSectionSync from "$ui/lib/components/domain/SettingsSectionSync.svelte";
-  import SettingsSectionAdvanced from "$ui/lib/components/domain/SettingsSectionAdvanced.svelte";
+  import SettingsSectionPush from "$ui/lib/components/domain/SettingsSectionPush.svelte";
+  import SettingsSectionAnnotations from "$ui/lib/components/domain/SettingsSectionAnnotations.svelte";
 
   const DEFAULT_API_URL = "https://app.tolgee.io";
 
@@ -24,10 +27,11 @@
     apiKey: cfg.apiKey ?? "",
     namespace: cfg.namespace ?? "",
     language: cfg.language ?? "",
-    ignorePrefix: cfg.ignorePrefix ?? "",
+    ignorePrefix: cfg.ignorePrefix ?? "_",
   });
 
-  let activeTab = $state("connection");
+  const route = appState.value.route;
+  let activeTab = $state(route.name === "settings" ? (route.tab ?? "project") : "project");
 
   function save(): void {
     send({ type: "save-config", config: form });
@@ -41,45 +45,37 @@
 </script>
 
 <div class="flex h-full flex-col">
-  <header
-    class="flex items-center justify-between border-b border-border px-3 py-2"
-  >
-    <h1 class="text-sm font-semibold">Settings</h1>
-    <button
-      type="button"
-      onclick={cancel}
-      class="text-xs text-text-secondary hover:text-text"
-    >
-      Close
-    </button>
-  </header>
+  <ViewHeader title="Settings" onBack={cancel} />
 
-  <Tabs.Root bind:value={activeTab} class="flex flex-1 flex-col">
-    <Tabs.List class="grid grid-cols-4 border-b border-border px-1">
-      <Tabs.Trigger value="connection">Connection</Tabs.Trigger>
+  <Tabs.Root bind:value={activeTab} class="flex min-h-0 flex-1 flex-col">
+    <Tabs.List class="grid shrink-0 grid-cols-4 border-b border-border px-1">
       <Tabs.Trigger value="project">Project</Tabs.Trigger>
-      <Tabs.Trigger value="sync">Sync</Tabs.Trigger>
-      <Tabs.Trigger value="advanced">Advanced</Tabs.Trigger>
+      <Tabs.Trigger value="strings">Strings and Keys</Tabs.Trigger>
+      <Tabs.Trigger value="upload">Upload to Tolgee</Tabs.Trigger>
+      <Tabs.Trigger value="annotations">Annotations</Tabs.Trigger>
     </Tabs.List>
 
-    <div class="flex-1 overflow-auto p-3">
-      <Tabs.Content value="connection">
-        <SettingsSectionConnection bind:form />
-      </Tabs.Content>
+    <div class="min-h-0 flex-1 overflow-auto p-3">
       <Tabs.Content value="project">
-        <SettingsSectionProject bind:form />
+        <div class="space-y-6">
+          <SettingsSectionConnection bind:form />
+          <SettingsSectionProject bind:form />
+        </div>
       </Tabs.Content>
-      <Tabs.Content value="sync">
-        <SettingsSectionSync bind:form />
+      <Tabs.Content value="strings">
+        <div class="space-y-6">
+          <SettingsSectionKeys bind:form />
+          <SettingsSectionSync bind:form />
+        </div>
       </Tabs.Content>
-      <Tabs.Content value="advanced">
-        <SettingsSectionAdvanced bind:form />
+      <Tabs.Content value="upload">
+        <SettingsSectionPush bind:form />
+      </Tabs.Content>
+      <Tabs.Content value="annotations">
+        <SettingsSectionAnnotations />
       </Tabs.Content>
     </div>
   </Tabs.Root>
 
-  <footer class="flex justify-end gap-2 border-t border-border p-2">
-    <Button variant="ghost" size="sm" onclick={cancel}>Cancel</Button>
-    <Button size="sm" onclick={save}>Save</Button>
-  </footer>
+  <ViewFooter onCancel={cancel} confirmLabel="Save" onConfirm={save} />
 </div>

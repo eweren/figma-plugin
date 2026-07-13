@@ -84,17 +84,46 @@ describe("splitConfig", () => {
     expect((split.page as Record<string, unknown>).namespace).toBeUndefined();
   });
 
-  it("writes global keys to both `global` and `doc` (legacy behaviour)", () => {
+  it("mirrors the global preferences (apiKey/apiUrl/ignorePrefix/ignoreNumbers) to both `global` and `doc`", () => {
     const split = splitConfig({
       apiUrl: "https://app.tolgee.io",
       apiKey: "tg-abc",
+      ignorePrefix: "//",
+      ignoreNumbers: true,
     } as Partial<TolgeeConfig>);
 
-    expect(split.global.apiUrl).toBe("https://app.tolgee.io");
-    expect(split.global.apiKey).toBe("tg-abc");
-    expect(split.doc.apiUrl).toBe("https://app.tolgee.io");
-    expect(split.doc.apiKey).toBe("tg-abc");
+    for (const scope of [split.global, split.doc] as Record<string, unknown>[]) {
+      expect(scope.apiUrl).toBe("https://app.tolgee.io");
+      expect(scope.apiKey).toBe("tg-abc");
+      expect(scope.ignorePrefix).toBe("//");
+      expect(scope.ignoreNumbers).toBe(true);
+    }
     expect((split.page as Record<string, unknown>).apiUrl).toBeUndefined();
+  });
+
+  it("keeps document-level settings (keyFormat, variableCasing, tags) OUT of global — no cross-document leak", () => {
+    const split = splitConfig({
+      keyFormat: "{frame}.{elementName}",
+      variableCasing: "snake_case",
+      tags: ["a", "b"],
+      addTags: true,
+      ignoreHiddenLayers: true,
+    } as Partial<TolgeeConfig>);
+
+    // They belong to the document only…
+    expect(split.doc.keyFormat).toBe("{frame}.{elementName}");
+    expect(split.doc.variableCasing).toBe("snake_case");
+    expect(split.doc.tags).toEqual(["a", "b"]);
+    expect(split.doc.addTags).toBe(true);
+    expect(split.doc.ignoreHiddenLayers).toBe(true);
+
+    // …never on global (would otherwise pre-fill other documents).
+    const g = split.global as Record<string, unknown>;
+    expect(g.keyFormat).toBeUndefined();
+    expect(g.variableCasing).toBeUndefined();
+    expect(g.tags).toBeUndefined();
+    expect(g.addTags).toBeUndefined();
+    expect(g.ignoreHiddenLayers).toBeUndefined();
   });
 
   it("skips undefined values during split", () => {
@@ -153,14 +182,12 @@ describe("splitConfig", () => {
     expect(remerged).toEqual(merged);
   });
 
-  it("routes unknown keys to global (and mirrors to doc), not dropped", () => {
-    // An unknown legacy key should default to global routing — the implementation
-    // intentionally avoids silently dropping it.
+  it("routes unknown keys to `doc` only (self-contained, no global leak), not dropped", () => {
     const config = { someLegacyKey: 42 } as unknown as Partial<TolgeeConfig>;
     const split = splitConfig(config);
 
-    expect((split.global as Record<string, unknown>).someLegacyKey).toBe(42);
     expect((split.doc as Record<string, unknown>).someLegacyKey).toBe(42);
+    expect((split.global as Record<string, unknown>).someLegacyKey).toBeUndefined();
     expect((split.page as Record<string, unknown>).someLegacyKey).toBeUndefined();
   });
 });

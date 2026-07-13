@@ -3,9 +3,10 @@
   import { appState } from "$ui/lib/stores/app.svelte";
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { send, on, nextCorrelationId } from "$ui/lib/bus";
-  import { Button, Card, Label } from "$ui/lib/components/ui";
+  import { Card, Label } from "$ui/lib/components/ui";
+  import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
+  import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
-  import ArrowLeft from "lucide-svelte/icons/arrow-left";
 
   type Mode = "keys" | "languages";
   type Stage = "idle" | "fetching" | "creating" | "done" | "error";
@@ -31,9 +32,6 @@
   // Only forward `branch` when the project has branching enabled — otherwise
   // Tolgee 400s the translations endpoint with feature_not_enabled_for_project.
   const branch = $derived(auth.value.branchingEnabled ? cfg.branch : undefined);
-  // When the document opts in to namespaces, only the configured one is
-  // relevant for the copy. Otherwise pull the default namespace (`""`).
-  const namespaces = $derived<string[]>(cfg.namespace ? [cfg.namespace] : [""]);
 
   // ---- Helpers --------------------------------------------------------------
 
@@ -167,9 +165,13 @@
 
     let translationsMap: Record<string, Record<string, string>>;
     try {
+      // All namespaces: the translations map is keyed by `${ns}|${key}` and the
+      // main thread matches each cloned node by its own ns, so a page mixing
+      // namespaces is copied correctly. (config.namespace is only a new-key
+      // default, not a copy filter.)
       const keys = await fetchAllTranslations(client, {
         languages: selectedLangs,
-        namespaces,
+        namespaces: undefined,
         branch: branch || undefined,
       });
       translationsMap = buildTranslationsMap(keys, selectedLangs);
@@ -214,21 +216,7 @@
 </script>
 
 <div class="flex h-full flex-col">
-  <header
-    class="flex items-center justify-between border-b border-border px-3 py-2"
-  >
-    <div class="flex items-center gap-2">
-      <button
-        type="button"
-        onclick={cancel}
-        aria-label="Back"
-        class="text-text-secondary hover:text-text"
-      >
-        <ArrowLeft size={14} />
-      </button>
-      <h1 class="text-sm font-semibold">Create copy</h1>
-    </div>
-  </header>
+  <ViewHeader title="Create copy" onBack={cancel} />
 
   <div class="flex-1 overflow-auto p-3 space-y-3">
     {#if stage === "idle"}
@@ -302,8 +290,10 @@
     {/if}
   </div>
 
-  <footer class="flex justify-end gap-2 border-t border-border p-2">
-    <Button variant="ghost" onclick={cancel}>Cancel</Button>
-    <Button onclick={start} disabled={!canSubmit}>Create</Button>
-  </footer>
+  <ViewFooter
+    onCancel={cancel}
+    confirmLabel="Create"
+    onConfirm={start}
+    confirmDisabled={!canSubmit}
+  />
 </div>

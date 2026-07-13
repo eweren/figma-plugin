@@ -4,6 +4,8 @@
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { nextCorrelationId, on, send } from "$ui/lib/bus";
   import { Button } from "$ui/lib/components/ui";
+  import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
+  import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import PullSummary from "$ui/lib/components/domain/PullSummary.svelte";
   import PullProgress from "$ui/lib/components/domain/PullProgress.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
@@ -23,7 +25,6 @@
       : (appState.value.config?.language ?? ""),
   );
 
-  const namespace = $derived(appState.value.config?.namespace ?? "");
   // Only forward `branch` when branching is enabled; the API rejects with
   // feature_not_enabled_for_project otherwise.
   const branch = $derived(
@@ -50,18 +51,23 @@
     staleTime: 5 * 1000,
   }));
 
-  // Query 2: remote translations. Cached per (language, namespace, branch).
+  // Query 2: remote translations. Cached per (language, branch).
   // The signal propagates to fetch — switching language mid-load cancels the
   // in-flight request via openapi-fetch.
+  //
+  // Fetch ALL namespaces (not a single configured one): each node is matched to
+  // its remote key by its OWN `ns` in `pullDiff`, so a page that mixes
+  // namespaces pulls every node correctly. `config.namespace` is only the
+  // DEFAULT for NEW keys, not a pull filter.
   const translationsQuery = createQuery(() => ({
-    queryKey: ["translations", language, namespace, branch],
+    queryKey: ["translations", language, branch],
     queryFn: async ({ signal }) => {
       progress = { loaded: 0, total: null };
       const client = auth.value.client;
       if (!client) throw new Error("Not connected to Tolgee.");
       return fetchAllTranslations(client, {
         languages: [language],
-        namespaces: namespace ? [namespace] : undefined,
+        namespaces: undefined,
         branch: branch || undefined,
         signal,
         onProgress: (loaded, total) => {
@@ -195,7 +201,7 @@
       if (msg.ok) {
         send({
           type: "notify",
-          text: `Pulled ${diff?.changedNodes.length ?? 0} translation(s) for ${language}.`,
+          text: `Downloaded ${diff?.changedNodes.length ?? 0} translation(s) for ${language}.`,
         });
         // Drop cached page nodes so a follow-up Pull starts from the
         // post-apply state instead of the pre-apply snapshot.
@@ -238,23 +244,11 @@
 </script>
 
 <div class="flex h-full flex-col">
-  <header
-    class="flex items-center justify-between border-b border-border px-3 py-2"
-  >
-    <h1 class="text-sm font-semibold">
-      Pull translations
-      <span class="text-text-secondary font-normal">
-        ({language || "—"})
-      </span>
-    </h1>
-    <button
-      type="button"
-      onclick={goBack}
-      class="text-xs text-text-secondary hover:text-text"
-    >
-      Cancel
-    </button>
-  </header>
+  <ViewHeader
+    title="Download to Figma"
+    subtitle={`(${language || "—"})`}
+    onBack={goBack}
+  />
 
   <div class="flex-1 overflow-auto p-3 space-y-3">
     {#if stage === "loading"}
@@ -283,7 +277,7 @@
             class="rounded border border-(--figma-color-border-brand) bg-(--figma-color-bg-brand-tertiary) p-2 text-[11px] text-text"
             role="status"
           >
-            Pull applies to every connected text on this page, not just your
+            Download applies to every connected text on this page, not just your
             selection. All {pageNodes.length} layer{pageNodes.length === 1
               ? ""
               : "s"} will be set to <strong>{language}</strong>.
@@ -360,9 +354,7 @@
     {/if}
   </div>
 
-  <footer
-    class="flex items-center justify-end gap-2 border-t border-border p-2"
-  >
+  <ViewFooter>
     <Button variant="ghost" onclick={goBack}>Cancel</Button>
     {#if stage === "diff" && diff && diff.changedNodes.length > 0}
       <Button onclick={applyChanges}>
@@ -373,5 +365,5 @@
     {:else}
       <Button disabled>Apply</Button>
     {/if}
-  </footer>
+  </ViewFooter>
 </div>

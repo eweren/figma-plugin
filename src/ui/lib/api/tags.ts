@@ -6,6 +6,25 @@ export type TaggableKey = {
 };
 
 /**
+ * Existing tag names in the project (`GET /v2/projects/tags`), for the "Add
+ * tags" autocomplete. Optional `search` filters server-side. Returns an empty
+ * array on any failure so the picker just shows no suggestions.
+ */
+export async function fetchProjectTags(
+  client: TolgeeClient,
+  search = "",
+  size = 20,
+): Promise<string[]> {
+  const { data, error } = await client.GET("/v2/projects/tags", {
+    params: { query: { search: search.trim() || undefined, size } },
+  });
+  if (error || !data) return [];
+  return (data._embedded?.tags ?? [])
+    .map((t) => t.name)
+    .filter((n): n is string => Boolean(n));
+}
+
+/**
  * Apply a fixed set of tags to a list of keys via `PUT /v2/projects/tag-complex`.
  *
  * Mirrors the call shape used in the legacy plugin: we use the

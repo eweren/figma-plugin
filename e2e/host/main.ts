@@ -75,6 +75,18 @@ function applyNodeUpdates(
   if (s) Object.assign(s, patch);
 }
 
+/** Post-write snapshots for a write result, like the real main thread's
+ *  `setNodesData`/`applyTranslations` return values. */
+function collectUpdated(ids: string[]): NodeInfo[] {
+  const out: NodeInfo[] = [];
+  for (const id of ids) {
+    const n =
+      state.selectedNodes.find((x) => x.id === id) ?? state.allNodes.find((x) => x.id === id);
+    if (n) out.push({ ...n });
+  }
+  return out;
+}
+
 window.addEventListener("message", (event) => {
   const msg = event.data?.pluginMessage as UiToMain | undefined;
   if (!msg) return;
@@ -131,12 +143,15 @@ window.addEventListener("message", (event) => {
     }
     case "set-nodes-data": {
       for (const { id, info } of msg.nodes) applyNodeUpdates(id, info);
+      // Mirrors the real main thread: the result carries fresh snapshots of
+      // just the written nodes and there is NO selection re-emit — the UI
+      // patches its list in place from `nodes`.
       send({
         type: "nodes-set-result",
         correlationId: msg.correlationId,
         ok: true,
+        nodes: collectUpdated(msg.nodes.map((n) => n.id)),
       });
-      emitSelectionChanged();
       return;
     }
     case "apply-translations": {
@@ -159,17 +174,18 @@ window.addEventListener("message", (event) => {
         correlationId: msg.correlationId,
         ok: true,
         errors: [],
+        nodes: collectUpdated(msg.updates.map((u) => u.id)),
       });
-      emitSelectionChanged();
       return;
     }
     case "request-screenshots": {
       // Stub: no real screenshots in the host shim. Pull/push flows that
-      // upload screenshots will simply skip them.
+      // upload screenshots will simply skip them. Mirrors the streamed
+      // protocol: zero frames, immediate terminal marker.
       send({
-        type: "screenshots-result",
+        type: "screenshots-done",
         correlationId: msg.correlationId,
-        screenshots: [],
+        total: 0,
       });
       return;
     }

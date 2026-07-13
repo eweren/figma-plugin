@@ -43,30 +43,59 @@ function writeAnnotations(node: TextNode, next: ReadonlyArray<Annotation>): bool
  * Identical-write detection is intentional: every mutation can race with
  * concurrent co-editors and produce visible "blink" in the canvas. Skipping
  * no-ops keeps the experience quiet for everyone in the file.
+ *
+ * `infoById` lets write paths hand over the `NodeInfo` snapshots they just
+ * produced, skipping a per-node pluginData read + parse. Only our own writes
+ * change `tolgee_info`, so a snapshot from the triggering write is current.
  */
-export async function applyAnnotations(nodes: TextNode[], categoryId: string): Promise<number> {
+export async function applyAnnotations(
+  nodes: TextNode[],
+  categoryId: string,
+  infoById?: ReadonlyMap<string, NodeInfo>,
+  isCancelled?: () => boolean,
+): Promise<number> {
   let updated = 0;
+  let processed = 0;
+  let writesSinceYield = 0;
   for (const node of nodes) {
-    const info = getNodeInfo(node);
-    const others = node.annotations.filter((a) => a.categoryId !== categoryId);
+    processed++;
+    // Annotation WRITES are canvas mutations (undo history, multiplayer sync)
+    // and are by far the expensive part — a bulk key change rewrites the label
+    // on every node. Yield after a handful of writes, and every ~50 nodes even
+    // when the identical-write check skips them all, so neither a write burst
+    // nor a long read-only pass freezes the editor.
+    if (writesSinceYield >= 10 || processed % 50 === 0) {
+      writesSinceYield = 0;
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      // The yield is exactly where a toggle-off (cancel + clearCurrentPage)
+      // can interleave — stop instead of re-writing labels onto freshly
+      // cleared nodes.
+      if (isCancelled?.()) return updated;
+    }
+    const info = infoById?.get(node.id) ?? getNodeInfo(node);
+    // One bridge read; `annotations` is consulted three times below.
+    const annotations = node.annotations;
+    const others = annotations.filter((a) => a.categoryId !== categoryId);
 
     if (info.connected && info.key) {
       const label = buildLabel(info);
-      const existing = node.annotations.find((a) => a.categoryId === categoryId);
-      if (
-        existing &&
-        existing.labelMarkdown === label &&
-        others.length === node.annotations.length - 1
-      ) {
+      const existing = annotations.find((a) => a.categoryId === categoryId);
+      if (existing && existing.labelMarkdown === label && others.length === annotations.length - 1) {
         // Nothing changed for our annotation; leave the node alone.
         continue;
       }
       const ok = writeAnnotations(node, [...others, { labelMarkdown: label, categoryId }]);
-      if (ok) updated++;
-    } else if (others.length !== node.annotations.length) {
+      if (ok) {
+        updated++;
+        writesSinceYield++;
+      }
+    } else if (others.length !== annotations.length) {
       // The node lost its Tolgee key — strip our annotation but keep others.
       const ok = writeAnnotations(node, [...others]);
-      if (ok) updated++;
+      if (ok) {
+        updated++;
+        writesSinceYield++;
+      }
     }
   }
   return updated;
@@ -78,11 +107,26 @@ export async function applyAnnotations(nodes: TextNode[], categoryId: string): P
  */
 export async function removeAnnotations(nodes: TextNode[], categoryId: string): Promise<number> {
   let updated = 0;
+  let processed = 0;
+  let writesSinceYield = 0;
   for (const node of nodes) {
-    const filtered = node.annotations.filter((a) => a.categoryId !== categoryId);
-    if (filtered.length === node.annotations.length) continue;
+    processed++;
+    // Same breathing rules as `applyAnnotations`: yield after a few canvas
+    // writes, and periodically even on a pure read pass (this can walk every
+    // text node on the page when called from `clearCurrentPage`).
+    if (writesSinceYield >= 10 || processed % 100 === 0) {
+      writesSinceYield = 0;
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    // One bridge read per node.
+    const annotations = node.annotations;
+    const filtered = annotations.filter((a) => a.categoryId !== categoryId);
+    if (filtered.length === annotations.length) continue;
     const ok = writeAnnotations(node, [...filtered]);
-    if (ok) updated++;
+    if (ok) {
+      updated++;
+      writesSinceYield++;
+    }
   }
   return updated;
 }
@@ -116,10 +160,9 @@ export async function clearCurrentPage(): Promise<{ updated: number }> {
   await figma.currentPage.loadAsync();
   const categoryId = await ensureTolgeeCategory();
   const all = figma.currentPage.findAllWithCriteria({ types: ["TEXT"] });
-  // Narrow to text nodes that actually carry a Tolgee annotation so we don't
-  // touch unrelated nodes. (`findAllWithCriteria` doesn't filter on
-  // annotations, hence the manual pass.)
-  const affected = all.filter((n) => n.annotations.some((a) => a.categoryId === categoryId));
-  const updated = await removeAnnotations(affected, categoryId);
+  // `findAllWithCriteria` can't filter on annotations, so this walks every
+  // text node — detection and removal share one `annotations` read per node
+  // (see removeAnnotations), with yields inside the removal loop.
+  const updated = await removeAnnotations(all, categoryId);
   return { updated };
 }

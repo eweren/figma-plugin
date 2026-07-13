@@ -1,3 +1,4 @@
+import type { KeyParentNames } from "./keyFormat";
 import type { FrameScreenshot, NodeInfo, TolgeeConfig, WindowSize } from "./types";
 
 /**
@@ -25,14 +26,52 @@ export type MainToUi =
        */
       hasUserSelection: boolean;
     }
+  | {
+      /**
+       * Emitted the instant `selectionchange` fires, BEFORE the (potentially
+       * slow) selection scan. Lets the UI show a loader during the scan instead
+       * of only after `selection-changed` arrives. Carries no data — the UI
+       * just flips into a "scanning" state until the matching
+       * `selection-changed` lands.
+       */
+      type: "selection-pending";
+    }
   | { type: "page-changed"; config: Partial<TolgeeConfig> }
   | { type: "config-changed"; config: Partial<TolgeeConfig> }
   | {
-      type: "screenshots-result";
+      /** One exported frame. Screenshots stream one message per frame — a
+          single message carrying every PNG serialized tens of MB on the
+          canvas thread and held all buffers in memory at once. */
+      type: "screenshot-frame";
       correlationId: string;
-      screenshots: FrameScreenshot[];
+      screenshot: FrameScreenshot;
+      index: number;
     }
-  | { type: "nodes-set-result"; correlationId: string; ok: boolean }
+  | {
+      /** Terminal marker for a `request-screenshots` stream. `total` is the
+          number of `screenshot-frame` messages that were sent. */
+      type: "screenshots-done";
+      correlationId: string;
+      total: number;
+    }
+  | {
+      type: "nodes-set-result";
+      correlationId: string;
+      ok: boolean;
+      /** Fresh post-write snapshots of the updated nodes. The UI patches its
+          selection in place from these — the main thread deliberately does
+          NOT re-scan the whole selection after a write (that full re-scan
+          per write is what froze large selections). */
+      nodes: NodeInfo[];
+    }
+  | {
+      /** Parent placeholder names resolved on demand — see the matching
+          `resolve-parent-names` request. Keyed by node id; a missing id (or
+          missing field) means the node has no such ancestor. */
+      type: "parent-names-result";
+      correlationId: string;
+      parents: Record<string, KeyParentNames>;
+    }
   | {
       type: "page-connected-nodes-result";
       correlationId: string;
@@ -43,6 +82,9 @@ export type MainToUi =
       correlationId: string;
       ok: boolean;
       errors: string[];
+      /** See `nodes-set-result.nodes` — post-write snapshots for in-place
+          patching instead of a full selection re-scan. */
+      nodes: NodeInfo[];
     }
   | {
       type: "annotation-sync-result";
@@ -105,6 +147,13 @@ export type UiToMain =
       correlationId: string;
       nodes: Array<{ id: string; info: Partial<NodeInfo> }>;
     }
+  /**
+   * Resolve the parent placeholder names ({component}/{frame}/…) for specific
+   * nodes on demand. The selection scan only fills these when the SAVED format
+   * uses them; the bulk "Generate key names" action lets the user type an
+   * ad-hoc template, so it asks for them here right before formatting.
+   */
+  | { type: "resolve-parent-names"; correlationId: string; nodeIds: string[] }
   | {
       type: "apply-translations";
       correlationId: string;

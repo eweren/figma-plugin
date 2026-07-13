@@ -24,11 +24,13 @@
   {disabled}
   {id}
   class={cn(
-    "relative h-4 w-7 rounded-full bg-bg-secondary data-[state=checked]:bg-bg-brand transition-colors disabled:opacity-50",
+    // Solid grey OFF track (a plain bg-secondary fill blends into the panel);
+    // brand fill when ON. Kept prominent so the state reads at a glance.
+    "relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full bg-icon-muted transition-colors data-[state=checked]:bg-bg-brand disabled:opacity-60",
     className,
   )}
 >
   <SwitchPrimitive.Thumb
-    class="block h-3 w-3 rounded-full bg-white translate-x-0.5 data-[state=checked]:translate-x-3.5 transition-transform"
+    class="block h-3.5 w-3.5 rounded-full bg-white shadow-sm translate-x-0.5 data-[state=checked]:translate-x-[17px] transition-transform"
   />
 </SwitchPrimitive.Root>

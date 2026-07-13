@@ -1,6 +1,7 @@
 export {
   ANNOTATIONS_ENABLED_KEY,
   applyAnnotations,
+  cancelReconcile,
   clearCurrentPage,
   clearTolgeeCategoryCache,
   ensureTolgeeCategory,

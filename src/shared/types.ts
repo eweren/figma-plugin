@@ -20,7 +20,12 @@ export type FrameScreenshot = {
 };
 
 export interface NodeInfo {
+  /** Sample COUNT for the plural variable (a number, e.g. "1"/"10"), as the
+   *  published plugin persisted it — the plural variable's NAME is read from the
+   *  ICU, not stored here. Rendering also accepts the count from
+   *  `paramsValues[name]` (how this UI edits it), see `interpolate.renderParams`. */
   pluralParamValue?: string;
+  /** Sample values for ICU params, keyed by param NAME (incl. the plural one). */
   paramsValues?: Record<string, string>;
   name: string;
   characters: string;
@@ -31,6 +36,21 @@ export interface NodeInfo {
   ns: string | undefined;
   connected: boolean;
   visible?: boolean;
+  /**
+   * Names of the node's relevant ancestors, resolved from the live Figma tree
+   * (like `name`/`characters`, NOT persisted). They feed the parent key-format
+   * placeholders — `{component}` / `{instance}` / `{frame}` / `{artboard}` /
+   * `{section}` / `{group}`. Computed only when the configured `keyFormat`
+   * actually uses one (see `getSelectionInfo`); otherwise left undefined.
+   */
+  component?: string;
+  /** Layer name of the nearest component INSTANCE, feeding `{instance}` —
+   *  distinct from `component` (the main component it was created from). */
+  instance?: string;
+  frame?: string;
+  artboard?: string;
+  section?: string;
+  group?: string;
 }
 
 export type PartialNodeInfo = Partial<NodeInfo> & {
@@ -41,7 +61,12 @@ export type GlobalSettings = {
   apiUrl: string;
   apiKey: string;
   ignorePrefix: string;
+  /** Ignore pure-integer strings ("100", "42") — matches the original plugin. */
   ignoreNumbers: boolean;
+  /** Opt-in extension of `ignoreNumbers`: also ignore formatted numbers —
+   *  decimals, thousands separators and signs ("1,234.00", "3.14", "+420").
+   *  Off by default so the base behaviour stays pure-integer-only. */
+  ignoreFormattedNumbers?: boolean;
   updateScreenshots?: boolean;
   addTags?: boolean;
   tags?: string[];
@@ -66,6 +91,9 @@ export type GlobalSettings = {
   ignoreHiddenLayersIncludingChildren?: boolean;
   ignoreTextLayers?: boolean;
   variableCasing?:
+    /** "keep original format" — no transformation. Stored as "" (matches the
+     *  original plugin), and the default when unset. */
+    | ""
     | "snake_case"
     | "snake_case_capitalized"
     | "camelCase"
@@ -118,9 +146,9 @@ export type Route =
   | { name: "index" }
   | { name: "pageSetup" }
   | { name: "copyView" }
-  | { name: "settings" }
+  | { name: "settings"; tab?: "project" | "strings" | "upload" }
   | { name: "push" }
   | { name: "pull"; lang: string }
-  | { name: "connect"; node: NodeInfo }
+  | { name: "connect"; node: NodeInfo; bulkNodes?: NodeInfo[] }
   | { name: "stringDetails"; node: NodeInfo }
   | { name: "createCopy" };

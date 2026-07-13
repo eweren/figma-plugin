@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Input } from "$ui/lib/components/ui";
+  import Badge from "$ui/lib/components/ui/badge.svelte";
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { appState } from "$ui/lib/stores/app.svelte";
   import { searchKeys, type KeySearchResult } from "$ui/lib/api/keys";
@@ -73,12 +74,11 @@
             class="w-full text-left px-2 py-1 hover:bg-(--figma-color-bg-hover)"
             onclick={() => onSelect(r.name, r.namespace)}
           >
-            <div class="text-xs font-medium">{r.name}</div>
-            {#if r.namespace}
-              <div class="text-[10px] text-text-secondary">
-                {r.namespace}
-              </div>
-            {/if}
+            <div class="flex items-center gap-1.5">
+              <span class="min-w-0 truncate text-xs font-medium">{r.name}</span>
+              <!-- Always show the key's namespace, incl. an explicit "<none>". -->
+              <Badge>ns:{r.namespace || "<none>"}</Badge>
+            </div>
             {#if r.translation || r.baseTranslation}
               <div class="text-[10px] text-text-secondary truncate">
                 {r.translation ?? r.baseTranslation}

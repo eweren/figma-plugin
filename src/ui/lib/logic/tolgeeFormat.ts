@@ -183,6 +183,20 @@ export function tolgeeFormatGenerateIcu(format: TolgeeFormat, _raw: boolean): st
 
 const CLDR_ORDER = ["zero", "one", "two", "few", "many", "other"] as const;
 
+// `new Intl.PluralRules(locale)` allocates locale data and is the costly part of
+// the helpers below. They run inside the plural editor's per-keystroke render
+// loop (once per variant), so cache the instance per locale — locales are few
+// and the rules are immutable.
+const pluralRulesCache = new Map<string, Intl.PluralRules>();
+function pluralRules(locale: string): Intl.PluralRules {
+  let rules = pluralRulesCache.get(locale);
+  if (!rules) {
+    rules = new Intl.PluralRules(locale);
+    pluralRulesCache.set(locale, rules);
+  }
+  return rules;
+}
+
 /**
  * Return the CLDR plural categories active for `locale`, in canonical order.
  * Uses `Intl.PluralRules` probing for compatibility with all environments.
@@ -190,7 +204,7 @@ const CLDR_ORDER = ["zero", "one", "two", "few", "many", "other"] as const;
  */
 export function getPluralVariants(locale: string): string[] {
   try {
-    const rules = new Intl.PluralRules(locale);
+    const rules = pluralRules(locale);
     const found = new Set<string>(["other"]);
     const probes: Array<[Intl.LDMLPluralRule, number[]]> = [
       ["zero", [0]],
@@ -224,13 +238,31 @@ export function getVariantExample(locale: string, variant: string): number | und
     return Number.isNaN(n) ? undefined : n;
   }
   try {
-    const rules = new Intl.PluralRules(locale);
-    for (const n of [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 20, 100]) {
+    const rules = pluralRules(locale);
+    // Probe "nice" representative numbers in priority order — same examples
+    // Tolgee's editor shows (en: one→1, other→10). `0` is intentionally last so
+    // the "other" form shows a real plural count, not the zero edge case; the
+    // fractional probes resolve categories like Czech "many".
+    for (const n of [1, 10, 100, 2, 3, 4, 5, 0, 1.5, 0.5]) {
       if (rules.select(n) === variant) return n;
     }
     return undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Which CLDR plural category a concrete number falls into for `locale`
+ * (e.g. en: 1 → "one", 6 → "other"; cs: 2 → "few", 5 → "other"). Used to drop a
+ * literal count from a string into the matching plural form. Falls back to
+ * "other" for unknown locales.
+ */
+export function getPluralCategory(locale: string, n: number): string {
+  try {
+    return pluralRules(locale).select(n);
+  } catch {
+    return "other";
   }
 }
 
