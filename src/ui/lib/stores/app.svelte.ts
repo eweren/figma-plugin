@@ -120,6 +120,29 @@ function createAppState() {
       state.scanning = false;
     },
     /**
+     * One chunk of a streamed selection scan. The first batch REPLACES the
+     * list (and is the moment the user has real feedback, so it also clears
+     * the scan loader); later batches append. Streamed batches only exist
+     * for genuine selections, hence `hasUserSelection` flips on the first.
+     */
+    appendSelection(nodes: NodeInfo[], first: boolean) {
+      selectedNodes = first ? nodes : [...selectedNodes, ...nodes];
+      if (first) state.hasUserSelection = true;
+      cancelScanSpinner();
+      state.scanning = false;
+    },
+    /**
+     * Terminal marker of a streamed scan. A stream that delivered nothing
+     * (empty canvas click, or a selection whose texts are all ignored)
+     * must clear the previous list.
+     */
+    finalizeSelection(hasUserSelection: boolean, total: number) {
+      if (total === 0) selectedNodes = [];
+      state.hasUserSelection = hasUserSelection;
+      cancelScanSpinner();
+      state.scanning = false;
+    },
+    /**
      * Merge fresh post-write snapshots into the current selection by node id.
      * Untouched rows keep their object identity, so the keyed `{#each}` list
      * doesn't re-mount them. Nodes not currently in the selection are ignored

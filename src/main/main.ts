@@ -95,20 +95,28 @@ async function emitSelection(sendPending = true): Promise<void> {
   // (no loader) and pending input (a deselect click) never gets processed.
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   if (isStale()) return;
-  let nodes: Awaited<ReturnType<typeof getSelectionInfo>>["nodes"] = [];
+  // STREAMED delivery: each completed batch goes straight to the UI, so the
+  // list starts rendering after the first ~100 nodes instead of after the
+  // whole (potentially many-second) scan. Stale batches are suppressed at
+  // send time; the terminal `selection-done` closes the stream.
+  let total = 0;
   try {
-    nodes = (await getSelectionInfo(isStale)).nodes;
+    await getSelectionInfo(isStale, (nodes, first) => {
+      if (isStale()) return;
+      total += nodes.length;
+      send({ type: "selection-batch", nodes, first });
+    });
   } catch (err) {
-    // A failed scan MUST still answer the pending signal — otherwise the UI's
+    // A failed scan MUST still close the stream — otherwise the UI's
     // delayed spinner (armed by `selection-pending`) stays up forever. Fall
-    // through and send an empty list; the next selection change recovers.
+    // through to `selection-done`; the next selection change recovers.
     console.warn("[tolgee:main] selection scan failed", err);
   }
   if (generation !== scanGeneration) return; // superseded by a newer scan
   send({
-    type: "selection-changed",
-    nodes,
+    type: "selection-done",
     hasUserSelection: figma.currentPage.selection.length > 0,
+    total,
   });
 }
 

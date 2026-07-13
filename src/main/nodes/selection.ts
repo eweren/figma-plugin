@@ -38,11 +38,21 @@ export async function writeTextNode(node: TextNode, newText: string): Promise<vo
  *   state instead. Page-wide work still happens on demand in the Download/Pull
  *   flow via the dedicated `request-page-connected-nodes` path.
  */
+/** Nodes per streamed `onBatch` delivery. Large enough that per-batch
+ *  overhead (parent resolve + message) amortises, small enough that the
+ *  first rows reach the UI within a fraction of a second. */
+const SELECTION_BATCH_SIZE = 100;
+
 export const getSelectionInfo = async (
   // Superseded-scan probe (see `scanSelectedTextNodes`): checked at every
   // yield so an outdated scan stops burning canvas time as soon as a newer
   // selection arrives. The caller discards the partial result.
   isStale: () => boolean = () => false,
+  // Streamed delivery: called with each completed batch of NodeInfos (parent
+  // placeholders already resolved for the batch). Building info for
+  // thousands of nodes costs many seconds of bridge work — without
+  // streaming the UI showed NOTHING until the whole selection finished.
+  onBatch?: (nodes: NodeInfo[], first: boolean) => void,
 ): Promise<{
   nodes: NodeInfo[];
   basedOnSelection: boolean;
@@ -59,56 +69,74 @@ export const getSelectionInfo = async (
   const needsAncestorHidden = Boolean(
     (config.ignoreHiddenLayers ?? true) && config.ignoreHiddenLayersIncludingChildren,
   );
+  // Parent key-format placeholders ({component}/{frame}/…) are resolved only
+  // when prefill is on AND the format actually uses one — a plain key format
+  // adds zero traversal cost.
+  const needsParents = Boolean(config.prefillKeyFormat && keyFormatUsesParents(config.keyFormat));
+  // Shared per-scan cache: text nodes under the same INSTANCE ancestor
+  // resolve its main component once instead of once each.
+  const mainComponentNames: MainComponentNameCache = new Map();
+
   const selected = await scanSelectedTextNodes(needsAncestorHidden, isStale);
   if (isStale()) return { nodes: [], basedOnSelection: true };
+
+  const all: NodeInfo[] = [];
+  let batch: { node: TextNode; info: NodeInfo }[] = [];
+  let firstBatch = true;
+
+  // Complete a batch: resolve its parent placeholders (sequential with
+  // yields — a parallel burst of ancestor walks blocks the canvas), then
+  // hand it to the caller. Returns false when superseded mid-way.
+  const flushBatch = async (): Promise<boolean> => {
+    if (batch.length === 0) return true;
+    if (needsParents) {
+      let resolved = 0;
+      for (const { node, info } of batch) {
+        const parents = await resolveParentNames(node, mainComponentNames);
+        info.component = parents.component;
+        info.instance = parents.instance;
+        info.frame = parents.frame;
+        info.artboard = parents.artboard;
+        info.section = parents.section;
+        info.group = parents.group;
+        resolved++;
+        if (resolved % 25 === 0) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          if (isStale()) return false;
+        }
+      }
+    }
+    const infos = batch.map(({ info }) => info);
+    all.push(...infos);
+    batch = [];
+    onBatch?.(infos, firstBatch);
+    firstBatch = false;
+    return true;
+  };
+
   // Filter BEFORE building NodeInfo — `getNodeInfo` costs ~5 bridge calls per
   // node (pluginData + name + …), which ignored nodes must not pay. One loop
   // so `characters` crosses the bridge once per node (filter + info share it),
-  // with periodic yields — 700 kept nodes are ~3k bridge calls, and doing
-  // them unbroken visibly froze the canvas on every selection switch.
-  const kept: { node: TextNode; info: NodeInfo }[] = [];
+  // with periodic yields — thousands of kept nodes are tens of thousands of
+  // bridge calls, and doing them unbroken visibly froze the canvas.
   let scanned = 0;
   for (const { node, ancestorHidden } of selected) {
     const characters = node.characters;
     if (!shouldIgnoreNode(node, ancestorHidden, config, characters)) {
-      kept.push({ node, info: getNodeInfo(node, characters) });
+      batch.push({ node, info: getNodeInfo(node, characters) });
     }
     scanned++;
     if (scanned % 50 === 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      if (isStale()) return { nodes: [], basedOnSelection: true };
+      if (isStale()) return { nodes: all, basedOnSelection: true };
+    }
+    if (batch.length >= SELECTION_BATCH_SIZE) {
+      if (!(await flushBatch())) return { nodes: all, basedOnSelection: true };
     }
   }
+  if (!(await flushBatch())) return { nodes: all, basedOnSelection: true };
 
-  // Fill the parent key-format placeholders ({component}/{frame}/…) from the
-  // live tree — only when prefill is on AND the format actually uses one, so a
-  // plain key format adds zero traversal cost. Per-node awaits (an INSTANCE
-  // resolves its main component async) run in parallel.
-  if (config.prefillKeyFormat && keyFormatUsesParents(config.keyFormat)) {
-    // Shared per-scan cache: text nodes under the same INSTANCE ancestor
-    // resolve its main component once instead of once each. Sequential with
-    // periodic yields — a parallel batch of ancestor walks over a large
-    // selection blocks the canvas until the whole burst finishes.
-    const mainComponentNames: MainComponentNameCache = new Map();
-    let resolved = 0;
-    for (const { node, info } of kept) {
-      const parents = await resolveParentNames(node, mainComponentNames);
-      info.component = parents.component;
-      info.instance = parents.instance;
-      info.frame = parents.frame;
-      info.artboard = parents.artboard;
-      info.section = parents.section;
-      info.group = parents.group;
-      resolved++;
-      if (resolved % 25 === 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        if (isStale()) return { nodes: [], basedOnSelection: true };
-      }
-    }
-  }
-
-  const nodes = kept.map(({ info }) => info);
-  return { nodes, basedOnSelection: true };
+  return { nodes: all, basedOnSelection: true };
 };
 
 export type NodeUpdate = {

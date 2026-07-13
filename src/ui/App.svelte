@@ -128,6 +128,15 @@
     const unsubSel = on("selection-changed", (msg) =>
       appState.setSelection(msg.nodes, msg.hasUserSelection),
     );
+    // Streamed variant — large scans arrive in batches so the list renders
+    // long before the whole selection is processed (`selection-changed`
+    // stays for non-streamed senders: init and the e2e host).
+    const unsubBatch = on("selection-batch", (msg) =>
+      appState.appendSelection(msg.nodes, msg.first),
+    );
+    const unsubDone = on("selection-done", (msg) =>
+      appState.finalizeSelection(msg.hasUserSelection, msg.total),
+    );
     const unsubCfg = on("config-changed", (msg) => {
       appState.setConfig(msg.config);
       void maybeBootstrapAuth(msg.config);
@@ -167,6 +176,8 @@
       unsubInit();
       unsubPending();
       unsubSel();
+      unsubBatch();
+      unsubDone();
       unsubCfg();
       unsubPage();
       unsubCmd();

@@ -36,6 +36,28 @@ export type MainToUi =
        */
       type: "selection-pending";
     }
+  | {
+      /** One chunk of a STREAMED selection scan. Large selections used to
+          arrive as a single `selection-changed` only after every node's info
+          was built — thousands of nodes meant many seconds of built-up work
+          before the UI showed anything. Batches let the list render within
+          the first ~100 nodes and fill in progressively; a superseding
+          selection simply stops the remaining batches. `first: true`
+          replaces the list, subsequent batches append. Closed by
+          `selection-done`. (`selection-changed` remains for non-streamed
+          senders: empty selections, init, and the e2e host.) */
+      type: "selection-batch";
+      nodes: NodeInfo[];
+      first: boolean;
+    }
+  | {
+      /** Terminal marker of a streamed selection scan. `total` lets the UI
+          clear the list when the scan yielded zero usable text nodes (no
+          `selection-batch` was sent at all). */
+      type: "selection-done";
+      hasUserSelection: boolean;
+      total: number;
+    }
   | { type: "page-changed"; config: Partial<TolgeeConfig> }
   | { type: "config-changed"; config: Partial<TolgeeConfig> }
   | {
