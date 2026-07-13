@@ -917,7 +917,7 @@
       <EmptyState
         icon={Group}
         title="Select strings for translation"
-        description="(texts, frames...)"
+        description="Pick frames or texts. Fewer runs smoother."
       />
     {:else}
       <!-- Search + filter -->
