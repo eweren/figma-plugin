@@ -2,9 +2,6 @@ export const TOLGEE_PLUGIN_CONFIG_NAME = "tolgee_config";
 
 export const TOLGEE_NODE_INFO = "tolgee_info";
 
-/** Pluginiata cache key for the annotation category ID. */
-export const TOLGEE_ANNOTATION_CATEGORY_KEY = "tolgee_annotation_category";
-
 export const TOLGEE_KEY_FORMAT_PLACEHOLDERS = {
   elementName: "{elementName}",
   elementText: "{elementText}",

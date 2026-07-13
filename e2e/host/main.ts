@@ -7,7 +7,7 @@
  *
  * This lets the UI bundle run unmodified — every HTTP call still hits the
  * real Tolgee platform started by `e2e/docker-compose.yml` — while we
- * inject selection / config / annotations behaviour from the test harness.
+ * inject selection / config behaviour from the test harness.
  *
  * Initial state is read from `?state=<URL-encoded JSON>` so tests can
  * construct deep-link URLs (mirroring the v1 `createShortcutUrl` pattern).
@@ -21,7 +21,6 @@ type HostState = {
   selectedNodes: NodeInfo[];
   hasUserSelection: boolean;
   editorType: "figma" | "dev";
-  annotationsEnabled: boolean;
   route?: string;
 };
 
@@ -32,7 +31,6 @@ function defaultState(): HostState {
     selectedNodes: [],
     hasUserSelection: false,
     editorType: "figma",
-    annotationsEnabled: false,
     route: undefined,
   };
 }
@@ -195,27 +193,6 @@ window.addEventListener("message", (event) => {
     case "close": {
       // No-ops in the host. Tests can assert these were sent by spying on
       // postMessage from the page level if needed.
-      return;
-    }
-    case "sync-annotations": {
-      send({
-        type: "annotation-sync-result",
-        correlationId: msg.correlationId,
-        updated: 0,
-      });
-      return;
-    }
-    case "toggle-annotations": {
-      state.annotationsEnabled = msg.enabled;
-      return;
-    }
-    case "get-annotations-state": {
-      send({
-        type: "annotations-state",
-        correlationId: msg.correlationId,
-        enabled: state.annotationsEnabled,
-        available: state.editorType !== "dev",
-      });
       return;
     }
     case "create-copy": {

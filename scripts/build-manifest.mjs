@@ -29,8 +29,7 @@ const manifest = {
     reasoning: 'Self-hosted Tolgee instances may run on arbitrary domains.',
   },
   // No `menu`: with one, Figma shows a submenu on launch instead of opening the
-  // plugin directly. The "Toggle Canvas Annotations" quick action lived here —
-  // move it into the UI (Settings / an Annotations tab) if it's still wanted.
+  // plugin directly.
   relaunchButtons: [
     { command: 'open-on-node', name: 'Edit Tolgee key', multipleSelection: false },
   ],

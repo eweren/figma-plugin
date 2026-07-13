@@ -109,17 +109,6 @@ export type MainToUi =
       nodes: NodeInfo[];
     }
   | {
-      type: "annotation-sync-result";
-      correlationId: string;
-      updated: number;
-    }
-  | {
-      type: "annotations-state";
-      correlationId: string;
-      enabled: boolean;
-      available: boolean;
-    }
-  | {
       type: "create-copy-progress";
       correlationId: string;
       current: number;
@@ -204,9 +193,6 @@ export type UiToMain =
       nodeIds: string[];
     }
   | { type: "scroll-to-node"; id: string }
-  | { type: "sync-annotations"; correlationId: string; all?: boolean }
-  | { type: "toggle-annotations"; enabled: boolean }
-  | { type: "get-annotations-state"; correlationId: string }
   | {
       type: "create-copy";
       correlationId: string;

@@ -10,7 +10,6 @@
   import SettingsSectionKeys from "$ui/lib/components/domain/SettingsSectionKeys.svelte";
   import SettingsSectionSync from "$ui/lib/components/domain/SettingsSectionSync.svelte";
   import SettingsSectionPush from "$ui/lib/components/domain/SettingsSectionPush.svelte";
-  import SettingsSectionAnnotations from "$ui/lib/components/domain/SettingsSectionAnnotations.svelte";
 
   const DEFAULT_API_URL = "https://app.tolgee.io";
 
@@ -48,11 +47,10 @@
   <ViewHeader title="Settings" onBack={cancel} />
 
   <Tabs.Root bind:value={activeTab} class="flex min-h-0 flex-1 flex-col">
-    <Tabs.List class="grid shrink-0 grid-cols-4 border-b border-border px-1">
+    <Tabs.List class="grid shrink-0 grid-cols-3 border-b border-border px-1">
       <Tabs.Trigger value="project">Project</Tabs.Trigger>
       <Tabs.Trigger value="strings">Strings and Keys</Tabs.Trigger>
       <Tabs.Trigger value="upload">Upload to Tolgee</Tabs.Trigger>
-      <Tabs.Trigger value="annotations">Annotations</Tabs.Trigger>
     </Tabs.List>
 
     <div class="min-h-0 flex-1 overflow-auto p-3">
@@ -70,9 +68,6 @@
       </Tabs.Content>
       <Tabs.Content value="upload">
         <SettingsSectionPush bind:form />
-      </Tabs.Content>
-      <Tabs.Content value="annotations">
-        <SettingsSectionAnnotations />
       </Tabs.Content>
     </div>
   </Tabs.Root>

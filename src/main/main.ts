@@ -1,12 +1,4 @@
 import { attachBus, on, send } from "$main/bus";
-import {
-  cancelReconcile,
-  clearCurrentPage,
-  isAnnotationsEnabled,
-  scheduleReconcile,
-  setAnnotationsEnabled,
-  syncCurrentPage,
-} from "$main/handlers/annotations";
 import { createCopy } from "$main/handlers/createCopy";
 import { applyTranslations } from "$main/nodes/selection";
 import { getNodeInfo } from "$main/nodes/getNodeInfo";
@@ -40,43 +32,12 @@ const uiHtml =
 
 figma.skipInvisibleInstanceChildren = true;
 
-// Quick-action commands run their side effect and close the plugin without
-// ever showing the UI. Everything else opens the plugin window.
-const isQuickAction = figma.command === "toggle-annotations" && figma.editorType !== "dev";
-
-if (isQuickAction) {
-  void (async () => {
-    try {
-      const enabled = !(await isAnnotationsEnabled());
-      await setAnnotationsEnabled(enabled);
-      if (enabled) {
-        const { updated } = await syncCurrentPage();
-        figma.closePlugin(`Tolgee annotations on (${updated} updated)`);
-      } else {
-        const { updated } = await clearCurrentPage();
-        figma.closePlugin(`Tolgee annotations off (${updated} cleared)`);
-      }
-    } catch (err) {
-      figma.closePlugin(`Tolgee error: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  })();
-} else {
-  figma.showUI(uiHtml, {
-    width: UI_SIZES.DEFAULT.width,
-    height: UI_SIZES.DEFAULT.height,
-    themeColors: true,
-  });
-  attachBus();
-}
-
-// Cached annotation-toggle state. The truth lives in clientStorage; this is
-// the in-memory mirror that lets synchronous Figma event handlers
-// (selectionchange / documentchange) avoid an async hop on every tick.
-let annotationsEnabled = false;
-
-async function refreshAnnotationsEnabled(): Promise<void> {
-  annotationsEnabled = await isAnnotationsEnabled();
-}
+figma.showUI(uiHtml, {
+  width: UI_SIZES.DEFAULT.width,
+  height: UI_SIZES.DEFAULT.height,
+  themeColors: true,
+});
+attachBus();
 
 // Monotonic token: each new scan invalidates every scan still in flight, so a
 // slow older scan can never overwrite a newer selection in the UI.
@@ -155,25 +116,8 @@ async function emitPageChange(): Promise<void> {
 
 // --- Figma event subscriptions ----------------------------------------------
 
-// Selection-driven annotation reconciles are an opportunistic consistency
-// sweep (they catch keys edited in another session); they must never make
-// SELECTING things expensive. Above this many selected nodes, skip the sweep —
-// write paths and the page-wide sync (ui-ready / page change / manual refresh)
-// still keep annotations correct. Production has no annotations feature at
-// all, so any per-selection cost here is a regression against it.
-const RECONCILE_SELECTION_LIMIT = 100;
-
 figma.on("selectionchange", () => {
   scheduleEmitSelection();
-  // Annotation mutations do NOT fire `documentchange`, so a per-node reconcile
-  // on selection is our cheapest path back to consistency after the user has
-  // edited keys in another session or in our own UI.
-  if (annotationsEnabled && figma.editorType !== "dev") {
-    const ids = figma.currentPage.selection.map((n) => n.id);
-    if (ids.length > 0 && ids.length <= RECONCILE_SELECTION_LIMIT) {
-      scheduleReconcile(ids, annotationsEnabled);
-    }
-  }
 });
 
 figma.on("currentpagechange", () => {
@@ -181,19 +125,14 @@ figma.on("currentpagechange", () => {
     // Page scope contributes to the merged config (language lives per page).
     invalidateConfigCache();
     await emitPageChange();
-    if (annotationsEnabled && figma.editorType !== "dev") {
-      await syncCurrentPage();
-    }
   })();
 });
 
 // In `documentAccess: "dynamic-page"` mode, Figma rejects `documentchange`
 // registration unless we first call `figma.loadAllPagesAsync()`, which is
-// expensive on large files. We deliberately skip it: annotation reconciles
-// already happen on `selectionchange` (covers user-visible drift) and after
-// our own `set-nodes-data` / `apply-translations` writes (covers our edits).
-// Cross-plugin edits to `tolgee_info` would be missed, but that's an edge
-// case and the user can hit "Refresh Annotations" from the menu.
+// expensive on large files. We deliberately skip it — no code here needs
+// document-wide change notifications; selection-driven scans and explicit
+// writes cover everything the plugin does.
 
 figma.on("close", () => {
   // Restore fills on any node still mid-highlight — an unexpected close
@@ -204,8 +143,6 @@ figma.on("close", () => {
 // --- UI -> main message handlers --------------------------------------------
 
 on("ui-ready", async () => {
-  await refreshAnnotationsEnabled();
-
   const config = await readMergedConfig();
   const { nodes } = await getSelectionInfo();
 
@@ -218,17 +155,10 @@ on("ui-ready", async () => {
   });
 
   // Forward the invoked plugin command (if any) so the UI can route to the
-  // matching screen after it has finished bootstrapping. `toggle-annotations`
-  // is handled as a quick action above and never reaches ui-ready.
+  // matching screen after it has finished bootstrapping.
   const knownCommands = ["open", "open-on-node"] as const;
   type KnownCommand = (typeof knownCommands)[number];
   const cmd = figma.command as KnownCommand | "";
-
-  // On a regular open, bring annotations back in sync after any external
-  // edits made while this plugin instance wasn't running.
-  if (annotationsEnabled && figma.editorType !== "dev") {
-    await syncCurrentPage();
-  }
 
   if (cmd && knownCommands.includes(cmd)) {
     send({ type: "command", command: cmd });
@@ -285,9 +215,6 @@ on("save-config", async (msg) => {
       keyFormatUsesParents(merged.keyFormat));
   if (needsRescan) {
     await emitSelection();
-    if (annotationsEnabled && figma.editorType !== "dev") {
-      await syncCurrentPage();
-    }
   }
 });
 
@@ -304,9 +231,6 @@ on("persist-project-id", async (msg) => {
 on("reset", async () => {
   await resetConfig();
   send({ type: "config-changed", config: {} });
-  if (annotationsEnabled && figma.editorType !== "dev") {
-    await syncCurrentPage();
-  }
 });
 
 on("set-language", async (msg) => {
@@ -349,16 +273,6 @@ on("set-nodes-data", async (msg) => {
     ok: result.ok,
     nodes: result.nodes,
   });
-  // Direct plugin-data writes don't always round-trip through documentchange
-  // for the same plugin instance — kick the reconciler explicitly. The fresh
-  // snapshots ride along so it doesn't re-read pluginData per node.
-  if (annotationsEnabled && figma.editorType !== "dev") {
-    scheduleReconcile(
-      msg.nodes.map((n) => n.id),
-      annotationsEnabled,
-      result.nodes,
-    );
-  }
 });
 
 on("resolve-parent-names", async (msg) => {
@@ -425,65 +339,6 @@ on("apply-translations", async (msg) => {
     ok,
     errors,
     nodes,
-  });
-  if (annotationsEnabled && figma.editorType !== "dev") {
-    scheduleReconcile(
-      msg.updates.map((u) => u.id),
-      annotationsEnabled,
-      nodes,
-    );
-  }
-});
-
-on("sync-annotations", async (msg) => {
-  if (figma.editorType === "dev") {
-    send({
-      type: "annotation-sync-result",
-      correlationId: msg.correlationId,
-      updated: 0,
-    });
-    return;
-  }
-  if (msg.all) {
-    const { updated } = await syncCurrentPage();
-    send({
-      type: "annotation-sync-result",
-      correlationId: msg.correlationId,
-      updated,
-    });
-    return;
-  }
-  const ids = figma.currentPage.selection.map((n) => n.id);
-  scheduleReconcile(ids, true);
-  send({
-    type: "annotation-sync-result",
-    correlationId: msg.correlationId,
-    updated: ids.length,
-  });
-});
-
-on("toggle-annotations", async (msg) => {
-  annotationsEnabled = msg.enabled;
-  await setAnnotationsEnabled(msg.enabled);
-  if (figma.editorType === "dev") return;
-  if (msg.enabled) {
-    await syncCurrentPage();
-  } else {
-    // Cancel any debounced reconcile FIRST so it can't fire after the clear and
-    // re-add the annotations we're about to remove.
-    cancelReconcile();
-    await clearCurrentPage();
-  }
-});
-
-on("get-annotations-state", async (msg) => {
-  const enabled = await isAnnotationsEnabled();
-  annotationsEnabled = enabled;
-  send({
-    type: "annotations-state",
-    correlationId: msg.correlationId,
-    enabled,
-    available: figma.editorType !== "dev",
   });
 });
 
