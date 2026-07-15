@@ -74,15 +74,15 @@ describe("fetchRemoteKeys", () => {
     expect(result[0]).toEqual(SAMPLE_ROW);
   });
 
-  it("returns [] on API error", async () => {
+  it("throws on API error instead of silently returning []", async () => {
     installFetchMock(async () => errorResponse(500));
     const client = createTolgeeClient("https://app.tolgee.io", "test-key");
 
-    const result = await fetchRemoteKeys(client, {
-      filterKeyName: ["key.one"],
-    });
-
-    expect(result).toEqual([]);
+    await expect(
+      fetchRemoteKeys(client, {
+        filterKeyName: ["key.one"],
+      }),
+    ).rejects.toThrow();
   });
 
   it("passes branch param in query when provided", async () => {
@@ -100,5 +100,89 @@ describe("fetchRemoteKeys", () => {
         : String(mock.mock.calls[0]?.[0] ?? "");
 
     expect(calledUrl).toContain("branch=feature%2Fmy-branch");
+  });
+
+  // ---------------------------------------------------------------------
+  // Batching (>200 names split into multiple parallel requests)
+  // ---------------------------------------------------------------------
+
+  function calledUrl(mock: FetchMock, callIndex: number): URL {
+    const arg = mock.mock.calls[callIndex]?.[0];
+    const raw = arg instanceof Request ? arg.url : String(arg ?? "");
+    return new URL(raw);
+  }
+
+  function rowFor(name: string) {
+    return {
+      keyName: name,
+      keyNamespace: undefined,
+      keyIsPlural: false,
+      translations: { en: { text: `text-${name}` } },
+    };
+  }
+
+  it("splits 450 key names into 3 batches of <=200 and merges the results", async () => {
+    const mock = installFetchMock(async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      const names = url.searchParams.getAll("filterKeyName");
+      expect(names.length).toBeLessThanOrEqual(200);
+      return okResponse({ _embedded: { keys: names.map(rowFor) } });
+    });
+
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+    const filterKeyName = Array.from({ length: 450 }, (_, i) => `key-${i}`);
+
+    const result = await fetchRemoteKeys(client, { filterKeyName });
+
+    expect(mock).toHaveBeenCalledTimes(3);
+    expect(result).toHaveLength(450);
+    expect(new Set(result.map((r) => r.keyName))).toEqual(new Set(filterKeyName));
+  });
+
+  it("does not batch a small request (<=200 names) — still a single request", async () => {
+    const mock = installFetchMock(async () => okResponse({ _embedded: { keys: [] } }));
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+    const filterKeyName = Array.from({ length: 150 }, (_, i) => `key-${i}`);
+
+    await fetchRemoteKeys(client, { filterKeyName });
+
+    expect(mock).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates an error from any single batch as a failure of the whole call", async () => {
+    let callCount = 0;
+    installFetchMock(async () => {
+      callCount++;
+      // Fail the 2nd batch specifically.
+      if (callCount === 2) return errorResponse(500);
+      return okResponse({ _embedded: { keys: [] } });
+    });
+
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+    const filterKeyName = Array.from({ length: 450 }, (_, i) => `key-${i}`);
+
+    await expect(fetchRemoteKeys(client, { filterKeyName })).rejects.toThrow();
+  });
+
+  it("follows cursor pagination within a single batch and merges all pages", async () => {
+    const filterKeyName = ["a", "b"];
+    let callCount = 0;
+    const mock = installFetchMock(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return okResponse({
+          _embedded: { keys: [rowFor("a")] },
+          nextCursor: "cursor-1",
+        });
+      }
+      return okResponse({ _embedded: { keys: [rowFor("b")] } });
+    });
+
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+    const result = await fetchRemoteKeys(client, { filterKeyName });
+
+    expect(mock).toHaveBeenCalledTimes(2);
+    expect(calledUrl(mock, 1).searchParams.get("cursor")).toBe("cursor-1");
+    expect(result.map((r) => r.keyName).sort()).toEqual(["a", "b"]);
   });
 });
