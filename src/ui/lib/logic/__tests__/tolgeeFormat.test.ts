@@ -1,5 +1,20 @@
-import { getTolgeeFormat } from "$ui/lib/logic/tolgeeFormat";
+import { getTolgeeFormat, tolgeeFormatGenerateIcu } from "$ui/lib/logic/tolgeeFormat";
+import IntlMessageFormat from "intl-messageformat";
 import { describe, expect, it } from "vitest";
+
+/**
+ * The whole point of `tolgeeFormatGenerateIcu`'s bug fixes is that the ICU it
+ * produces must be ACCEPTED (parsed and formatted) by `intl-messageformat` —
+ * the same library every render path in this app uses (`src/shared/icu.ts`).
+ * Assert that directly instead of just checking the string shape.
+ */
+function expectValidIcu(icu: string): void {
+  expect(() => {
+    if (icu === "") return; // empty string is a valid "no message" sentinel, not ICU
+    const formatter = new IntlMessageFormat(icu, "en", undefined, { ignoreTag: true });
+    formatter.format({ value: 1, p: 1, count: 1 });
+  }).not.toThrow();
+}
 
 describe("getTolgeeFormat (non-plural)", () => {
   it("wraps plain text as the `other` variant", () => {
@@ -103,5 +118,73 @@ describe("getTolgeeFormat (plural)", () => {
     const result = getTolgeeFormat(input, true, false);
     expect(result.variants.other).toBe(input);
     expect(result.parameter).toBeUndefined();
+  });
+});
+
+describe("tolgeeFormatGenerateIcu", () => {
+  it("keeps the normal two-category case byte-identical (golden case)", () => {
+    const icu = tolgeeFormatGenerateIcu(
+      { parameter: "value", variants: { one: "# day", other: "# days" } },
+      false,
+    );
+    expect(icu).toBe("{value, plural, one {# day} other {# days}}");
+    expectValidIcu(icu);
+  });
+
+  it("escapes a literal `{` in a variant body and still parses", () => {
+    const icu = tolgeeFormatGenerateIcu(
+      { parameter: "value", variants: { one: "co{unt", other: "items" } },
+      false,
+    );
+    // Exact reference output from the real `@tginternal/editor@1.15.2` package.
+    expect(icu).toBe("{value, plural, one {co'{'unt} other {items}}");
+    expectValidIcu(icu);
+  });
+
+  it("escapes a literal `}` in a variant body and still parses", () => {
+    const icu = tolgeeFormatGenerateIcu(
+      { parameter: "value", variants: { one: "wrong}brace", other: "ok" } },
+      false,
+    );
+    expect(icu).toBe("{value, plural, one {wrong'}'brace} other {ok}}");
+    expectValidIcu(icu);
+  });
+
+  it("force-appends `other {}` when `other` is absent, and the result parses", () => {
+    const icu = tolgeeFormatGenerateIcu({ parameter: "value", variants: { one: "# day" } }, false);
+    // Exact reference output from the real `@tginternal/editor@1.15.2` package.
+    expect(icu).toBe("{value, plural, one {# day} other {}}");
+    expectValidIcu(icu);
+  });
+
+  it("mirrors `makePluralFromNumber`'s single-category auto-plural (StringDetails.svelte) and it must parse", () => {
+    // This is exactly the shape `makePluralFromNumber()` builds: one detected
+    // CLDR category, no `other`. Before the fix this produced ICU with no
+    // `other` fallback, which `IntlMessageFormat` rejects outright.
+    const icu = tolgeeFormatGenerateIcu({ parameter: "value", variants: { one: "# item" } }, false);
+    expect(icu).toContain("other {}");
+    expectValidIcu(icu);
+  });
+
+  it("returns \"\" when every variant body is empty", () => {
+    expect(tolgeeFormatGenerateIcu({ parameter: "value", variants: { one: "", other: "" } }, false)).toBe(
+      "",
+    );
+    expect(tolgeeFormatGenerateIcu({ parameter: "value", variants: {} }, false)).toBe("");
+  });
+
+  it("does NOT collapse to \"\" when a variant body is whitespace-only (matches reference: only exactly-empty strings count)", () => {
+    const icu = tolgeeFormatGenerateIcu(
+      { parameter: "value", variants: { one: "   ", other: "" } },
+      false,
+    );
+    // Exact reference output from the real `@tginternal/editor@1.15.2` package.
+    expect(icu).toBe("{value, plural, one {   } other {}}");
+    expectValidIcu(icu);
+  });
+
+  it("leaves the non-plural passthrough (no parameter) untouched", () => {
+    expect(tolgeeFormatGenerateIcu({ variants: { other: "plain text" } }, false)).toBe("plain text");
+    expect(tolgeeFormatGenerateIcu({ variants: {} }, false)).toBe("");
   });
 });

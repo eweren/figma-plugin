@@ -164,15 +164,48 @@ export function findMatchingBrace(input: string, start: number): number {
 // ============================================================
 
 /**
+ * Escape literal ICU syntax characters (`{` and `}`) inside a plural variant
+ * body so the body can never be misread as starting/ending a nested ICU
+ * argument. ICU's own escaping wraps a literal brace in single quotes: `{` →
+ * `'{'`, `}` → `'}'`. Mirrors the (raw-body-first, escape-on-parse-failure)
+ * behavior of `@tginternal/editor`'s generator closely enough for the plain,
+ * non-ICU translator text these bodies actually contain in this app.
+ */
+function escapeIcuBraces(text: string): string {
+  return text.replace(/\{/g, "'{'").replace(/\}/g, "'}'");
+}
+
+/**
  * Reconstruct an ICU plural string from a `TolgeeFormat` object.
  * Mirrors `tolgeeFormatGenerateIcu` from `@tginternal/editor`.
+ *
+ * Two invariants the raw structural rebuild above didn't enforce, both
+ * fixed here to match upstream and keep the result parseable by
+ * `intl-messageformat`:
+ *   - a missing `other` variant is force-appended as `other {}` — ICU
+ *     requires every plural to have an `other` fallback;
+ *   - literal `{`/`}` inside a variant body are escaped (see
+ *     `escapeIcuBraces`) so they can't be mistaken for the start/end of a
+ *     nested argument.
+ * If every variant body ends up empty, the plural wrapper is pointless
+ * (and, per upstream, actively dropped) — return `""` instead.
  */
 export function tolgeeFormatGenerateIcu(format: TolgeeFormat, _raw: boolean): string {
   const { parameter, variants } = format;
   if (!parameter) return variants.other ?? "";
-  const parts = Object.entries(variants)
+
+  // Force-append `other {}` when absent, preserving key order otherwise —
+  // matches upstream's `s.other || (s.other = "")`.
+  const withOther: Record<string, string | undefined> =
+    variants.other !== undefined ? variants : { ...variants, other: "" };
+
+  // All variant bodies empty (or undefined) → no meaningful plural to emit.
+  const allEmpty = Object.values(withOther).every((v) => !v);
+  if (allEmpty) return "";
+
+  const parts = Object.entries(withOther)
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
-    .map(([k, v]) => `${k} {${v}}`)
+    .map(([k, v]) => `${k} {${escapeIcuBraces(v)}}`)
     .join(" ");
   return `{${parameter}, plural, ${parts}}`;
 }
