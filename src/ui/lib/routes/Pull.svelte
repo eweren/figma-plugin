@@ -40,10 +40,13 @@
   let applyError = $state<string | null>(null);
   let applyCorrelationId = $state<string | null>(null);
   // Not `$state` — it's a plain plumbing handle, never read from the
-  // template. Single-shot round-trip (no streaming), so a fixed idle timeout
-  // from send time is fine.
+  // template. Single-shot round-trip (no streaming): the main thread doesn't
+  // report progress while it writes, so this is a flat wait from send time,
+  // not a true idle timeout. 5 minutes (not 30s) because each update is a
+  // real canvas mutation (font load + relayout) and a large diff can cover
+  // thousands of nodes.
   let applyWatchdog: RequestWatchdog | null = null;
-  const APPLY_TRANSLATIONS_TIMEOUT_MS = 30_000;
+  const APPLY_TRANSLATIONS_TIMEOUT_MS = 5 * 60_000;
 
   const qc = useQueryClient();
 

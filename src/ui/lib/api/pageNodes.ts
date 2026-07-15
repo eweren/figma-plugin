@@ -2,9 +2,12 @@ import type { NodeInfo } from "$shared/types";
 import { nextCorrelationId, on, send } from "$ui/lib/bus";
 import { createIdleTimeout } from "$ui/lib/busRequest";
 
-// Single-shot response (no streaming) — a fixed timeout from request time is
-// fine, unlike the streamed screenshot/create-copy round-trips.
-const TIMEOUT_MS = 30_000;
+// Single-shot response (no streaming): the main thread doesn't report
+// progress while it scans, so this timeout is a flat wait from request time,
+// not a true idle timeout. 5 minutes (not 30s) because the scan itself reads
+// every connected text node on the page (~5 bridge calls each) and a
+// page-wide document at a large company can hold thousands of them.
+const TIMEOUT_MS = 5 * 60_000;
 
 /**
  * Round-trip to the main thread for every connected text node on the current
