@@ -185,8 +185,12 @@
 
   // Idle timeout (not a wall-clock cap): large exports can legitimately take
   // a while, but each frame that streams in resets the timer, so this only
-  // fires if NOTHING has arrived for a full 120s straight.
-  const SCREENSHOTS_TIMEOUT_MS = 120_000;
+  // fires if NOTHING has arrived for a full 5 minutes straight. 5 minutes
+  // (not 120s) because a single pathologically large frame — e.g. a
+  // design-system wall spanning tens of thousands of layers, which testing
+  // on this project has actually hit — can itself take a while to export,
+  // with no intermediate progress message during that one export.
+  const SCREENSHOTS_TIMEOUT_MS = 5 * 60_000;
 
   function captureScreenshots(nodeIds: string[]): Promise<FrameScreenshot[]> {
     return new Promise((resolve, reject) => {

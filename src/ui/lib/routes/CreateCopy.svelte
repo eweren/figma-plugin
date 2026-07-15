@@ -102,8 +102,11 @@
 
   // Idle timeout (not a wall-clock cap): large copies can legitimately take a
   // while, but each progress message resets the timer, so this only fires if
-  // NOTHING has arrived for a full 120s straight.
-  const CREATE_COPY_TIMEOUT_MS = 120_000;
+  // NOTHING has arrived for a full 5 minutes straight. 5 minutes (not 120s)
+  // for the same reason as Push's screenshot capture: a single very large
+  // page (thousands of nodes, or a pathologically huge frame within it) can
+  // take a while between progress pings.
+  const CREATE_COPY_TIMEOUT_MS = 5 * 60_000;
 
   /**
    * Drive a `create-copy` request through the bus. Returns when the main
