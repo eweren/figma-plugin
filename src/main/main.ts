@@ -1,12 +1,10 @@
 import { attachBus, on, send } from "$main/bus";
 import { createCopy } from "$main/handlers/createCopy";
 import { applyTranslations } from "$main/nodes/selection";
-import { getNodeInfo } from "$main/nodes/getNodeInfo";
 import { cleanUpHighlights, highlightNode } from "$main/nodes/highlight";
-import { scanConnectedNodes } from "$main/nodes/scan";
+import { buildConnectedNodesInfo, scanConnectedNodes } from "$main/nodes/scan";
 import { type MainComponentNameCache, resolveParentNames } from "$main/nodes/nodeParents";
 import { type KeyParentNames, keyFormatUsesParents } from "$shared/keyFormat";
-import type { NodeInfo } from "$shared/types";
 import { getSelectionInfo, setNodesData } from "$main/nodes/selection";
 import { captureScreenshots } from "$main/screenshots/capture";
 import {
@@ -247,13 +245,16 @@ on("request-page-connected-nodes", async (msg) => {
   const nodes = await scanConnectedNodes();
   // Chunked — `getNodeInfo` is ~5 bridge reads (incl. a full `characters`
   // copy) per node, and a page-wide Pull can hit thousands of connected nodes.
-  const infos: NodeInfo[] = [];
-  for (const node of nodes) {
-    infos.push(getNodeInfo(node));
-    if (infos.length % 50 === 0) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
-  }
+  // `buildConnectedNodesInfo` reports progress (guarded to `total > 100`) so
+  // the UI's watchdog can tell a slow-but-alive scan from a hung one.
+  const infos = await buildConnectedNodesInfo(nodes, (done, total) => {
+    send({
+      type: "page-connected-nodes-progress",
+      correlationId: msg.correlationId,
+      done,
+      total,
+    });
+  });
   send({
     type: "page-connected-nodes-result",
     correlationId: msg.correlationId,
@@ -330,7 +331,14 @@ on("scroll-to-node", async (msg) => {
 });
 
 on("apply-translations", async (msg) => {
-  const { ok, errors, nodes } = await applyTranslations(msg.updates);
+  const { ok, errors, nodes } = await applyTranslations(msg.updates, (done, total) => {
+    send({
+      type: "apply-translations-progress",
+      correlationId: msg.correlationId,
+      done,
+      total,
+    });
+  });
   // Fresh post-write snapshots ride along for in-place patching — see the
   // matching comment in the `set-nodes-data` handler.
   send({

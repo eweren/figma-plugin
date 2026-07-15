@@ -36,15 +36,25 @@
     loaded: 0,
     total: null,
   });
+  // Progress for the page-wide connected-nodes scan (query 1). Only populated
+  // when the main thread actually sends `page-connected-nodes-progress`
+  // (pages with >100 connected nodes) — see `pageNodes.ts`.
+  let pageScanProgress = $state<{ done: number; total: number } | null>(null);
   let applying = $state(false);
   let applyError = $state<string | null>(null);
   let applyCorrelationId = $state<string | null>(null);
+  // Progress for an in-flight `apply-translations` write. Seeded with the
+  // known total as soon as the write starts (unlike `pageScanProgress`, which
+  // starts `null` because the total isn't known until the scan begins) so the
+  // bar shows `0/total` immediately instead of a misleading `N/N`.
+  let applyProgress = $state<{ done: number; total: number } | null>(null);
   // Not `$state` — it's a plain plumbing handle, never read from the
-  // template. Single-shot round-trip (no streaming): the main thread doesn't
-  // report progress while it writes, so this is a flat wait from send time,
-  // not a true idle timeout. 5 minutes (not 30s) because each update is a
-  // real canvas mutation (font load + relayout) and a large diff can cover
-  // thousands of nodes.
+  // template. The main thread reports progress via
+  // `apply-translations-progress` for large writes (>100 nodes — see
+  // `selection.ts`), and each message touches this watchdog, so it's a TRUE
+  // idle timeout now: a big-but-alive write keeps resetting the clock. 5
+  // minutes (not 30s) because each update is a real canvas mutation (font
+  // load + relayout) and a large diff can cover thousands of nodes.
   let applyWatchdog: RequestWatchdog | null = null;
   const APPLY_TRANSLATIONS_TIMEOUT_MS = 5 * 60_000;
 
@@ -55,7 +65,12 @@
   // round-trip so we don't bug the main thread for each render.
   const pageNodesQuery = createQuery(() => ({
     queryKey: ["page-connected-nodes"],
-    queryFn: () => requestPageConnectedNodes(),
+    queryFn: () => {
+      pageScanProgress = null;
+      return requestPageConnectedNodes(undefined, (done, total) => {
+        pageScanProgress = { done, total };
+      });
+    },
     enabled: Boolean(language) && auth.value.authenticated,
     staleTime: 5 * 1000,
   }));
@@ -193,6 +208,7 @@
 
     applying = true;
     applyError = null;
+    applyProgress = { done: 0, total: d.changedNodes.length };
     const correlationId = nextCorrelationId();
     applyCorrelationId = correlationId;
     // Defensive: a previous request should already have cleared its own
@@ -201,6 +217,7 @@
     applyWatchdog = createIdleTimeout(APPLY_TRANSLATIONS_TIMEOUT_MS, () => {
       applying = false;
       applyError = "Timed out waiting for the translations to apply.";
+      applyProgress = null;
       // Invalidate the correlation id so that if a stale response for THIS
       // request does eventually arrive, the effect below ignores it instead
       // of resurrecting now-unrelated UI state.
@@ -214,6 +231,18 @@
     });
   }
 
+  // Live progress for an in-flight apply — same correlationId guard as the
+  // result listener below, so a stale/superseded request's progress can never
+  // resurrect UI state after it's been abandoned.
+  $effect(() => {
+    const off = on("apply-translations-progress", (msg) => {
+      if (msg.correlationId !== applyCorrelationId) return;
+      applyWatchdog?.touch();
+      applyProgress = { done: msg.done, total: msg.total };
+    });
+    return off;
+  });
+
   // Listen for the apply result and finalize the workflow.
   $effect(() => {
     const off = on("apply-translations-result", (msg) => {
@@ -221,6 +250,7 @@
       applyWatchdog?.clear();
       applyWatchdog = null;
       applying = false;
+      applyProgress = null;
       if (msg.ok) {
         send({
           type: "notify",
@@ -275,11 +305,19 @@
 
   <div class="flex-1 overflow-auto p-3 space-y-3">
     {#if stage === "loading"}
-      <PullProgress
-        loaded={progress.loaded}
-        total={progress.total}
-        label="Loading translations from Tolgee"
-      />
+      {#if pageNodesQuery.isPending}
+        <PullProgress
+          loaded={pageScanProgress?.done ?? 0}
+          total={pageScanProgress?.total ?? null}
+          label="Scanning page for connected keys…"
+        />
+      {:else}
+        <PullProgress
+          loaded={progress.loaded}
+          total={progress.total}
+          label="Loading translations from Tolgee"
+        />
+      {/if}
     {:else if stage === "error"}
       <div
         class="rounded border border-(--figma-color-border-danger) bg-(--figma-color-bg-danger-tertiary) p-2 text-xs text-(--figma-color-text-danger)"
@@ -289,8 +327,8 @@
       <Button variant="secondary" onclick={retry}>Try again</Button>
     {:else if stage === "applying"}
       <PullProgress
-        loaded={diff?.changedNodes.length ?? 0}
-        total={diff?.changedNodes.length ?? null}
+        loaded={applyProgress?.done ?? 0}
+        total={applyProgress?.total ?? diff?.changedNodes.length ?? null}
         label="Applying translations"
       />
     {:else if stage === "diff"}

@@ -95,9 +95,29 @@ export type MainToUi =
       parents: Record<string, KeyParentNames>;
     }
   | {
+      /** Progress for a `request-page-connected-nodes` scan. Only sent when
+          `total > 100` (small pages resolve fast enough that the message
+          traffic would just be noise) — see `getNodeInfo` loop in
+          `scan.ts:buildConnectedNodesInfo`. Also doubles as an idle-timeout
+          "still alive" signal for `pageNodes.ts`'s watchdog. */
+      type: "page-connected-nodes-progress";
+      correlationId: string;
+      done: number;
+      total: number;
+    }
+  | {
       type: "page-connected-nodes-result";
       correlationId: string;
       nodes: NodeInfo[];
+    }
+  | {
+      /** Progress for an in-flight `apply-translations` write. Same `total >
+          100` guard and idle-timeout role as `page-connected-nodes-progress`
+          — see `applyTranslations` in `selection.ts`. */
+      type: "apply-translations-progress";
+      correlationId: string;
+      done: number;
+      total: number;
     }
   | {
       type: "apply-translations-result";

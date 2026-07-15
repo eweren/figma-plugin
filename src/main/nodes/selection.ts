@@ -206,12 +206,19 @@ export type ApplyTranslationUpdate = {
  *
  * The function never throws — per-node failures are collected into `errors`
  * so the UI can report them without aborting the whole batch.
+ *
+ * `onProgress` is invoked at each yield point with the running count, but
+ * only when `updates.length > 100` — same guard as `buildConnectedNodesInfo`
+ * (small batches finish fast enough that progress messages would just be
+ * noise). It doubles as the UI watchdog's "still alive" signal.
  */
 export const applyTranslations = async (
   updates: ApplyTranslationUpdate[],
+  onProgress?: (done: number, total: number) => void,
 ): Promise<{ ok: boolean; errors: string[]; nodes: NodeInfo[] }> => {
   const errors: string[] = [];
   const nodes: NodeInfo[] = [];
+  const total = updates.length;
   let processed = 0;
 
   for (const update of updates) {
@@ -244,6 +251,9 @@ export const applyTranslations = async (
     // relayout), so breathe every few nodes — 50 unbroken text rewrites was
     // hundreds of ms of canvas-thread blocking on real frames.
     if (processed % 10 === 0) {
+      if (total > 100) {
+        onProgress?.(processed, total);
+      }
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
   }

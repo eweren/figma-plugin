@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TOLGEE_NODE_INFO } from "$shared/constants";
 import { applyTranslations, setNodesData } from "$main/nodes/selection";
@@ -109,5 +109,32 @@ describe("applyTranslations", () => {
     expect(result.ok).toBe(false);
     expect(result.errors).toHaveLength(1);
     expect(result.nodes.map((n) => n.id)).toEqual(["1:1"]);
+  });
+
+  it("reports progress every 10 updates when total > 100, ending at done === total", async () => {
+    const nodes = Array.from({ length: 250 }, (_, i) => makeTextNode(`1:${i}`, `old ${i}`));
+    installFigma(nodes);
+    const onProgress = vi.fn();
+
+    const updates = nodes.map((n) => ({ id: n.id, text: "new", translation: "new" }));
+    const result = await applyTranslations(updates, onProgress);
+
+    expect(result.ok).toBe(true);
+    expect(onProgress).toHaveBeenCalledTimes(25);
+    expect(onProgress.mock.calls[0]).toEqual([10, 250]);
+    const last = onProgress.mock.calls.at(-1);
+    expect(last).toEqual([250, 250]);
+  });
+
+  it("sends no progress messages when total <= 100", async () => {
+    const nodes = Array.from({ length: 100 }, (_, i) => makeTextNode(`1:${i}`, `old ${i}`));
+    installFigma(nodes);
+    const onProgress = vi.fn();
+
+    const updates = nodes.map((n) => ({ id: n.id, text: "new", translation: "new" }));
+    const result = await applyTranslations(updates, onProgress);
+
+    expect(result.ok).toBe(true);
+    expect(onProgress).not.toHaveBeenCalled();
   });
 });

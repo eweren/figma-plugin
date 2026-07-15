@@ -1,4 +1,6 @@
 import { TOLGEE_NODE_INFO } from "$shared/constants";
+import type { NodeInfo } from "$shared/types";
+import { getNodeInfo } from "./getNodeInfo";
 
 /**
  * Load the current page (no-op if already loaded) and return every `TextNode`
@@ -26,6 +28,45 @@ export const scanConnectedNodes = async (): Promise<TextNode[]> => {
     pluginData: { keys: [TOLGEE_NODE_INFO] },
   });
 };
+
+/** Yield to the event loop after this many nodes' `NodeInfo` has been built —
+ *  matches the interval `request-page-connected-nodes` used before progress
+ *  reporting existed. */
+const INFO_YIELD_EVERY = 50;
+
+/** Progress is only reported (and the interim `page-connected-nodes-progress`
+ *  message only sent) once a scan is large enough that the UI actually needs
+ *  live feedback — small pages resolve near-instantly and the extra chatter
+ *  would just be noise. Matches the guard used for other bulk operations
+ *  (`nodes-set-progress`, `apply-translations-progress`). */
+const PROGRESS_MIN_TOTAL = 100;
+
+/**
+ * Build a `NodeInfo` for every given text node, yielding to the event loop
+ * every `INFO_YIELD_EVERY` nodes so a page-wide scan of thousands of connected
+ * nodes doesn't freeze the canvas thread. `getNodeInfo` costs ~5 bridge reads
+ * (incl. a full `characters` copy) per node.
+ *
+ * `onProgress` is called at each yield point with the running count, but only
+ * when `nodes.length > PROGRESS_MIN_TOTAL` — see that constant's doc.
+ */
+export async function buildConnectedNodesInfo(
+  nodes: TextNode[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<NodeInfo[]> {
+  const total = nodes.length;
+  const infos: NodeInfo[] = [];
+  for (const node of nodes) {
+    infos.push(getNodeInfo(node));
+    if (infos.length % INFO_YIELD_EVERY === 0) {
+      if (total > PROGRESS_MIN_TOTAL) {
+        onProgress?.(infos.length, total);
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  }
+  return infos;
+}
 
 /** A scanned text node plus whether any ANCESTOR within the scanned selection
  *  is hidden — computed once during traversal (threaded down), so the ignore
