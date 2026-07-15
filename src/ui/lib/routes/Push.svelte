@@ -5,6 +5,7 @@
   import { appState } from "$ui/lib/stores/app.svelte";
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { nextCorrelationId, on, send } from "$ui/lib/bus";
+  import { createIdleTimeout } from "$ui/lib/busRequest";
   import { Button, Card, Message, Stat } from "$ui/lib/components/ui";
   import Badge from "$ui/lib/components/ui/badge.svelte";
   import CheckboxField from "$ui/lib/components/ui/checkboxField.svelte";
@@ -182,8 +183,13 @@
 
   // ---- Screenshot capture (UI -> main via bus) ------------------------------
 
+  // Idle timeout (not a wall-clock cap): large exports can legitimately take
+  // a while, but each frame that streams in resets the timer, so this only
+  // fires if NOTHING has arrived for a full 120s straight.
+  const SCREENSHOTS_TIMEOUT_MS = 120_000;
+
   function captureScreenshots(nodeIds: string[]): Promise<FrameScreenshot[]> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       if (nodeIds.length === 0) {
         resolve([]);
         return;
@@ -192,14 +198,23 @@
       // Frames stream in one message each (main-side memory + serialization
       // stay bounded); `screenshots-done` closes the stream.
       const collected: FrameScreenshot[] = [];
+      const cleanup = (): void => {
+        offFrame();
+        offDone();
+        watchdog.clear();
+      };
+      const watchdog = createIdleTimeout(SCREENSHOTS_TIMEOUT_MS, () => {
+        cleanup();
+        reject(new Error("Timed out waiting for screenshots to be captured."));
+      });
       const offFrame = on("screenshot-frame", (msg) => {
         if (msg.correlationId !== correlationId) return;
+        watchdog.touch();
         collected.push(msg.screenshot);
       });
       const offDone = on("screenshots-done", (msg) => {
         if (msg.correlationId !== correlationId) return;
-        offFrame();
-        offDone();
+        cleanup();
         resolve(collected);
       });
       send({ type: "request-screenshots", correlationId, nodeIds });

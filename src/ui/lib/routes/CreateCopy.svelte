@@ -3,6 +3,7 @@
   import { appState } from "$ui/lib/stores/app.svelte";
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { send, on, nextCorrelationId } from "$ui/lib/bus";
+  import { createIdleTimeout } from "$ui/lib/busRequest";
   import { Card, Label } from "$ui/lib/components/ui";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
   import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
@@ -99,9 +100,16 @@
     return map;
   }
 
+  // Idle timeout (not a wall-clock cap): large copies can legitimately take a
+  // while, but each progress message resets the timer, so this only fires if
+  // NOTHING has arrived for a full 120s straight.
+  const CREATE_COPY_TIMEOUT_MS = 120_000;
+
   /**
    * Drive a `create-copy` request through the bus. Returns when the main
-   * thread emits a `create-copy-result` with the matching correlation ID.
+   * thread emits a `create-copy-result` with the matching correlation ID, or
+   * when no progress/result message has arrived for `CREATE_COPY_TIMEOUT_MS`
+   * (resolved as a failure so callers don't need a separate catch path).
    */
   function dispatchCreate(payload: {
     correlationId: string;
@@ -110,14 +118,26 @@
     translations?: Record<string, Record<string, string>>;
   }): Promise<{ ok: boolean; error?: string }> {
     return new Promise((resolve) => {
+      const cleanup = (): void => {
+        offProgress();
+        offResult();
+        watchdog.clear();
+      };
+      const watchdog = createIdleTimeout(CREATE_COPY_TIMEOUT_MS, () => {
+        cleanup();
+        resolve({
+          ok: false,
+          error: "Timed out waiting for the copy to be created.",
+        });
+      });
       const offProgress = on("create-copy-progress", (m) => {
         if (m.correlationId !== payload.correlationId) return;
+        watchdog.touch();
         progress = { current: m.current, total: m.total, phase: m.phase };
       });
       const offResult = on("create-copy-result", (m) => {
         if (m.correlationId !== payload.correlationId) return;
-        offProgress();
-        offResult();
+        cleanup();
         resolve({ ok: m.ok, error: m.error });
       });
       send({

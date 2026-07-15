@@ -3,6 +3,7 @@
   import { appState } from "$ui/lib/stores/app.svelte";
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { nextCorrelationId, on, send } from "$ui/lib/bus";
+  import { createIdleTimeout, type RequestWatchdog } from "$ui/lib/busRequest";
   import { Button } from "$ui/lib/components/ui";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
   import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
@@ -38,6 +39,11 @@
   let applying = $state(false);
   let applyError = $state<string | null>(null);
   let applyCorrelationId = $state<string | null>(null);
+  // Not `$state` — it's a plain plumbing handle, never read from the
+  // template. Single-shot round-trip (no streaming), so a fixed idle timeout
+  // from send time is fine.
+  let applyWatchdog: RequestWatchdog | null = null;
+  const APPLY_TRANSLATIONS_TIMEOUT_MS = 30_000;
 
   const qc = useQueryClient();
 
@@ -186,6 +192,18 @@
     applyError = null;
     const correlationId = nextCorrelationId();
     applyCorrelationId = correlationId;
+    // Defensive: a previous request should already have cleared its own
+    // watchdog (success or timeout), but never leave two timers armed.
+    applyWatchdog?.clear();
+    applyWatchdog = createIdleTimeout(APPLY_TRANSLATIONS_TIMEOUT_MS, () => {
+      applying = false;
+      applyError = "Timed out waiting for the translations to apply.";
+      // Invalidate the correlation id so that if a stale response for THIS
+      // request does eventually arrive, the effect below ignores it instead
+      // of resurrecting now-unrelated UI state.
+      applyCorrelationId = null;
+      applyWatchdog = null;
+    });
     send({
       type: "apply-translations",
       correlationId,
@@ -197,6 +215,8 @@
   $effect(() => {
     const off = on("apply-translations-result", (msg) => {
       if (msg.correlationId !== applyCorrelationId) return;
+      applyWatchdog?.clear();
+      applyWatchdog = null;
       applying = false;
       if (msg.ok) {
         send({
