@@ -195,7 +195,14 @@ const PREFILL_KEYS = ["prefillKeyFormat", "keyFormat", "variableCasing"] as cons
 
 on("save-config", async (msg) => {
   const before = await readMergedConfig();
-  await writeConfig(msg.config);
+  // Production always stamps these two scope markers on every settings save
+  // (see settingsTools.ts in the reference plugin). Writing them here restores
+  // parity: `documentInfo` lets App.svelte's PageSetup gate for newly added
+  // pages fire correctly, and `pageInfo` records that this page's language was
+  // configured. It also keeps rollback-safe: if a document this plugin
+  // configured is later reopened with the ORIGINAL production plugin,
+  // production's own "documentInfo missing" gate won't spuriously trigger.
+  await writeConfig({ ...msg.config, documentInfo: true, pageInfo: true });
   const merged = await readMergedConfig();
   send({ type: "config-changed", config: merged });
   const ignoreRulesChanged = IGNORE_RULE_KEYS.some((key) => before[key] !== merged[key]);
