@@ -23,7 +23,10 @@ const manifest = {
   // Required for plugins built after 2024 — forces async page access, which is
   // what our `getNodeByIdAsync` / `page.loadAsync()` code already assumes.
   documentAccess: 'dynamic-page',
-  capabilities: ['inspect'],
+  // `vscode` makes the existing read-only inspect panel (above) also launchable
+  // from the Figma-for-VS-Code extension — no extra code needed, `figma.vscode`
+  // is an empty marker interface. Matches production; dropped here by omission.
+  capabilities: ['inspect', 'vscode'],
   networkAccess: {
     allowedDomains: ['*'],
     reasoning: 'Self-hosted Tolgee instances may run on arbitrary domains.',
