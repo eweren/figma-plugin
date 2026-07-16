@@ -10,7 +10,7 @@
 
 <div class="flex h-full flex-col">
   <header
-    class="flex items-center justify-between border-b border-border px-3 py-2"
+    class="flex items-center justify-between bg-linear-to-b from-bg to-header-gradient-end border-b border-border px-3 py-2"
   >
     <h1 class="text-sm font-semibold">Copy page</h1>
   </header>

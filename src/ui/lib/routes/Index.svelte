@@ -894,7 +894,9 @@
        while a selection is active — the search/filter row and the count row,
        so the top-to-bottom gradient reads as ONE continuous transition
        instead of separate gradients stacked per row (which banded/striped). -->
-  <div class="sticky top-0 z-10 bg-linear-to-b from-bg to-header-gradient-end">
+  <div
+    class="sticky top-0 z-10 border-b border-border bg-linear-to-b from-bg to-header-gradient-end"
+  >
     <Header
       languages={languageOptions}
       branches={branchOptions}
@@ -1101,7 +1103,7 @@
              so this is just a select-all / none toggle; bulk actions live in
              the footer once something is selected. -->
         <div
-          class="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-text-secondary"
+          class="flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary"
         >
           {@render masterCheckbox()}
 
