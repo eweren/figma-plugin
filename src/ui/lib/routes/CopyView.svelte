@@ -8,9 +8,9 @@
 
 <div class="flex h-full flex-col">
   <header
-    class="flex h-7 items-center justify-between bg-linear-to-b from-bg to-header-gradient-end border-b border-border px-3 py-2"
+    class="flex items-center justify-between bg-linear-to-b from-bg to-header-gradient-end border-b border-border px-3 py-2"
   >
-    <h1 class="text-sm font-semibold">Copy page</h1>
+    <h1 class="flex h-7 items-center text-sm font-semibold">Copy page</h1>
   </header>
 
   <div class="flex-1 overflow-auto p-3 space-y-3">
