@@ -9,7 +9,7 @@
 
 <TabsPrimitive.List
   {...rest}
-  class={cn("inline-flex items-center gap-1 border-b border-border", className)}
+  class={cn("flex items-center gap-1 border-b border-border", className)}
 >
   {@render children?.()}
 </TabsPrimitive.List>
