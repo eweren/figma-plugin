@@ -4,11 +4,10 @@
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { nextCorrelationId, on, send } from "$ui/lib/bus";
   import { createIdleTimeout, type RequestWatchdog } from "$ui/lib/busRequest";
-  import { Button } from "$ui/lib/components/ui";
+  import { Button, ProgressBar } from "$ui/lib/components/ui";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
   import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import PullSummary from "$ui/lib/components/domain/PullSummary.svelte";
-  import PullProgress from "$ui/lib/components/domain/PullProgress.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
   import { pullDiff, formatNodeText } from "$ui/lib/logic/pullDiff";
@@ -306,13 +305,13 @@
   <div class="flex-1 overflow-auto p-3 space-y-3">
     {#if stage === "loading"}
       {#if pageNodesQuery.isPending}
-        <PullProgress
+        <ProgressBar
           loaded={pageScanProgress?.done ?? 0}
           total={pageScanProgress?.total ?? null}
           label="Scanning page for connected keys…"
         />
       {:else}
-        <PullProgress
+        <ProgressBar
           loaded={progress.loaded}
           total={progress.total}
           label="Loading translations from Tolgee"
@@ -326,7 +325,7 @@
       </div>
       <Button variant="secondary" onclick={retry}>Try again</Button>
     {:else if stage === "applying"}
-      <PullProgress
+      <ProgressBar
         loaded={applyProgress?.done ?? 0}
         total={applyProgress?.total ?? diff?.changedNodes.length ?? null}
         label="Applying translations"

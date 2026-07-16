@@ -2,14 +2,17 @@
   import { cn } from "$ui/lib/utils";
 
   /**
-   * Thin, DETERMINATE progress bar for in-flight operations whose `total` is
-   * known (or becomes known) up front — bulk writes over a selection
-   * (`nodes-set-progress`) and batched key lookups for the Push diff
-   * (`fetchRemoteKeys`'s `onProgress`). Unlike `PullProgress` (which falls
-   * back to an indeterminate sliding animation when `total` is `null` —
-   * page scans don't know their size ahead of time), this primitive always
-   * renders a real percentage; a `null`/zero `total` just reads as an empty
-   * bar until the caller has a number to show.
+   * Canonical progress bar used across the plugin — bulk writes over a
+   * selection (`nodes-set-progress`), batched key lookups for the Push diff
+   * (`fetchRemoteKeys`'s `onProgress`), the Pull page-scan/apply/download
+   * flows, and CreateCopy's fetch stage. Two modes:
+   *  - DETERMINATE: `total` is a known positive number — renders a real
+   *    percentage fill.
+   *  - INDETERMINATE: `total` is `null` (or `0`) — the size isn't known yet
+   *    (e.g. a page scan or translations fetch before the first batch
+   *    resolves), so a ~40%-wide bar slides across instead of showing a
+   *    fake/empty fill. This consolidates what used to be two near-identical
+   *    copies of the same sliding-bar CSS in `PullProgress`/`PushProgress`.
    */
   type Props = {
     loaded: number;
@@ -23,10 +26,12 @@
 
   let { loaded, total, label, class: className }: Props = $props();
 
-  const pct = $derived(
+  // `null` when the total is unknown (or zero) — the bar then renders the
+  // indeterminate sliding animation instead of a fixed-width fill.
+  const pct = $derived<number | null>(
     total !== null && total > 0
       ? Math.max(0, Math.min(100, Math.round((loaded / total) * 100)))
-      : 0,
+      : null,
   );
 </script>
 
@@ -40,15 +45,41 @@
     </div>
   {/if}
   <div
-    class="h-0.5 w-full overflow-hidden rounded-full bg-bg-secondary"
+    class="h-[5px] w-full overflow-hidden rounded-full bg-bg-secondary"
     role="progressbar"
     aria-valuenow={loaded}
     aria-valuemin={0}
     aria-valuemax={total ?? undefined}
   >
-    <div
-      class="h-full bg-bg-brand transition-[width] duration-200 ease-out"
-      style="width: {pct}%"
-    ></div>
+    {#if pct !== null}
+      <div
+        class="h-full bg-bg-brand transition-[width] duration-200 ease-out"
+        style="width: {pct}%"
+      ></div>
+    {:else}
+      <div class="progress-bar-indeterminate h-full bg-bg-brand"></div>
+    {/if}
   </div>
 </div>
+
+<style>
+  /*
+   * Indeterminate animation: a 40%-wide bar slides across when the total is
+   * unknown. Pure CSS so it doesn't depend on the tailwind plugin config.
+   * This is the single shared definition — previously duplicated almost
+   * identically between `PullProgress` and `PushProgress`.
+   */
+  .progress-bar-indeterminate {
+    width: 40%;
+    animation: progress-bar-slide 1.4s ease-in-out infinite;
+  }
+
+  @keyframes progress-bar-slide {
+    0% {
+      margin-left: -40%;
+    }
+    100% {
+      margin-left: 100%;
+    }
+  }
+</style>

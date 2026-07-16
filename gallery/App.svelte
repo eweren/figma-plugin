@@ -1050,13 +1050,17 @@
       <!-- Progress bar -->
       {#snippet progressBarBody()}
         <p class="mb-3 text-[11px] text-text-secondary">
-          Thin (2px), DETERMINATE bar in the brand colour — used for the
-          Index bulk-write progress (top of Index, no label) and the Push
-          diff-computation stage (with a label, replacing the old static
-          "Computing changes…" text). <code>total: null</code> reads as an
-          empty bar rather than an indeterminate animation (that's what
-          <code>PullProgress</code> is for — page scans whose size isn't
-          known up front).
+          Thin (<code>h-[5px]</code>), fully rounded bar in the brand colour —
+          the single canonical progress bar for the whole plugin (Index
+          bulk-write progress, Push diff-computation + screenshot/upload
+          progress, Pull page-scan/download/apply progress, and CreateCopy's
+          fetch stage). Two modes: DETERMINATE when <code>total</code> is a
+          known positive number (real percentage fill), and INDETERMINATE
+          when <code>total</code> is <code>null</code> (or <code>0</code>) — a
+          ~40%-wide bar slides across instead of an empty/fake fill. This
+          replaces the old <code>PullProgress</code>/<code>PushProgress</code>
+          domain components, which each had their own near-duplicate
+          indeterminate CSS.
         </p>
         <div class="max-w-sm space-y-4">
           <div>
@@ -1068,8 +1072,10 @@
             <ProgressBar loaded={progressDemo} total={100} label="Computing changes…" />
           </div>
           <div>
-            <p class="mb-1 text-[10px] text-text-secondary">Unknown total</p>
-            <ProgressBar loaded={0} total={null} label="Computing changes…" />
+            <p class="mb-1 text-[10px] text-text-secondary">
+              Indeterminate (unknown total — page scan / fetch not started yet)
+            </p>
+            <ProgressBar loaded={0} total={null} label="Scanning page for connected keys…" />
           </div>
           <input
             type="range"

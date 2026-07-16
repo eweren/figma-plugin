@@ -4,7 +4,7 @@
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { send, on, nextCorrelationId } from "$ui/lib/bus";
   import { createIdleTimeout } from "$ui/lib/busRequest";
-  import { Card, Label } from "$ui/lib/components/ui";
+  import { Card, Label, ProgressBar } from "$ui/lib/components/ui";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
   import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
@@ -289,9 +289,7 @@
       {/if}
     {:else if stage === "fetching"}
       <Card>
-        <p class="text-xs text-text-secondary">
-          Loading translations from Tolgee…
-        </p>
+        <ProgressBar loaded={0} total={null} label="Loading translations from Tolgee…" />
       </Card>
     {:else if stage === "creating"}
       <Card>

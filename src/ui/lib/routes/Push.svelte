@@ -30,7 +30,6 @@
   } from "$ui/lib/logic/pushFlow";
   import PushConflictItem from "$ui/lib/components/domain/PushConflictItem.svelte";
   import type { PushConflictResolution } from "$ui/lib/logic/pushFlow";
-  import PushProgress from "$ui/lib/components/domain/PushProgress.svelte";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
   import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import AlertTriangle from "lucide-svelte/icons/alert-triangle";
@@ -538,11 +537,18 @@
         </p>
       </Card>
     {:else if stage === "uploading" || stage === "pushing"}
-      <PushProgress
-        current={progress.current}
-        total={progress.total}
-        message={progress.message}
-      />
+      <div class="flex flex-col gap-2 rounded-md border border-border p-3">
+        <ProgressBar
+          loaded={progress.current}
+          total={progress.total}
+          label={progress.message || "Working…"}
+        />
+        <div class="flex justify-end">
+          <Button variant="ghost" size="sm" disabled aria-label="Cancel">
+            Cancel
+          </Button>
+        </div>
+      </div>
     {:else if stage === "conflict"}
       <Card>
         <div class="flex items-center gap-2 text-xs text-text">
