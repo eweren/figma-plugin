@@ -131,23 +131,39 @@ async function fetchBatch(
  * returning `[]`, since a swallowed error here previously looked identical
  * to "no remote keys found" and made `pushDiff` misreport existing keys as
  * deleted on the platform.
+ *
+ * `onProgress`, when given, is called once per batch as that SPECIFIC
+ * batch's `fetchBatch` resolves — not after the whole `Promise.all` settles,
+ * since batches run in parallel and a large push can have several in flight
+ * at once. `total` is the full name count, known up front; `done` is the
+ * cumulative count of names whose batch has already resolved (so it grows
+ * out of request order when a later batch happens to finish first).
  */
 export async function fetchRemoteKeys(
   client: TolgeeClient,
   options: FetchRemoteKeysOptions,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<RemoteKeyRow[]> {
   if (options.filterKeyName.length === 0) return [];
 
+  const total = options.filterKeyName.length;
   const batches = chunkByLength(options.filterKeyName, MAX_BATCH_CHARS);
+  let done = 0;
   const results = await Promise.all(
-    batches.map((filterKeyName) =>
-      fetchBatch(client, filterKeyName, {
+    batches.map(async (filterKeyName) => {
+      const rows = await fetchBatch(client, filterKeyName, {
         filterNamespace: options.filterNamespace,
         language: options.language,
         branch: options.branch,
         signal: options.signal,
-      }),
-    ),
+      });
+      // Runs right after THIS batch resolves — safe to mutate the shared
+      // counter without a lock since JS has no true concurrency here, only
+      // interleaved microtasks.
+      done += filterKeyName.length;
+      onProgress?.(done, total);
+      return rows;
+    }),
   );
   return results.flat();
 }

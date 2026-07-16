@@ -6,7 +6,7 @@
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { nextCorrelationId, on, send } from "$ui/lib/bus";
   import { createIdleTimeout } from "$ui/lib/busRequest";
-  import { Button, Card, Message, Stat } from "$ui/lib/components/ui";
+  import { Button, Card, Message, ProgressBar, Stat } from "$ui/lib/components/ui";
   import Badge from "$ui/lib/components/ui/badge.svelte";
   import CheckboxField from "$ui/lib/components/ui/checkboxField.svelte";
   import {
@@ -45,6 +45,12 @@
     total: number | null;
     message: string;
   }>({ current: 0, total: null, message: "" });
+  // Progress for the diff-computation stage (`diffQuery`'s `fetchRemoteKeys`
+  // call) — `total` is the key count known up front, `done` is the
+  // cumulative count of names whose batch has resolved. Reset to `null`
+  // whenever the query isn't pending, so it never lingers into the next
+  // stage (see the `$effect` below).
+  let diffProgress = $state<{ done: number; total: number } | null>(null);
   let conflicts = $state<SimpleImportConflictResult[]>([]);
   let resolutions = $state<Record<string, PushConflictResolution>>({});
   let errorMessage = $state<string | null>(null);
@@ -127,13 +133,23 @@
       const filterNamespace = hasNamespacesEnabled
         ? Array.from(new Set(connectedNodes.map((n) => n.ns ?? "")))
         : undefined;
-      const remoteKeys = await fetchRemoteKeys(client, {
-        filterKeyName,
-        filterNamespace,
-        language,
-        branch: branch || undefined,
-        signal,
-      });
+      // `total` is known immediately (the name count) — seed it before the
+      // first batch even resolves so the bar reads "0 / N" from the start
+      // instead of flashing blank.
+      diffProgress = { done: 0, total: filterKeyName.length };
+      const remoteKeys = await fetchRemoteKeys(
+        client,
+        {
+          filterKeyName,
+          filterNamespace,
+          language,
+          branch: branch || undefined,
+          signal,
+        },
+        (done, total) => {
+          diffProgress = { done, total };
+        },
+      );
       const remoteMap = buildRemoteMapFromKeys(remoteKeys, language);
       return pushDiff(connectedNodes, remoteMap, {
         hasNamespacesEnabled,
@@ -483,6 +499,16 @@
       stage = "error";
     }
   });
+
+  // The diff-computation progress bar only means something while the query
+  // is actually in flight — clear it the moment it settles (success or
+  // error) so it doesn't linger once the diff card / error banner replaces
+  // the "Computing changes…" state.
+  $effect(() => {
+    if (!diffQuery.isPending) {
+      diffProgress = null;
+    }
+  });
 </script>
 
 <div class="flex h-full flex-col">
@@ -495,7 +521,11 @@
   <div class="flex-1 overflow-auto p-3 space-y-3">
     {#if diffQuery.isPending}
       <Card>
-        <p class="text-xs text-text-secondary">Computing changes…</p>
+        <ProgressBar
+          loaded={diffProgress?.done ?? 0}
+          total={diffProgress?.total ?? null}
+          label="Computing changes…"
+        />
       </Card>
     {:else if stage === "error"}
       <div class="bg-red-100 text-red-900 p-2 text-sm rounded">

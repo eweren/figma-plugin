@@ -12,6 +12,7 @@
     Badge,
     Message,
     EmptyState,
+    ProgressBar,
     Checkbox,
     CheckboxField,
     KeyFormatInput,
@@ -186,6 +187,7 @@
   let cbB = $state(true);
   let cbC = $state(false);
   let kfValue = $state("{frame}.{elementName}");
+  let progressDemo = $state(80);
   let tagsValue = $state(["mobile"]);
   const sampleProjectTags = [
     "mobile",
@@ -1044,6 +1046,44 @@
         </p>
       {/snippet}
       {@render section("Stat (summary numbers)", statBody)}
+
+      <!-- Progress bar -->
+      {#snippet progressBarBody()}
+        <p class="mb-3 text-[11px] text-text-secondary">
+          Thin (2px), DETERMINATE bar in the brand colour — used for the
+          Index bulk-write progress (top of Index, no label) and the Push
+          diff-computation stage (with a label, replacing the old static
+          "Computing changes…" text). <code>total: null</code> reads as an
+          empty bar rather than an indeterminate animation (that's what
+          <code>PullProgress</code> is for — page scans whose size isn't
+          known up front).
+        </p>
+        <div class="max-w-sm space-y-4">
+          <div>
+            <p class="mb-1 text-[10px] text-text-secondary">No label (Index write progress)</p>
+            <ProgressBar loaded={progressDemo} total={100} />
+          </div>
+          <div>
+            <p class="mb-1 text-[10px] text-text-secondary">With label (Push diff progress)</p>
+            <ProgressBar loaded={progressDemo} total={100} label="Computing changes…" />
+          </div>
+          <div>
+            <p class="mb-1 text-[10px] text-text-secondary">Unknown total</p>
+            <ProgressBar loaded={0} total={null} label="Computing changes…" />
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            bind:value={progressDemo}
+            class="w-full"
+          />
+        </div>
+        <p class="mt-3 text-[11px] text-text-secondary">
+          Usage: <code>&lt;ProgressBar loaded total label? /&gt;</code>
+        </p>
+      {/snippet}
+      {@render section("Progress bar", progressBarBody)}
 
       <!-- Filter chips -->
       {#snippet filterChipsBody()}

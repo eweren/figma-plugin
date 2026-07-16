@@ -77,6 +77,18 @@ export type MainToUi =
       total: number;
     }
   | {
+      /** Progress for an in-flight `set-nodes-data` write. Same `total > 100`
+          guard as `page-connected-nodes-progress`/`apply-translations-progress`
+          — see `setNodesData` in `selection.ts`. The UI intentionally does NOT
+          pair this by `correlationId`: the write-progress bar represents ANY
+          in-flight large write (bulk actions in Index, auto-connect, and the
+          save-queue's prefill/regen flush alike), not one specific request. */
+      type: "nodes-set-progress";
+      correlationId: string;
+      done: number;
+      total: number;
+    }
+  | {
       type: "nodes-set-result";
       correlationId: string;
       ok: boolean;

@@ -270,7 +270,14 @@ on("request-page-connected-nodes", async (msg) => {
 });
 
 on("set-nodes-data", async (msg) => {
-  const result = await setNodesData(msg.nodes);
+  const result = await setNodesData(msg.nodes, (done, total) => {
+    send({
+      type: "nodes-set-progress",
+      correlationId: msg.correlationId,
+      done,
+      total,
+    });
+  });
   // The result carries fresh snapshots of the written nodes so the UI can
   // patch its selection in place. We deliberately do NOT re-scan the whole
   // selection here — with large selections that full re-scan per write is

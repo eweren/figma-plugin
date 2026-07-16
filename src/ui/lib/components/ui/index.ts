@@ -18,6 +18,7 @@ export { default as Card } from "./card.svelte";
 export { default as Badge } from "./badge.svelte";
 export { default as Message } from "./message.svelte";
 export { default as EmptyState } from "./emptyState.svelte";
+export { default as ProgressBar } from "./progressBar.svelte";
 
 export * as Dialog from "./dialog";
 export * as Tabs from "./tabs";

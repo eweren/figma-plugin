@@ -152,7 +152,15 @@
     // instead their results carry fresh snapshots of just the written nodes.
     // Patch them into the selection here so every write path (inline edits,
     // bulk actions, Pull, StringDetails) stays consistent for free.
-    const unsubNodesSet = on("nodes-set-result", (msg) => appState.patchNodes(msg.nodes));
+    // Bulk-write progress for Index's top progress bar / busy action bar — no
+    // correlationId pairing, see `nodes-set-progress` and `writeProgress`.
+    const unsubWriteProgress = on("nodes-set-progress", (msg) =>
+      appState.setWriteProgress(msg.done, msg.total),
+    );
+    const unsubNodesSet = on("nodes-set-result", (msg) => {
+      appState.patchNodes(msg.nodes);
+      appState.clearWriteProgress();
+    });
     const unsubApplied = on("apply-translations-result", (msg) => appState.patchNodes(msg.nodes));
     // Figma can tear the iframe down at any moment — persist any debounced
     // inline edits so the last ~300ms of typing isn't silently lost.
@@ -181,6 +189,7 @@
       unsubCfg();
       unsubPage();
       unsubCmd();
+      unsubWriteProgress();
       unsubNodesSet();
       unsubApplied();
       window.removeEventListener("pagehide", flushOnHide);

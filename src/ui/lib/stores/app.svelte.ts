@@ -23,6 +23,15 @@ type AppState = {
   route: Route;
   editorType: "figma" | "dev";
   errorBanner: { message: string; severity: "error" | "warning" } | null;
+  /**
+   * Progress for ANY in-flight large `set-nodes-data` write — bulk actions in
+   * Index, auto-connect, and the save-queue's prefill/regen flush alike.
+   * Deliberately not paired to a single request's `correlationId` (see
+   * `nodes-set-progress` in `shared/messages.ts`): only one big write is ever
+   * meaningfully "in flight" from the user's point of view, and `null` means
+   * none is. Set on `nodes-set-progress`, cleared on `nodes-set-result`.
+   */
+  writeProgress: { done: number; total: number } | null;
 };
 
 /**
@@ -59,6 +68,7 @@ function createAppState() {
     route: getInitialRoute(),
     editorType: "figma",
     errorBanner: null,
+    writeProgress: null,
   });
   // `$state.raw`: the nodes are immutable snapshots from the main thread and
   // are only ever replaced wholesale (setSelection / patchNodes), so deep
@@ -103,6 +113,9 @@ function createAppState() {
     },
     get errorBanner() {
       return state.errorBanner;
+    },
+    get writeProgress() {
+      return state.writeProgress;
     },
   };
 
@@ -183,6 +196,14 @@ function createAppState() {
     },
     setError(banner: AppState["errorBanner"]) {
       state.errorBanner = banner;
+    },
+    /** A `nodes-set-progress` message arrived — some large write is in flight. */
+    setWriteProgress(done: number, total: number) {
+      state.writeProgress = { done, total };
+    },
+    /** The in-flight write settled (`nodes-set-result`) — nothing to show. */
+    clearWriteProgress() {
+      state.writeProgress = null;
     },
   };
 }

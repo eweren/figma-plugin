@@ -154,12 +154,20 @@ export type NodeUpdate = {
  * Returns the fresh post-write `NodeInfo` snapshots (we already hold the node
  * reference, so this costs no extra lookups). The UI patches its selection
  * from these instead of the main thread re-scanning the whole selection.
+ *
+ * `onProgress` is invoked at each yield point with the running count, but
+ * only when `updates.length > 100` — same guard as `applyTranslations` /
+ * `buildConnectedNodesInfo` (small batches finish fast enough that progress
+ * messages would just be noise, and the UI's bulk action bar shouldn't flash
+ * busy for an instant write).
  */
 export const setNodesData = async (
   updates: NodeUpdate[],
+  onProgress?: (done: number, total: number) => void,
 ): Promise<{ ok: boolean; nodes: NodeInfo[] }> => {
   let ok = true;
   const nodes: NodeInfo[] = [];
+  const total = updates.length;
   let processed = 0;
   for (const update of updates) {
     try {
@@ -176,6 +184,9 @@ export const setNodesData = async (
     // Yield every ~50 updates so a bulk write over a large selection doesn't
     // starve the canvas thread (pluginData-only writes are cheap).
     if (processed % 50 === 0) {
+      if (total > 100) {
+        onProgress?.(processed, total);
+      }
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
   }

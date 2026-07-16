@@ -241,6 +241,46 @@ describe("fetchRemoteKeys", () => {
     expect(result.map((r) => r.keyName)).toEqual([hugeName]);
   });
 
+  // ---------------------------------------------------------------------
+  // onProgress (task 7f: Push diff-computation progress bar)
+  // ---------------------------------------------------------------------
+
+  it("reports progress per batch as each resolves (not after Promise.all settles), ending at done === total", async () => {
+    // Each name alone exceeds MAX_BATCH_CHARS, so each becomes its own
+    // single-name batch — 3 names -> 3 batches, guaranteed by `chunkByLength`.
+    const filterKeyName = [
+      sentenceLikeName(1, 3500),
+      sentenceLikeName(2, 3500),
+      sentenceLikeName(3, 3500),
+    ];
+
+    let callCount = 0;
+    installFetchMock(async (input) => {
+      callCount++;
+      const thisCall = callCount;
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      const names = url.searchParams.getAll("filterKeyName");
+      // Stagger resolution deliberately out of call order — the 2nd request
+      // resolves fastest, proving progress isn't just tracking call order.
+      const delay = thisCall === 1 ? 15 : thisCall === 2 ? 1 : 8;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return okResponse({ _embedded: { keys: names.map(rowFor) } });
+    });
+
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+    const onProgress = vi.fn();
+
+    const result = await fetchRemoteKeys(client, { filterKeyName }, onProgress);
+
+    expect(result).toHaveLength(3);
+    expect(onProgress).toHaveBeenCalledTimes(3);
+    const doneValues = onProgress.mock.calls.map((c) => c[0] as number);
+    expect(doneValues).toEqual([...doneValues].sort((a, b) => a - b));
+    expect(new Set(doneValues).size).toBe(doneValues.length); // strictly increasing
+    expect(onProgress.mock.calls.every((c) => c[1] === 3)).toBe(true);
+    expect(onProgress.mock.calls.at(-1)).toEqual([3, 3]);
+  });
+
   it("packs a mix of short and long names efficiently — short names group together instead of one-per-batch", async () => {
     const mock = installFetchMock(async (input) => {
       const url = new URL(input instanceof Request ? input.url : String(input));

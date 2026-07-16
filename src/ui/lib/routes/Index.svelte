@@ -43,6 +43,7 @@
   import Checkbox from "$ui/lib/components/ui/checkbox.svelte";
   import Message from "$ui/lib/components/ui/message.svelte";
   import EmptyState from "$ui/lib/components/ui/emptyState.svelte";
+  import ProgressBar from "$ui/lib/components/ui/progressBar.svelte";
   import * as DropdownMenu from "$ui/lib/components/ui/dropdown-menu";
   import * as Dialog from "$ui/lib/components/ui/dialog";
   import * as Tooltip from "$ui/lib/components/ui/tooltip";
@@ -68,6 +69,12 @@
   // selection can legitimately arrive empty (everything ignored / a text-less
   // frame). Relying on length here would misread those as "no selection".
   const hasSelection = $derived(appState.value.hasUserSelection);
+
+  // Any large `set-nodes-data` write currently in flight (bulk actions,
+  // auto-connect, or the save queue's prefill/regen flush) — drives the top
+  // progress bar and the busy state of the bulk action bar below.
+  const writeProgress = $derived(appState.value.writeProgress);
+  const writing = $derived(writeProgress !== null);
 
   const branchesQuery = createQuery(() => ({
     queryKey: ["branches"],
@@ -848,6 +855,15 @@
     branchingEnabled={auth.value.branchingEnabled}
   />
 
+  {#if writeProgress !== null}
+    <!-- Bulk-write progress — appears only while a large `set-nodes-data`
+         write is in flight (small writes never send progress messages) and
+         is always cleared by `nodes-set-result`, so it never lingers. -->
+    <div class="px-3 pt-1.5">
+      <ProgressBar loaded={writeProgress.done} total={writeProgress.total} />
+    </div>
+  {/if}
+
   {#if !auth.value.authenticated}
     <div
       class="flex flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
@@ -1161,14 +1177,20 @@
              cancel the whole selection. -->
         <div class="flex items-center gap-2">
           {@render masterCheckbox()}
-          <span class="text-text-secondary">{selectedCount}/{shown}</span>
+          <span class="flex items-center gap-1.5 text-text-secondary">
+            {selectedCount}/{shown}
+            {#if writing}
+              <LoaderCircle size={ICON.inline} class="animate-spin" />
+            {/if}
+          </span>
 
           <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
+            <DropdownMenu.Trigger disabled={writing}>
               {#snippet child({ props })}
                 <button
                   {...props}
-                  class="flex h-7 shrink-0 items-center gap-1.5 rounded border border-border bg-bg px-2 text-xs text-text transition-colors hover:border-text/30"
+                  disabled={writing}
+                  class="flex h-7 shrink-0 items-center gap-1.5 rounded border border-border bg-bg px-2 text-xs text-text transition-colors hover:border-text/30 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {createKeyMode
                     ? "Edit key name"
@@ -1238,7 +1260,11 @@
               class="flex-1"
               onkeydown={(e) => e.key === "Enter" && bulkSetKeyName()}
             />
-            <Button size="sm" disabled={!newKeyName.trim()} onclick={bulkSetKeyName}>
+            <Button
+              size="sm"
+              disabled={writing || !newKeyName.trim()}
+              onclick={bulkSetKeyName}
+            >
               OK
             </Button>
           {:else if generateMode}
@@ -1254,7 +1280,7 @@
             />
             <Button
               size="sm"
-              disabled={!templateInput.trim()}
+              disabled={writing || !templateInput.trim()}
               onclick={bulkGenerateApply}
             >
               OK
@@ -1267,7 +1293,9 @@
               onChange={(v) => (bulkNamespace = v)}
               class="flex-1"
             />
-            <Button size="sm" onclick={bulkSetNamespace}>OK</Button>
+            <Button size="sm" disabled={writing} onclick={bulkSetNamespace}>
+              OK
+            </Button>
           {:else if connectExactMode}
             <!-- Scope picker for the exact-match auto-connect. -->
             <Select
@@ -1276,13 +1304,16 @@
               onChange={(v) => (connectScope = v as "namespace" | "all")}
               class="flex-1"
             />
-            <Button size="sm" onclick={runConnectExact}>OK</Button>
+            <Button size="sm" disabled={writing} onclick={runConnectExact}>
+              OK
+            </Button>
           {/if}
 
           <div class={createKeyMode || generateMode ? "" : "ml-auto"}>
             <TooltipIconButton
               label="Cancel selection"
               side="top"
+              disabled={writing}
               onclick={cancelSelection}
             >
               <X size={ICON.inline} />

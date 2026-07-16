@@ -74,6 +74,33 @@ describe("setNodesData", () => {
     expect(result.ok).toBe(true);
     expect(result.nodes.map((n) => n.id)).toEqual(["1:1"]);
   });
+
+  it("reports progress every 50 updates when total > 100, ending at done === total", async () => {
+    const nodes = Array.from({ length: 250 }, (_, i) => makeTextNode(`1:${i}`, `text ${i}`));
+    installFigma(nodes);
+    const onProgress = vi.fn();
+
+    const updates = nodes.map((n) => ({ id: n.id, info: { key: `k${n.id}` } }));
+    const result = await setNodesData(updates, onProgress);
+
+    expect(result.ok).toBe(true);
+    expect(onProgress).toHaveBeenCalledTimes(5);
+    expect(onProgress.mock.calls[0]).toEqual([50, 250]);
+    const last = onProgress.mock.calls.at(-1);
+    expect(last).toEqual([250, 250]);
+  });
+
+  it("sends no progress messages when total <= 100", async () => {
+    const nodes = Array.from({ length: 100 }, (_, i) => makeTextNode(`1:${i}`, `text ${i}`));
+    installFigma(nodes);
+    const onProgress = vi.fn();
+
+    const updates = nodes.map((n) => ({ id: n.id, info: { key: `k${n.id}` } }));
+    const result = await setNodesData(updates, onProgress);
+
+    expect(result.ok).toBe(true);
+    expect(onProgress).not.toHaveBeenCalled();
+  });
 });
 
 describe("applyTranslations", () => {
