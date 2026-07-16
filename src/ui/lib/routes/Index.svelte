@@ -894,7 +894,7 @@
        while a selection is active — the search/filter row and the count row,
        so the top-to-bottom gradient reads as ONE continuous transition
        instead of separate gradients stacked per row (which banded/striped). -->
-  <div class="sticky top-0 z-10 bg-linear-to-b from-bg to-bg-secondary">
+  <div class="sticky top-0 z-10 bg-linear-to-b from-bg to-header-gradient-end">
     <Header
       languages={languageOptions}
       branches={branchOptions}
@@ -912,7 +912,7 @@
 
     {#if auth.value.authenticated && hasSelection}
       <!-- Search + filter -->
-      <div class="flex items-center gap-2 px-3 pt-1 pb-0.5">
+      <div class="flex items-center gap-2 px-3 pt-0 pb-0.5">
         <SearchInput
           bind:value={query}
           placeholder="Search by string (key)…"

@@ -43,7 +43,7 @@
 
 <header
   class="flex items-center gap-2 px-3 py-2 {background
-    ? 'bg-linear-to-b from-bg to-bg-secondary'
+    ? 'bg-linear-to-b from-bg to-header-gradient-end border-b border-border'
     : ''}"
 >
   <IconButton size="md" class="-ml-1" onclick={onBack} aria-label={backLabel}>

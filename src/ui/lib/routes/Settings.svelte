@@ -53,7 +53,7 @@
     of each having its own background.
   -->
   <Tabs.Root bind:value={activeTab} class="contents">
-    <div class="shrink-0 bg-linear-to-b from-bg to-bg-secondary">
+    <div class="shrink-0 bg-linear-to-b from-bg to-header-gradient-end">
       <ViewHeader title="Settings" onBack={cancel} background={false} />
       <Tabs.List class="grid grid-cols-3 border-b border-border px-1">
         <Tabs.Trigger value="project">Project</Tabs.Trigger>

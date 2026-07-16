@@ -92,11 +92,27 @@
    * checked box reads as active (plain mid grey looked disabled), still neutral
    * rather than the brand pink. The dark check reads well on it. */
   --sem-checkbox: #9aa8bc;
+
+  /* Dedicated end-stop for the header gradient (Header/ViewHeader/Index/
+   * Settings) — deliberately NOT the same token as --color-bg-secondary
+   * below, which is also used elsewhere (e.g. progressBar.svelte's track)
+   * and must stay untouched. The plain bg-secondary value here
+   * (rgb(56,56,56), delta 12 from bg's rgb(44,44,44)) read as visibly
+   * stronger than the light-mode gradient, because contrast perception is
+   * roughly relative to the base shade: a 12/255 delta against a dark base
+   * reads ~27% stronger, vs ~4% against a light base. This is a plain
+   * hand-picked hex value (not a computed/derived formula) — about half
+   * that delta, chosen by eye to look gentler while still reading as a
+   * gradient. */
+  --color-header-gradient-end: #323232;
 }
 
 @theme {
   --color-bg: var(--figma-color-bg);
   --color-bg-secondary: var(--figma-color-bg-secondary);
+  /* Light-mode default: identical to --color-bg-secondary so the light
+   * gradient is pixel-unchanged. Overridden in .figma-dark above. */
+  --color-header-gradient-end: var(--figma-color-bg-secondary);
   --color-bg-brand: var(--figma-color-bg-brand);
   --color-bg-selected: var(--figma-color-bg-selected);
   --color-text: var(--figma-color-text);
