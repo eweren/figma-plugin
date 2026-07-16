@@ -31,7 +31,9 @@
   }: Props = $props();
 </script>
 
-<header class="flex items-center gap-2 border-b border-border px-3 py-2">
+<header
+  class="flex items-center gap-2 bg-linear-to-b from-bg to-bg-secondary px-3 py-2"
+>
   <IconButton size="md" class="-ml-1" onclick={onBack} aria-label={backLabel}>
     <ArrowLeft size={ICON.action} />
   </IconButton>

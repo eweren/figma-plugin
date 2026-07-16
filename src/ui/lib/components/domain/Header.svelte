@@ -68,7 +68,7 @@
 </script>
 
 <header
-  class="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-bg px-3 py-2"
+  class="sticky top-0 z-10 flex items-center gap-2 bg-linear-to-b from-bg to-bg-secondary px-3 py-2"
 >
   <h1 class="shrink-0 text-sm font-semibold text-text">Strings</h1>
 

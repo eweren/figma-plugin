@@ -937,7 +937,7 @@
       />
     {:else}
       <!-- Search + filter -->
-      <div class="flex items-center gap-2 px-3 pt-2 pb-0.5">
+      <div class="flex items-center gap-2 px-3 pt-1 pb-0.5">
         <SearchInput
           bind:value={query}
           placeholder="Search by string (key)…"
