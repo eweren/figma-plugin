@@ -44,14 +44,28 @@
 </script>
 
 <div class="flex h-full flex-col">
-  <ViewHeader title="Settings" onBack={cancel} />
-
-  <Tabs.Root bind:value={activeTab} class="flex min-h-0 flex-1 flex-col">
-    <Tabs.List class="grid shrink-0 grid-cols-3 border-b border-border px-1">
-      <Tabs.Trigger value="project">Project</Tabs.Trigger>
-      <Tabs.Trigger value="strings">Strings and Keys</Tabs.Trigger>
-      <Tabs.Trigger value="upload">Upload to Tolgee</Tabs.Trigger>
-    </Tabs.List>
+  <!--
+    Tabs.Root (bits-ui) renders as a plain <div>; making it `contents` (no
+    box of its own) lets its children — the gradient wrapper below and the
+    scrollable content area — participate directly in this outer flex
+    column. This is what lets ViewHeader (outside the tabs) and Tabs.List
+    (inside the tabs) share ONE continuous gradient instead of each having
+    its own separate background — only Tabs.List keeps a border-bottom, as
+    the one boundary line before the scrollable content.
+  -->
+  <Tabs.Root bind:value={activeTab} class="contents">
+    <div class="shrink-0 bg-linear-to-b from-bg to-header-gradient-end">
+      <ViewHeader title="Settings" onBack={cancel} background={false} />
+      <!-- No grid/equal-width split here — Tabs.Trigger is already
+           naturally sized (inline-flex + px-3), so plain flex keeps the
+           tabs compact instead of stretching them to fill the full width
+           of a wide plugin window. -->
+      <Tabs.List class="border-b border-border px-1">
+        <Tabs.Trigger value="project">Project</Tabs.Trigger>
+        <Tabs.Trigger value="strings">Strings and Keys</Tabs.Trigger>
+        <Tabs.Trigger value="upload">Upload to Tolgee</Tabs.Trigger>
+      </Tabs.List>
+    </div>
 
     <div class="min-h-0 flex-1 overflow-auto p-3">
       <Tabs.Content value="project">
