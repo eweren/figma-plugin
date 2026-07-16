@@ -17,6 +17,15 @@ const EXPORT_SCALE = 1;
  */
 const YIELD_EVERY_N_FRAMES = 5;
 
+/**
+ * How many node ids we may resolve back-to-back (via `getNodeByIdAsync`)
+ * before yielding to the event loop. A push touching thousands of connected
+ * nodes previously fired all lookups in a single `Promise.all` burst — this
+ * keeps the same total work but paced, matching the yield cadence already
+ * used for bulk node reads elsewhere (`scan.ts`, `selection.ts`).
+ */
+const YIELD_EVERY_N_NODE_RESOLVES = 50;
+
 const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 /**
@@ -75,8 +84,17 @@ export async function captureScreenshots(
   onFrame: (screenshot: FrameScreenshot) => void,
 ): Promise<number> {
   // 1. Resolve ids → nodes. Missing nodes are skipped silently; the UI is
-  //    free to pass a stale selection without crashing the export.
-  const resolved = await Promise.all(nodeIds.map((id) => figma.getNodeByIdAsync(id)));
+  //    free to pass a stale selection without crashing the export. Sequential
+  //    (rather than one giant `Promise.all`) so a push touching thousands of
+  //    nodes doesn't fire that many concurrent bridge calls in a single burst
+  //    — yield periodically to keep the canvas thread responsive.
+  const resolved: (BaseNode | null)[] = [];
+  for (const id of nodeIds) {
+    resolved.push(await figma.getNodeByIdAsync(id));
+    if (resolved.length % YIELD_EVERY_N_NODE_RESOLVES === 0) {
+      await yieldToEventLoop();
+    }
+  }
 
   // 2. Keep only text nodes — screenshots are anchored to translatable text.
   const textNodes: TextNode[] = [];
