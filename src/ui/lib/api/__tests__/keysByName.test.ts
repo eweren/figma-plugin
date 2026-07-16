@@ -121,11 +121,12 @@ describe("fetchRemoteKeys", () => {
     };
   }
 
-  it("splits 450 key names into 3 batches of <=200 and merges the results", async () => {
+  it("splits 450 short key names into batches whose cumulative length stays under the max, and merges the results", async () => {
     const mock = installFetchMock(async (input) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       const names = url.searchParams.getAll("filterKeyName");
-      expect(names.length).toBeLessThanOrEqual(200);
+      const totalChars = names.reduce((sum, n) => sum + n.length, 0);
+      expect(totalChars).toBeLessThanOrEqual(3000);
       return okResponse({ _embedded: { keys: names.map(rowFor) } });
     });
 
@@ -134,7 +135,11 @@ describe("fetchRemoteKeys", () => {
 
     const result = await fetchRemoteKeys(client, { filterKeyName });
 
-    expect(mock).toHaveBeenCalledTimes(3);
+    // 450 short names (~6-7 chars each, ~3000 chars total) now split by length
+    // rather than by a fixed count of 200 — with these short names that
+    // happens to land on 2 batches, not 3 (short names pack far more than
+    // 200 per batch before the character budget is hit).
+    expect(mock).toHaveBeenCalledTimes(2);
     expect(result).toHaveLength(450);
     expect(new Set(result.map((r) => r.keyName))).toEqual(new Set(filterKeyName));
   });
@@ -184,5 +189,82 @@ describe("fetchRemoteKeys", () => {
     expect(mock).toHaveBeenCalledTimes(2);
     expect(calledUrl(mock, 1).searchParams.get("cursor")).toBe("cursor-1");
     expect(result.map((r) => r.keyName).sort()).toEqual(["a", "b"]);
+  });
+
+  // ---------------------------------------------------------------------
+  // Length-based batching (task 12: full-sentence camelCase key names can
+  // overflow the URL budget well under the 200-name count cap)
+  // ---------------------------------------------------------------------
+
+  function sentenceLikeName(i: number, len: number): string {
+    const base = `sentenceKeyNumber${i}`;
+    return base.length >= len ? base.slice(0, len) : base + "x".repeat(len - base.length);
+  }
+
+  it("batches full-sentence-length key names (~80 chars each) by cumulative length, producing more (smaller) batches than a naive 200-count chunk would", async () => {
+    const mock = installFetchMock(async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      const names = url.searchParams.getAll("filterKeyName");
+      const totalChars = names.reduce((sum, n) => sum + n.length, 0);
+      expect(totalChars).toBeLessThanOrEqual(3000);
+      return okResponse({ _embedded: { keys: names.map(rowFor) } });
+    });
+
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+    // 250 names x ~80 chars: a naive count-based chunk of 200 would produce
+    // ceil(250/200) = 2 batches. By length (3000-char budget), ~37 such
+    // names fit per batch, so this must split into noticeably more batches.
+    const filterKeyName = Array.from({ length: 250 }, (_, i) => sentenceLikeName(i, 80));
+
+    const result = await fetchRemoteKeys(client, { filterKeyName });
+
+    expect(mock.mock.calls.length).toBeGreaterThan(2);
+    expect(result).toHaveLength(250);
+    expect(new Set(result.map((r) => r.keyName))).toEqual(new Set(filterKeyName));
+  });
+
+  it("still sends a single name longer than MAX_BATCH_CHARS on its own, rather than dropping it", async () => {
+    const mock = installFetchMock(async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      const names = url.searchParams.getAll("filterKeyName");
+      return okResponse({ _embedded: { keys: names.map(rowFor) } });
+    });
+
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+    const hugeName = sentenceLikeName(0, 3500); // longer than the 3000-char batch budget on its own
+
+    const result = await fetchRemoteKeys(client, { filterKeyName: [hugeName] });
+
+    expect(mock).toHaveBeenCalledTimes(1);
+    const names = calledUrl(mock, 0).searchParams.getAll("filterKeyName");
+    expect(names).toEqual([hugeName]);
+    expect(result.map((r) => r.keyName)).toEqual([hugeName]);
+  });
+
+  it("packs a mix of short and long names efficiently — short names group together instead of one-per-batch", async () => {
+    const mock = installFetchMock(async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      const names = url.searchParams.getAll("filterKeyName");
+      const totalChars = names.reduce((sum, n) => sum + n.length, 0);
+      expect(totalChars).toBeLessThanOrEqual(3000);
+      return okResponse({ _embedded: { keys: names.map(rowFor) } });
+    });
+
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+    const shortNames = Array.from({ length: 50 }, (_, i) => `s${i}`); // ~140 chars total
+    const longNames = [sentenceLikeName(1, 2000), sentenceLikeName(2, 2000)];
+    const filterKeyName = [...shortNames, ...longNames];
+
+    const result = await fetchRemoteKeys(client, { filterKeyName });
+
+    // All 50 short names (~140 chars) comfortably pack alongside the first
+    // 2000-char long name in one batch; the second long name needs its own
+    // batch since it would push the first over budget. That's 2 requests
+    // total, not 52 (one-per-name) and not 1 (everything crammed together).
+    expect(mock).toHaveBeenCalledTimes(2);
+    const firstBatchNames = calledUrl(mock, 0).searchParams.getAll("filterKeyName");
+    expect(firstBatchNames.length).toBeGreaterThan(1);
+    expect(result).toHaveLength(52);
+    expect(new Set(result.map((r) => r.keyName))).toEqual(new Set(filterKeyName));
   });
 });
