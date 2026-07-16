@@ -1,5 +1,6 @@
 <script lang="ts">
   import { cn } from "$ui/lib/utils";
+  import { computeProgressPercent } from "$ui/lib/logic/progress";
 
   /**
    * Canonical progress bar used across the plugin — bulk writes over a
@@ -28,11 +29,7 @@
 
   // `null` when the total is unknown (or zero) — the bar then renders the
   // indeterminate sliding animation instead of a fixed-width fill.
-  const pct = $derived<number | null>(
-    total !== null && total > 0
-      ? Math.max(0, Math.min(100, Math.round((loaded / total) * 100)))
-      : null,
-  );
+  const pct = $derived<number | null>(computeProgressPercent(loaded, total));
 </script>
 
 <div class={cn("flex flex-col gap-1", className)}>

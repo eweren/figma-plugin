@@ -9,6 +9,7 @@
     Dialog,
     Tabs,
     Tooltip,
+    DropdownMenu,
     Badge,
     Message,
     EmptyState,
@@ -21,9 +22,14 @@
     StatusMarker,
     FilterChip,
     Stat,
+    IconButton,
+    TooltipIconButton,
+    SearchInput,
   } from "$ui/lib/components/ui";
+  import NamespaceInput from "$ui/lib/components/ui/namespaceInput.svelte";
   import NodeListItem from "$ui/lib/components/domain/NodeListItem.svelte";
   import SyncButton from "$ui/lib/components/domain/SyncButton.svelte";
+  import ErrorBanner from "$ui/lib/components/domain/ErrorBanner.svelte";
   import Tolgee from "$ui/lib/components/icons/Tolgee.svelte";
   import Screens from "./Screens.svelte";
   import CopyDoc from "./Copy.svelte";
@@ -39,6 +45,7 @@
   import ChevronDown from "lucide-svelte/icons/chevron-down";
   import Copy from "lucide-svelte/icons/copy";
   import EllipsisVertical from "lucide-svelte/icons/ellipsis-vertical";
+  import Eraser from "lucide-svelte/icons/eraser";
   import ExternalLink from "lucide-svelte/icons/external-link";
   import Eye from "lucide-svelte/icons/eye";
   import EyeOff from "lucide-svelte/icons/eye-off";
@@ -52,6 +59,7 @@
   import Link2 from "lucide-svelte/icons/link-2";
   import Link2Off from "lucide-svelte/icons/link-2-off";
   import ListFilter from "lucide-svelte/icons/list-filter";
+  import LoaderCircle from "lucide-svelte/icons/loader-circle";
   import Meh from "lucide-svelte/icons/meh";
   import MousePointer from "lucide-svelte/icons/mouse-pointer";
   import Pencil from "lucide-svelte/icons/pencil";
@@ -61,6 +69,7 @@
   import SettingsIcon from "lucide-svelte/icons/settings";
   import Tag from "lucide-svelte/icons/tag";
   import Target from "lucide-svelte/icons/target";
+  import Wand from "lucide-svelte/icons/wand";
   import X from "lucide-svelte/icons/x";
   // Candidate icons for the two row conflict flags (see "Conflict flag icons").
   import CircleAlert from "lucide-svelte/icons/circle-alert";
@@ -105,6 +114,7 @@
     { name: "chevron-down", comp: ChevronDown },
     { name: "copy", comp: Copy },
     { name: "ellipsis-vertical", comp: EllipsisVertical },
+    { name: "eraser", comp: Eraser },
     { name: "external-link", comp: ExternalLink },
     { name: "eye", comp: Eye },
     { name: "eye-off", comp: EyeOff },
@@ -118,6 +128,7 @@
     { name: "link-2", comp: Link2 },
     { name: "link-2-off", comp: Link2Off },
     { name: "list-filter", comp: ListFilter },
+    { name: "loader-circle", comp: LoaderCircle },
     { name: "meh", comp: Meh },
     { name: "mouse-pointer", comp: MousePointer },
     { name: "pencil", comp: Pencil },
@@ -127,6 +138,7 @@
     { name: "settings", comp: SettingsIcon },
     { name: "tag", comp: Tag },
     { name: "target", comp: Target },
+    { name: "wand", comp: Wand },
     { name: "x", comp: X },
   ];
 
@@ -188,6 +200,10 @@
   let cbC = $state(false);
   let kfValue = $state("{frame}.{elementName}");
   let progressDemo = $state(80);
+  let searchInputValue = $state("");
+  let namespaceValue = $state("common");
+  const sampleNamespaces = ["common", "home", "legal"];
+  let dropdownLastAction = $state("(none yet)");
   let tagsValue = $state(["mobile"]);
   const sampleProjectTags = [
     "mobile",
@@ -713,6 +729,74 @@
       {/snippet}
       {@render section("Sync buttons (Upload / Download)", syncButtonsBody)}
 
+      <!-- Icon button -->
+      {#snippet iconButtonBody()}
+        <p class="mb-3 text-[11px] text-text-secondary">
+          Square icon-only action button — one canonical hover (subtle
+          background + icon turning brand-pink) so every icon action matches.
+          Forwards native button props, so it also works as a Tooltip/
+          DropdownMenu trigger child. Used across <code>ViewHeader</code>,
+          <code>Header</code> and <code>NodeListItem</code>'s row actions.
+        </p>
+        <div class="flex flex-wrap items-center gap-4">
+          <div class="flex flex-col items-center gap-1.5">
+            <IconButton size="sm" aria-label="Edit">
+              <Pencil size={ICON.inline} />
+            </IconButton>
+            <span class="text-[10px] text-text-secondary">sm</span>
+          </div>
+          <div class="flex flex-col items-center gap-1.5">
+            <IconButton size="md" aria-label="Settings">
+              <SettingsIcon size={ICON.action} />
+            </IconButton>
+            <span class="text-[10px] text-text-secondary">md</span>
+          </div>
+          <div class="flex flex-col items-center gap-1.5">
+            <IconButton size="sm" aria-label="Disabled" disabled>
+              <Pencil size={ICON.inline} />
+            </IconButton>
+            <span class="text-[10px] text-text-secondary">disabled</span>
+          </div>
+        </div>
+        <p class="mt-3 text-[11px] text-text-secondary">
+          Usage: <code>&lt;IconButton size="sm|md" aria-label&gt;&lt;Icon /&gt;&lt;/IconButton&gt;</code>
+        </p>
+      {/snippet}
+      {@render section("Icon button", iconButtonBody)}
+
+      <!-- Tooltip icon button -->
+      {#snippet tooltipIconButtonBody()}
+        <p class="mb-3 text-[11px] text-text-secondary">
+          The canonical "icon action with a tooltip": collapses the repeated
+          <code>Tooltip.Root</code> → <code>Trigger</code> →
+          <code>IconButton</code> → <code>Tooltip.Content</code> boilerplate
+          into one element. <code>label</code> doubles as the
+          <code>aria-label</code> and the tooltip text unless
+          <code>tooltip</code> overrides it. Must sit inside a
+          <code>Tooltip.Provider</code> (list/view components already wrap
+          one). Used for connect/disconnect in <code>NodeListItem</code> and
+          the back button in <code>ViewHeader</code>.
+        </p>
+        <Tooltip.Provider delayDuration={300}>
+          <div class="flex flex-wrap items-center gap-4">
+            <TooltipIconButton label="Connect to key">
+              <Link2 size={ICON.inline} />
+            </TooltipIconButton>
+            <TooltipIconButton label="Disconnect" tooltip="Disconnect from key">
+              <Link2Off size={ICON.inline} />
+            </TooltipIconButton>
+            <TooltipIconButton label="Cancel" side="top">
+              <X size={ICON.inline} />
+            </TooltipIconButton>
+          </div>
+        </Tooltip.Provider>
+        <p class="mt-3 text-[11px] text-text-secondary">
+          Usage: <code>&lt;TooltipIconButton label tooltip? side? onclick&gt;&lt;Icon /&gt;&lt;/TooltipIconButton&gt;</code>
+          — hover the buttons above to see it.
+        </p>
+      {/snippet}
+      {@render section("Tooltip icon button", tooltipIconButtonBody)}
+
       <!-- Inputs & labels -->
       {#snippet inputsBody()}
         <div class="space-y-3 max-w-xs">
@@ -747,8 +831,59 @@
       {/snippet}
       {@render section("Select", selectBody)}
 
+      <!-- Search input -->
+      {#snippet searchInputBody()}
+        <p class="mb-3 text-[11px] text-text-secondary">
+          Search field used across the plugin: a magnifying-glass on the left
+          and, once there's a value, a clear "✕" on the right that empties the
+          box. Wraps the base <code>Input</code> so the icon padding and clear
+          behaviour live in one place. Used for the Connect screen's key
+          search and the Index list filter.
+        </p>
+        <div class="max-w-xs">
+          <SearchInput bind:value={searchInputValue} placeholder="Search keys…" />
+        </div>
+        <p class="mt-2 text-[11px] text-text-secondary">
+          Value: <code>{searchInputValue || "(empty)"}</code>
+        </p>
+        <p class="mt-3 text-[11px] text-text-secondary">
+          Usage: <code>&lt;SearchInput bind:value placeholder? /&gt;</code>
+        </p>
+      {/snippet}
+      {@render section("Search input", searchInputBody)}
+
+      <!-- Namespace input -->
+      {#snippet namespaceInputBody()}
+        <p class="mb-3 text-[11px] text-text-secondary">
+          Single-value namespace combobox: pick an existing namespace or type
+          a NEW one (created on push). Mirrors <code>TagInput</code>'s look/
+          behaviour; "" is the "&lt;none&gt;" (default) namespace. Used in
+          <code>NodeListItem</code>'s inline namespace field and Settings →
+          project namespace.
+        </p>
+        <div class="max-w-xs">
+          <NamespaceInput
+            value={namespaceValue}
+            onChange={(v) => (namespaceValue = v)}
+            options={sampleNamespaces}
+          />
+        </div>
+        <p class="mt-2 text-[11px] text-text-secondary">
+          Value: <code>{namespaceValue || "<none>"}</code>
+        </p>
+        <p class="mt-3 text-[11px] text-text-secondary">
+          Usage: <code>&lt;NamespaceInput value onChange options? placeholder? /&gt;</code>
+        </p>
+      {/snippet}
+      {@render section("Namespace input (autocomplete)", namespaceInputBody)}
+
       <!-- Switch -->
       {#snippet switchBody()}
+        <p class="mb-3 text-[11px] text-text-secondary">
+          Not yet used anywhere in the product — kept as a reserved
+          primitive. Its only current instance is this gallery's own
+          dark-mode toggle (meta-UI, not a product screen).
+        </p>
         <div class="flex items-center gap-6">
           <label class="flex items-center gap-2 text-xs">
             <Switch bind:checked={switchOn} />
@@ -1140,6 +1275,34 @@
       {/snippet}
       {@render section("Messages", messagesBody)}
 
+      <!-- Error banner -->
+      {#snippet errorBannerBody()}
+        <p class="mb-3 text-[11px] text-text-secondary">
+          App-shell-level banner rendered above every route in
+          <code>src/ui/App.svelte</code> whenever
+          <code>appState.value.errorBanner</code> is set — unlike
+          <code>Message</code> (which a route places inline), this sits at the
+          very top of the plugin regardless of which screen is open. Two
+          severities, both plain (no icon): <code>error</code> (red) and
+          <code>warning</code> (yellow). The gallery's <code>Screens</code>
+          tab renders routes directly and skips the <code>App.svelte</code>
+          shell, so this never otherwise appears here — shown below on mock
+          data.
+        </p>
+        <div class="max-w-md space-y-2">
+          <ErrorBanner
+            banner={{ message: "Invalid API key. Please check your project API key.", severity: "error" }}
+          />
+          <ErrorBanner
+            banner={{ message: "This project's branching feature is disabled — branch changes will be ignored.", severity: "warning" }}
+          />
+        </div>
+        <p class="mt-3 text-[11px] text-text-secondary">
+          Usage: <code>&lt;ErrorBanner banner={"{{ message, severity: \"error\"|\"warning\" }}"} /&gt;</code>
+        </p>
+      {/snippet}
+      {@render section("Error banner", errorBannerBody)}
+
       <!-- Empty states -->
       {#snippet emptyStatesBody()}
         <p class="mb-3 text-[11px] text-text-secondary">
@@ -1281,6 +1444,51 @@
         </Tooltip.Provider>
       {/snippet}
       {@render section("Tooltip", tooltipBody)}
+
+      <!-- Dropdown menu -->
+      {#snippet dropdownMenuBody()}
+        <p class="mb-3 text-[11px] text-text-secondary">
+          The overflow ("⋮") menu — <code>Root</code> / <code>Trigger</code> /
+          <code>Content</code> / <code>Item</code> / <code>Separator</code>,
+          wrapping <code>bits-ui</code>'s primitive with the plugin's
+          colours/spacing. The trigger is usually an <code>IconButton</code>
+          via the <code>{"{#snippet child({ props })}"}</code> pattern (so
+          the button forwards ARIA/open-state props). Used for
+          <code>NodeListItem</code>'s row overflow menu.
+        </p>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            {#snippet child({ props })}
+              <IconButton {...props} aria-label="More actions">
+                <EllipsisVertical size={ICON.inline} />
+              </IconButton>
+            {/snippet}
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content align="start">
+            <DropdownMenu.Item onSelect={() => (dropdownLastAction = "String details")}>
+              <FileText size={ICON.inline} /> String details
+            </DropdownMenu.Item>
+            <DropdownMenu.Item onSelect={() => (dropdownLastAction = "Move to string")}>
+              <Target size={ICON.inline} /> Move to string
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator />
+            <DropdownMenu.Item onSelect={() => (dropdownLastAction = "Connection detail")}>
+              <Link2 size={ICON.inline} /> Connection detail
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+        <p class="mt-3 text-[11px] text-text-secondary">
+          Last selected: <code>{dropdownLastAction}</code>
+        </p>
+        <p class="mt-3 text-[11px] text-text-secondary">
+          Usage:
+          <code
+            >&lt;DropdownMenu.Root&gt;&lt;DropdownMenu.Trigger&gt;…&lt;/DropdownMenu.Trigger&gt;&lt;DropdownMenu.Content&gt;&lt;DropdownMenu.Item
+            onSelect&gt;…&lt;/DropdownMenu.Item&gt;&lt;/DropdownMenu.Content&gt;&lt;/DropdownMenu.Root&gt;</code
+          >
+        </p>
+      {/snippet}
+      {@render section("Dropdown menu", dropdownMenuBody)}
     {/if}
   </main>
 </div>
