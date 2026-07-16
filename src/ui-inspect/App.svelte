@@ -53,8 +53,21 @@
       config = msg.config;
       nodes = msg.selectedNodes;
     });
+    // `selection-changed` only fires for non-streamed senders (init's own
+    // snapshot aside, that's just the e2e test host today) — the real main
+    // thread always streams `selection-batch`/`selection-done` instead, even
+    // for empty selections. Without these two, this panel showed whatever was
+    // selected at load time and then never updated again.
     on("selection-changed", (msg) => {
       nodes = msg.nodes;
+    });
+    on("selection-batch", (msg) => {
+      nodes = msg.first ? msg.nodes : [...nodes, ...msg.nodes];
+    });
+    on("selection-done", (msg) => {
+      // A stream that delivered zero batches (empty canvas click, or a
+      // selection whose texts are all ignored) must clear the previous list.
+      if (msg.total === 0) nodes = [];
     });
     on("config-changed", (msg) => {
       config = msg.config;
