@@ -1250,13 +1250,16 @@
       <!-- Messages -->
       {#snippet messagesBody()}
         <p class="mb-3 text-[11px] text-text-secondary">
-          Inline status messages in the semantic palette (error / success /
-          info). Icon + colour come from the variant; the tint is mixed from the
-          same colour, so they adapt to dark mode.
+          Inline status messages in the semantic palette (error / warning /
+          success / info). Icon + colour come from the variant; the tint is
+          mixed from the same colour, so they adapt to dark mode.
         </p>
         <div class="flex max-w-md flex-col gap-2">
           <Message variant="error">
             Invalid API key. Please check your project API key.
+          </Message>
+          <Message variant="warning">
+            2 key(s) reuse the same name with different text in Figma.
           </Message>
           <Message variant="success">
             <strong class="font-semibold">My Project</strong> was successfully connected.

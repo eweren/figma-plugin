@@ -527,9 +527,7 @@
         />
       </Card>
     {:else if stage === "error"}
-      <div class="bg-red-100 text-red-900 p-2 text-sm rounded">
-        {errorMessage ?? "An error occurred."}
-      </div>
+      <Message variant="error">{errorMessage ?? "An error occurred."}</Message>
     {:else if stage === "done"}
       <Card>
         <p class="text-sm">
@@ -579,36 +577,29 @@
       </Card>
     {:else if diff}
       {#if diff.conflictingNodes.length > 0}
-        <div
-          class="rounded-md border border-yellow-400/40 bg-yellow-100 p-2 text-xs text-yellow-900"
-        >
-          <div class="flex items-start gap-1.5">
-            <AlertTriangle size={ICON.inline} class="mt-0.5 shrink-0" />
-            <div>
-              <div class="font-semibold">
-                {diff.conflictingNodes.length} key(s) reuse the same name with different
-                text in Figma.
-              </div>
-              <p class="opacity-80">
-                Only the first occurrence will be pushed for each. Update or
-                disconnect the duplicates to clear this warning.
-              </p>
-              <ul class="mt-1 list-disc pl-4">
-                {#each diff.conflictingNodes as group (group.key + (group.ns ?? ""))}
-                  <li>
-                    <span class="font-mono">{group.key}</span>
-                    {#if hasNamespacesEnabled}
-                      <span class="opacity-70">ns:{group.ns || "<none>"}</span>
-                    {/if}
-                    <span class="opacity-70">
-                      ({group.nodes.length} nodes)
-                    </span>
-                  </li>
-                {/each}
-              </ul>
-            </div>
+        <Message variant="warning">
+          <div class="font-semibold">
+            {diff.conflictingNodes.length} key(s) reuse the same name with different
+            text in Figma.
           </div>
-        </div>
+          <p class="opacity-80">
+            Only the first occurrence will be pushed for each. Update or
+            disconnect the duplicates to clear this warning.
+          </p>
+          <ul class="mt-1 list-disc pl-4">
+            {#each diff.conflictingNodes as group (group.key + (group.ns ?? ""))}
+              <li>
+                <span class="font-mono">{group.key}</span>
+                {#if hasNamespacesEnabled}
+                  <span class="opacity-70">ns:{group.ns || "<none>"}</span>
+                {/if}
+                <span class="opacity-70">
+                  ({group.nodes.length} nodes)
+                </span>
+              </li>
+            {/each}
+          </ul>
+        </Message>
       {/if}
 
       {#if diff.missingKeys.length > 0}

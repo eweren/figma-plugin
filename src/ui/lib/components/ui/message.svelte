@@ -18,7 +18,7 @@
    * to override the variant's default glyph (e.g. an info icon on a teal
    * `secondary` notice that isn't a success).
    */
-  type Variant = "error" | "success" | "info" | "secondary";
+  type Variant = "error" | "success" | "info" | "secondary" | "warning";
   // Accept both Svelte 5 components and the legacy class components lucide ships.
   type IconComponent =
     | Component<{ size?: number; class?: string }>
@@ -36,6 +36,7 @@
     success: CheckCircle2,
     info: Info,
     secondary: CheckCircle2,
+    warning: AlertTriangle,
   };
   const Icon = $derived(icon ?? ICONS[variant]);
 </script>
