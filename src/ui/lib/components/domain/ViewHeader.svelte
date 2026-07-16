@@ -21,15 +21,6 @@
     backLabel?: string;
     /** Optional right-aligned content (rarely needed). */
     actions?: Snippet;
-    /**
-     * Whether the header renders its own gradient background. Defaults to
-     * `true` for the common case (a single header row with nothing below it
-     * to merge with). Pass `false` when an outer wrapper already supplies a
-     * shared background that this header should let show through — e.g.
-     * Settings, where the header and the tab row beneath it need one
-     * continuous gradient instead of two separate ones.
-     */
-    background?: boolean;
   };
   let {
     title,
@@ -37,14 +28,11 @@
     onBack,
     backLabel = "Back",
     actions,
-    background = true,
   }: Props = $props();
 </script>
 
 <header
-  class="flex items-center gap-2 px-3 py-2 {background
-    ? 'bg-linear-to-b from-bg to-header-gradient-end border-b border-border'
-    : ''}"
+  class="flex items-center gap-2 bg-linear-to-b from-bg to-header-gradient-end border-b border-border px-3 py-2"
 >
   <IconButton size="md" class="-ml-1" onclick={onBack} aria-label={backLabel}>
     <ArrowLeft size={ICON.action} />

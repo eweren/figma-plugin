@@ -44,23 +44,14 @@
 </script>
 
 <div class="flex h-full flex-col">
-  <!--
-    Tabs.Root (bits-ui) renders as a plain <div>; making it `contents` (no
-    box of its own) lets its children — the gradient wrapper below and the
-    scrollable content area — participate directly in this outer flex
-    column, the same as before. This is what lets ViewHeader (outside the
-    tabs) and Tabs.List (inside the tabs) share ONE gradient wrapper instead
-    of each having its own background.
-  -->
-  <Tabs.Root bind:value={activeTab} class="contents">
-    <div class="shrink-0 bg-linear-to-b from-bg to-header-gradient-end">
-      <ViewHeader title="Settings" onBack={cancel} background={false} />
-      <Tabs.List class="grid grid-cols-3 border-b border-border px-1">
-        <Tabs.Trigger value="project">Project</Tabs.Trigger>
-        <Tabs.Trigger value="strings">Strings and Keys</Tabs.Trigger>
-        <Tabs.Trigger value="upload">Upload to Tolgee</Tabs.Trigger>
-      </Tabs.List>
-    </div>
+  <ViewHeader title="Settings" onBack={cancel} />
+
+  <Tabs.Root bind:value={activeTab} class="flex min-h-0 flex-1 flex-col">
+    <Tabs.List class="grid shrink-0 grid-cols-3 border-b border-border px-1">
+      <Tabs.Trigger value="project">Project</Tabs.Trigger>
+      <Tabs.Trigger value="strings">Strings and Keys</Tabs.Trigger>
+      <Tabs.Trigger value="upload">Upload to Tolgee</Tabs.Trigger>
+    </Tabs.List>
 
     <div class="min-h-0 flex-1 overflow-auto p-3">
       <Tabs.Content value="project">
