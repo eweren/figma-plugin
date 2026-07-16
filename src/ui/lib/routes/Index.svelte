@@ -849,93 +849,68 @@
 
 <Tooltip.Provider delayDuration={0} disableHoverableContent>
 <div class="relative flex h-full flex-col">
-  <Header
-    languages={languageOptions}
-    branches={branchOptions}
-    branchingEnabled={auth.value.branchingEnabled}
-  />
-
-  {#if writeProgress !== null}
-    <!-- Bulk-write progress — appears only while a large `set-nodes-data`
-         write is in flight (small writes never send progress messages) and
-         is always cleared by `nodes-set-result`, so it never lingers. -->
-    <div class="px-3 pt-1.5">
-      <ProgressBar loaded={writeProgress.done} total={writeProgress.total} />
-    </div>
-  {/if}
-
-  {#if !auth.value.authenticated}
-    <div
-      class="flex flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
+  <!-- Select-all / none master checkbox — shared by the count bar and the
+       footer action bar so the two never drift. -->
+  {#snippet masterCheckbox()}
+    <button
+      type="button"
+      aria-label="Select all / none"
+      onclick={toggleMaster}
+      class="rounded-sm focus:outline-none"
     >
-      <p class="text-sm">Sign in to connect this document with Tolgee.</p>
-      <Button onclick={() => go({ name: "settings" })}>Open Settings</Button>
-    </div>
-  {:else}
-    <!-- Select-all / none master checkbox — shared by the count bar and the
-         footer action bar so the two never drift. -->
-    {#snippet masterCheckbox()}
-      <button
-        type="button"
-        aria-label="Select all / none"
-        onclick={toggleMaster}
-        class="rounded-sm focus:outline-none"
-      >
-        <Checkbox
-          checked={allVisibleSelected}
-          indeterminate={someVisibleSelected && !allVisibleSelected}
-        />
-      </button>
-    {/snippet}
+      <Checkbox
+        checked={allVisibleSelected}
+        indeterminate={someVisibleSelected && !allVisibleSelected}
+      />
+    </button>
+  {/snippet}
 
-    <!-- A single-select filter row: radio dot + label + optional count. The
-         radio shape (vs the IGNORE checkboxes) signals "pick one". -->
-    {#snippet radioItem(
-      active: boolean,
-      label: string,
-      count: number | null,
-      onSelect: () => void,
-    )}
-      <DropdownMenu.Item closeOnSelect={false} {onSelect}>
-        <span
-          class="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border {active
-            ? 'border-checkbox'
-            : 'border-border'}"
-        >
-          {#if active}
-            <span class="h-1.5 w-1.5 rounded-full bg-checkbox"></span>
-          {/if}
-        </span>
-        <span class="flex-1">{label}</span>
-        {#if count !== null}
-          <span class="tabular-nums text-text-secondary">{count}</span>
+  <!-- A single-select filter row: radio dot + label + optional count. The
+       radio shape (vs the IGNORE checkboxes) signals "pick one". -->
+  {#snippet radioItem(
+    active: boolean,
+    label: string,
+    count: number | null,
+    onSelect: () => void,
+  )}
+    <DropdownMenu.Item closeOnSelect={false} {onSelect}>
+      <span
+        class="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border {active
+          ? 'border-checkbox'
+          : 'border-border'}"
+      >
+        {#if active}
+          <span class="h-1.5 w-1.5 rounded-full bg-checkbox"></span>
         {/if}
-      </DropdownMenu.Item>
-    {/snippet}
+      </span>
+      <span class="flex-1">{label}</span>
+      {#if count !== null}
+        <span class="tabular-nums text-text-secondary">{count}</span>
+      {/if}
+    </DropdownMenu.Item>
+  {/snippet}
 
-    {#if preparing}
-      <!-- Preloader OVERLAY: shown while the main thread scans the new
-           selection and through the first render of a large list. Rendered on
-           top of the list instead of replacing it, so an incoming selection
-           doesn't unmount + remount every row (the swap forced a full re-render
-           and stole input focus on large selections). -->
-      <div
-        class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-bg px-6 text-center"
-      >
-        <LoaderCircle size={ICON.hero} class="animate-spin text-secondary" />
-        <div class="space-y-0.5 text-text-secondary">
-          <p class="text-sm">Loading strings…</p>
-          <p class="text-xs">Select less to load faster.</p>
-        </div>
+  <!-- Sticky, non-scrolling header area. Wraps the title/language row plus —
+       while a selection is active — the search/filter row and the count row,
+       so the top-to-bottom gradient reads as ONE continuous transition
+       instead of separate gradients stacked per row (which banded/striped). -->
+  <div class="sticky top-0 z-10 bg-linear-to-b from-bg to-bg-secondary">
+    <Header
+      languages={languageOptions}
+      branches={branchOptions}
+      branchingEnabled={auth.value.branchingEnabled}
+    />
+
+    {#if writeProgress !== null}
+      <!-- Bulk-write progress — appears only while a large `set-nodes-data`
+           write is in flight (small writes never send progress messages) and
+           is always cleared by `nodes-set-result`, so it never lingers. -->
+      <div class="px-3 pt-1.5">
+        <ProgressBar loaded={writeProgress.done} total={writeProgress.total} />
       </div>
     {/if}
-    {#if !hasSelection}
-      <EmptyState
-        icon={Group}
-        title="Select strings for translation"
-        description="Pick frames or texts. Fewer runs smoother."
-      />
-    {:else}
+
+    {#if auth.value.authenticated && hasSelection}
       <!-- Search + filter -->
       <div class="flex items-center gap-2 px-3 pt-1 pb-0.5">
         <SearchInput
@@ -1121,12 +1096,7 @@
         </div>
       {/if}
 
-      {#if total === 0}
-        <!-- Selection has no translatable strings — either it holds no text at
-             all, or everything was filtered out. The search/filter bar stays
-             above so the user can loosen a filter right here. -->
-        <EmptyState icon={Meh} title="Nothing to translate here" />
-      {:else}
+      {#if total !== 0}
         <!-- Count + master select-all checkbox. Row checkboxes are always on,
              so this is just a select-all / none toggle; bulk actions live in
              the footer once something is selected. -->
@@ -1140,33 +1110,70 @@
                the footer, so the two never get confused. -->
           <span>{shown} {shown === 1 ? "string" : "strings"}</span>
         </div>
-
-        {#if shown === 0}
-          <EmptyState
-            icon={SearchX}
-            title="No strings match your search"
-            description="Try another word."
-          />
-        {:else}
-          <!-- NodeList owns the scrolling (it windows large lists off its own
-               viewport), so this wrapper only reserves the flex space. -->
-          <div class="min-h-0 flex-1">
-            <NodeList
-              nodes={filteredNodes}
-              emptyText=""
-              duplicateCounts={stats.duplicateCounts}
-              conflictCounts={stats.conflictCounts}
-              getManualChange={manualChangeFor}
-              {missingKeys}
-              onFilterText={filterByText}
-              onFilterKey={filterByKey}
-              {selectedIds}
-              onToggleSelect={toggleOne}
-              {namespaceNames}
-            />
-          </div>
-        {/if}
       {/if}
+    {/if}
+  </div>
+
+  {#if !auth.value.authenticated}
+    <div
+      class="flex flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
+    >
+      <p class="text-sm">Sign in to connect this document with Tolgee.</p>
+      <Button onclick={() => go({ name: "settings" })}>Open Settings</Button>
+    </div>
+  {:else}
+    {#if preparing}
+      <!-- Preloader OVERLAY: shown while the main thread scans the new
+           selection and through the first render of a large list. Rendered on
+           top of the list instead of replacing it, so an incoming selection
+           doesn't unmount + remount every row (the swap forced a full re-render
+           and stole input focus on large selections). -->
+      <div
+        class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-bg px-6 text-center"
+      >
+        <LoaderCircle size={ICON.hero} class="animate-spin text-secondary" />
+        <div class="space-y-0.5 text-text-secondary">
+          <p class="text-sm">Loading strings…</p>
+          <p class="text-xs">Select less to load faster.</p>
+        </div>
+      </div>
+    {/if}
+    {#if !hasSelection}
+      <EmptyState
+        icon={Group}
+        title="Select strings for translation"
+        description="Pick frames or texts. Fewer runs smoother."
+      />
+    {:else if total === 0}
+      <!-- Selection has no translatable strings — either it holds no text at
+           all, or everything was filtered out. The search/filter bar stays
+           above (inside the sticky header) so the user can loosen a filter
+           right here. -->
+      <EmptyState icon={Meh} title="Nothing to translate here" />
+    {:else if shown === 0}
+      <EmptyState
+        icon={SearchX}
+        title="No strings match your search"
+        description="Try another word."
+      />
+    {:else}
+      <!-- NodeList owns the scrolling (it windows large lists off its own
+           viewport), so this wrapper only reserves the flex space. -->
+      <div class="min-h-0 flex-1">
+        <NodeList
+          nodes={filteredNodes}
+          emptyText=""
+          duplicateCounts={stats.duplicateCounts}
+          conflictCounts={stats.conflictCounts}
+          getManualChange={manualChangeFor}
+          {missingKeys}
+          onFilterText={filterByText}
+          onFilterKey={filterByKey}
+          {selectedIds}
+          onToggleSelect={toggleOne}
+          {namespaceNames}
+        />
+      </div>
     {/if}
 
     <div class="flex flex-col gap-2 border-t border-border p-2">
