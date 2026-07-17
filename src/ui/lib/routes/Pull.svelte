@@ -291,7 +291,9 @@
 
   function formatKeyLabel(ns: string | undefined, key: string): string {
     if (!key) return "(no key)";
-    return ns ? `${ns}.${key}` : key;
+    // Never show a namespace prefix when the project doesn't have namespaces
+    // enabled — display-only, doesn't affect what's stored/pushed.
+    return ns && auth.value.namespacesEnabled ? `${ns}.${key}` : key;
   }
 </script>
 

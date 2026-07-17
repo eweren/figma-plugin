@@ -216,8 +216,11 @@
               >
                 {r.name}
               </span>
-              <!-- Always show the key's namespace, incl. an explicit "<none>". -->
-              <Badge>ns:{r.namespace || "<none>"}</Badge>
+              {#if auth.value.namespacesEnabled}
+                <!-- Show the key's namespace, incl. an explicit "<none>", only
+                     when the project has namespaces enabled — display-only. -->
+                <Badge>ns:{r.namespace || "<none>"}</Badge>
+              {/if}
             </div>
           </div>
           {#if connected}

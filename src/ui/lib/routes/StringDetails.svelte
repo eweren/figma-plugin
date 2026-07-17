@@ -1,5 +1,6 @@
 <script lang="ts">
   import { appState } from "$ui/lib/stores/app.svelte";
+  import { auth } from "$ui/lib/stores/auth.svelte";
   import { send, nextCorrelationId } from "$ui/lib/bus";
   import { ICON } from "$shared/iconSizes";
   import { Button, Input, Label, Message } from "$ui/lib/components/ui";
@@ -308,7 +309,7 @@
       <div>
         <Label for="string-details-key">Key</Label>
         <div class="mt-1 flex items-center gap-1">
-          {#if node.ns}
+          {#if node.ns && auth.value.namespacesEnabled}
             <span class="shrink-0 font-mono text-xs text-text-secondary">
               {node.ns}.
             </span>

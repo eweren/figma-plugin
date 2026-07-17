@@ -310,17 +310,23 @@
               {/if}
             </Tooltip.Content>
           </Tooltip.Root>
-          <!-- Namespace pill (own tooltip), incl. an explicit "<none>". -->
-          <Tooltip.Root>
-            <Tooltip.Trigger>
-              {#snippet child({ props })}
-                <span {...props}><Badge>ns:{formatNamespace(node)}</Badge></span>
-              {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Content side="bottom">
-              {node.ns ? `Namespace: ${node.ns}` : "No namespace"}
-            </Tooltip.Content>
-          </Tooltip.Root>
+          <!-- Namespace pill (own tooltip), incl. an explicit "<none>". Only
+               shown when the project actually has namespaces enabled — with
+               it off, the concept doesn't apply to anything the user sees,
+               so a "no namespace" pill is just noise/confusion (data isn't
+               affected, this is display-only). -->
+          {#if auth.value.namespacesEnabled}
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <span {...props}><Badge>ns:{formatNamespace(node)}</Badge></span>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.Content side="bottom">
+                {node.ns ? `Namespace: ${node.ns}` : "No namespace"}
+              </Tooltip.Content>
+            </Tooltip.Root>
+          {/if}
         {:else}
           <!-- Plain twins of the two tooltip wrappers above — same look, same
                click, upgraded on row hover/focus before a tooltip could open. -->
@@ -334,7 +340,9 @@
           >
             {formatConnected(node)}
           </button>
-          <span><Badge>ns:{formatNamespace(node)}</Badge></span>
+          {#if auth.value.namespacesEnabled}
+            <span><Badge>ns:{formatNamespace(node)}</Badge></span>
+          {/if}
         {/if}
       {:else}
         <!-- Shared Input component (not a raw <input>) so its height always
