@@ -48,11 +48,11 @@ test.describe("CopyView", () => {
     // Nothing selected + never downloaded this session -> the big
     // instructional EmptyState carries the message, no separate top line.
     await expect(
-      ui.getByText("Download strings from Tolgee to Figma."),
+      ui.getByText("Download strings to Figma."),
     ).toBeVisible();
     await expect(
       ui.getByText(
-        "Select a specific frame to update just that, or download the whole page.",
+        "Download all, or select frames to update specific strings.",
       ),
     ).toBeVisible();
     // Nothing selected in this fixture -> "Download all" (vs "Download" for a selection).

@@ -75,7 +75,7 @@
     if (!language) return "Shows Tolgee keys. Doesn't sync back.";
     if (lastResult === null) {
       return selectedNodes.length > 0
-        ? "Download strings from Tolgee to Figma."
+        ? "Download strings to Figma."
         : null;
     }
     if (lastResult.count === 0) return "Already up to date.";
@@ -214,8 +214,29 @@
     {/if}
   </header>
 
+  {#snippet syncInfoIcon()}
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        {#snippet child({ props })}
+          <span
+            {...props}
+            class="shrink-0 text-text-secondary transition-colors hover:text-text-brand"
+            role="button"
+            tabindex={-1}
+            aria-label="Why strings on this page don't sync back"
+          >
+            <Info size={ICON.inline} />
+          </span>
+        {/snippet}
+      </Tooltip.Trigger>
+      <Tooltip.Content side="top" class="max-w-[16rem] leading-snug">
+        Strings on this page don't sync back to Tolgee.
+      </Tooltip.Content>
+    </Tooltip.Root>
+  {/snippet}
+
   <Tooltip.Provider delayDuration={200}>
-    <div class="flex-1 overflow-auto p-3 space-y-3">
+    <div class="flex flex-1 flex-col overflow-auto p-3 space-y-3">
       {#if stage === "pulling"}
         {#if hasUserSelection}
           <ProgressBar
@@ -248,24 +269,7 @@
       {:else if topStatusText}
         <p class="flex items-start gap-1.5 text-xs text-text-secondary">
           <span class="flex-1">{topStatusText}</span>
-          <Tooltip.Root>
-            <Tooltip.Trigger>
-              {#snippet child({ props })}
-                <span
-                  {...props}
-                  class="shrink-0 text-text-secondary transition-colors hover:text-text-brand"
-                  role="button"
-                  tabindex={-1}
-                  aria-label="Why strings on this page don't sync back"
-                >
-                  <Info size={ICON.inline} />
-                </span>
-              {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Content side="top" class="max-w-[16rem] leading-snug">
-              Strings on this page don't sync back to Tolgee.
-            </Tooltip.Content>
-          </Tooltip.Root>
+          {@render syncInfoIcon()}
         </p>
       {/if}
 
@@ -274,9 +278,11 @@
           {#if language && lastResult === null}
             <EmptyState
               icon={Download}
-              title="Download strings from Tolgee to Figma."
-              description="Select a specific frame to update just that, or download the whole page."
-            />
+              title="Download strings to Figma."
+              description="Download all, or select frames to update specific strings."
+            >
+              {#snippet trailing()}{@render syncInfoIcon()}{/snippet}
+            </EmptyState>
           {:else}
             <EmptyState icon={Group} title="Select a string or frame" />
           {/if}
