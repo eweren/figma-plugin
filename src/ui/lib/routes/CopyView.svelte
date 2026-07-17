@@ -11,6 +11,7 @@
   import { fetchAllTranslations } from "$ui/lib/api/pull";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
   import { pullDiff, formatNodeText } from "$ui/lib/logic/pullDiff";
+  import { applyCopyPages, type CopyTranslations } from "$ui/lib/logic/copyApply";
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import { hasRichFormat } from "$ui/lib/logic/icuParams";
   import Group from "lucide-svelte/icons/group";
@@ -76,6 +77,10 @@
   let recreateProgress = $state<{ current: number; total: number } | null>(null);
   let recreateCorrelationId = $state<string | null>(null);
   let recreateWatchdog: RequestWatchdog | null = null;
+  // The one-language translations map fetched by `recreateCopy`, consumed by
+  // the create-copy-result handler once the clone exists (plain plumbing, not
+  // `$state` — nothing renders from it).
+  let recreateTranslations: Record<string, CopyTranslations> | null = null;
   const RECREATE_TIMEOUT_MS = 5 * 60_000;
 
   /** "Download all" with nothing selected, "Download" over the current
@@ -386,18 +391,21 @@
         namespaces: undefined,
         branch: branch || undefined,
       });
-      const translationsForLang: Record<string, { text: string; isPlural: boolean }> = {};
+      const translationsForLang: CopyTranslations = {};
       for (const k of keys) {
         const idx = `${k.keyNamespace ?? ""}|${k.keyName}`;
         const text = k.translations[language]?.text;
         if (text) translationsForLang[idx] = { text, isPlural: k.isPlural };
       }
+      // Held for the create-copy-result handler below: once the clone exists,
+      // the UI renders + applies these onto it (the main thread can't — no
+      // `Intl` in its sandbox, see $ui/lib/logic/copyApply).
+      recreateTranslations = { [language]: translationsForLang };
       send({
         type: "create-copy",
         correlationId,
         mode: "languages",
         languages: [language],
-        translations: { [language]: translationsForLang },
         sourcePageId,
       });
     } catch (err) {
@@ -424,7 +432,30 @@
       recreateWatchdog = null;
       recreateProgress = null;
       recreateCorrelationId = null;
-      if (msg.ok) {
+      if (!msg.ok) {
+        recreateTranslations = null;
+        stage = "error";
+        errorMessage = msg.error ?? "Failed to recreate the copy.";
+        return;
+      }
+      // The clone exists but still holds the SOURCE page's text — render +
+      // write the fetched translations from here (the main thread can't: no
+      // `Intl` in its sandbox). Same pipeline as the Download flow.
+      const pages = msg.pages ?? [];
+      const translations = recreateTranslations;
+      recreateTranslations = null;
+      void (async () => {
+        if (pages.length > 0 && translations) {
+          const applied = await applyCopyPages(pages, translations, (done, total) => {
+            recreateProgress = { current: done, total };
+          });
+          recreateProgress = null;
+          if (!applied.ok) {
+            stage = "error";
+            errorMessage = applied.error ?? "Failed to recreate the copy.";
+            return;
+          }
+        }
         stage = "idle";
         staleness = null;
         send({ type: "notify", text: "Copy recreated." });
@@ -432,10 +463,7 @@
         // replacement (this page can't delete itself while active) —
         // App.svelte's existing `currentpagechange` listener re-syncs
         // config/selection for it automatically.
-      } else {
-        stage = "error";
-        errorMessage = msg.error ?? "Failed to recreate the copy.";
-      }
+      })();
     });
     return off;
   });

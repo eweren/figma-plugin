@@ -156,6 +156,17 @@ export type MainToUi =
       correlationId: string;
       ok: boolean;
       createdPageIds: string[];
+      /**
+       * Languages mode only: the connected nodes of each freshly cloned page.
+       * The main thread deliberately does NOT write translated text itself —
+       * ICU rendering needs `Intl` (plural rules), which doesn't exist in
+       * Figma's main-thread sandbox; every `{param}`/plural render silently
+       * failed there and the copy kept the source-language text. The UI takes
+       * these nodes, renders each one exactly like the Download flow, and
+       * writes them back via the ordinary `apply-translations` request — so a
+       * fresh copy is BY CONSTRUCTION identical to clone + Download all.
+       */
+      pages?: Array<{ pageId: string; language: string; nodes: NodeInfo[] }>;
       error?: string;
     }
   | {
@@ -243,18 +254,13 @@ export type UiToMain =
       type: "create-copy";
       correlationId: string;
       mode: "keys" | "languages";
-      /** Required when `mode === "languages"`. List of language tags to copy. */
+      /** Required when `mode === "languages"`. List of language tags to copy.
+       *  The translations themselves never cross the bridge: the main thread
+       *  only clones and returns the clones' connected nodes (see
+       *  `create-copy-result.pages`); the UI renders and applies the text via
+       *  `apply-translations` — ICU rendering needs `Intl`, which Figma's
+       *  main-thread sandbox doesn't have. */
       languages?: string[];
-      /**
-       * Required when `mode === "languages"`. Map of language tag -> map of
-       * `${ns}|${key}` -> the key's raw translation + its `isPlural` flag
-       * (a per-KEY property, consistent across every language, so the main
-       * thread doesn't have to trust the copied node's possibly-stale local
-       * `isPlural`). The UI builds this from the Tolgee API; the main thread
-       * still does the ICU/param rendering per node (each node keeps its own
-       * plural sample / param values), same as the regular Pull flow.
-       */
-      translations?: Record<string, Record<string, { text: string; isPlural: boolean }>>;
       /**
        * Only set by CopyView's "Recreate copy" — `figma.currentPage` there is
        * the copy itself, not the page to clone from. Omitted for the normal

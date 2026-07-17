@@ -389,7 +389,6 @@ on("create-copy", async (msg) => {
           mode: "languages",
           correlationId: msg.correlationId,
           languages: msg.languages ?? [],
-          translations: msg.translations ?? {},
           sourcePageId: msg.sourcePageId,
         });
   send({
@@ -397,6 +396,7 @@ on("create-copy", async (msg) => {
     correlationId: msg.correlationId,
     ok: result.ok,
     createdPageIds: result.createdPageIds,
+    pages: result.pages,
     error: result.error,
   });
 });

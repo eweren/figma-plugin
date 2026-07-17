@@ -1,21 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TOLGEE_NODE_INFO, TOLGEE_PLUGIN_CONFIG_NAME } from "$shared/constants";
-import type { NodeInfo } from "$shared/types";
-import { checkCopyStaleness, removeExistingCopyPages, resolveCopyNodeText } from "../createCopy";
-
-function makeNodeInfo(overrides: Partial<NodeInfo> = {}): NodeInfo {
-  return {
-    id: "n",
-    name: "Layer",
-    characters: "",
-    translation: "",
-    isPlural: false,
-    key: "k",
-    ns: undefined,
-    connected: true,
-    ...overrides,
-  };
-}
+import { checkCopyStaleness, removeExistingCopyPages } from "../createCopy";
 
 type FakeTextNode = {
   type: "TEXT";
@@ -308,68 +293,7 @@ describe("checkCopyStaleness", () => {
   });
 });
 
-describe("resolveCopyNodeText", () => {
-  const PLURAL = "{count, plural, one {# apple} other {# apples}}";
-
-  it("renders a plural remote translation using the NODE's own sample count, not the raw ICU", () => {
-    const info = makeNodeInfo({ isPlural: true, pluralParamValue: "9" });
-    const result = resolveCopyNodeText(info, { text: PLURAL, isPlural: true }, "en");
-    expect(result).toBe("9 apples");
-  });
-
-  it("renders a parametrized remote translation using the node's own paramsValues", () => {
-    const info = makeNodeInfo({ paramsValues: { name: "Zuzana" } });
-    const result = resolveCopyNodeText(info, { text: "Hello {name}!", isPlural: false }, "en");
-    expect(result).toBe("Hello Zuzana!");
-  });
-
-  it("trusts the remote isPlural flag over the node's own (possibly stale) one", () => {
-    // Node's local `isPlural` says false, but the key really is a plural on
-    // the server — the remote flag must win so the plural sample is seeded.
-    const info = makeNodeInfo({ isPlural: false, pluralParamValue: "3" });
-    const result = resolveCopyNodeText(info, { text: PLURAL, isPlural: true }, "en");
-    expect(result).toBe("3 apples");
-  });
-
-  it("renders correctly even when BOTH isPlural flags say false but the ICU is a plural", () => {
-    // Real Tolgee data can disagree with itself: a key's own "isPlural"
-    // setting was never toggled on even though its translation was typed as
-    // ICU plural syntax. Neither flag can be trusted — only the ICU's own
-    // structure can, which is what renderParams now keys off.
-    const info = makeNodeInfo({ isPlural: false, pluralParamValue: "9" });
-    const result = resolveCopyNodeText(
-      info,
-      {
-        text: "{value, plural, one {J'ai # pomme} many {J'ai # pommes} other {J'ai # pommes}}",
-        isPlural: false,
-      },
-      "fr",
-    );
-    expect(result).toBe("J'ai 9 pommes");
-  });
-
-  it("falls back to the node's persisted translation when there's no remote match", () => {
-    const info = makeNodeInfo({ isPlural: true, pluralParamValue: "2", translation: PLURAL });
-    const result = resolveCopyNodeText(info, undefined, "en");
-    expect(result).toBe("2 apples");
-  });
-
-  it("returns null when there's neither a remote match nor a persisted translation", () => {
-    const info = makeNodeInfo({ translation: "" });
-    expect(resolveCopyNodeText(info, undefined, "en")).toBeNull();
-  });
-
-  it("keeps inline HTML tags in the rendered output for applyRichText to consume", () => {
-    const info = makeNodeInfo();
-    const result = resolveCopyNodeText(info, { text: "<b>Bold text</b>", isPlural: false }, "en");
-    expect(result).toBe("<b>Bold text</b>");
-  });
-
-  it("returns null on an unrenderable ICU instead of dumping the raw pattern", () => {
-    // Malformed ICU (unclosed brace) can't render — the copy must keep the
-    // node's cloned text rather than overwrite it with the raw pattern.
-    const info = makeNodeInfo();
-    const result = resolveCopyNodeText(info, { text: "Ahoj {name", isPlural: false }, "cs");
-    expect(result).toBeNull();
-  });
-});
+// NOTE: the per-node render logic (formerly `resolveCopyNodeText` here) moved
+// to the UI — `$ui/lib/logic/copyApply`'s `buildCopyUpdates` — because ICU
+// rendering needs `Intl`, which Figma's main-thread sandbox doesn't provide.
+// Its regression tests live in `src/ui/lib/logic/__tests__/copyApply.test.ts`.

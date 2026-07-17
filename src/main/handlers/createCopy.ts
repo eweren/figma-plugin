@@ -1,5 +1,4 @@
 import { TOLGEE_NODE_INFO, TOLGEE_PLUGIN_CONFIG_NAME } from "$shared/constants";
-import { renderIcuForNode } from "$shared/interpolate";
 import type { NodeInfo } from "$shared/types";
 
 import { send } from "$main/bus";
@@ -22,19 +21,31 @@ export type CreateCopyOptions =
       mode: "languages";
       correlationId: string;
       languages: string[];
-      /**
-       * Map of language tag -> map of `${ns}|${key}` -> the key's raw
-       * translation + its `isPlural` flag (a per-KEY Tolgee property, so it's
-       * trusted over the copied node's own possibly-stale `isPlural`). The UI
-       * is responsible for assembling this from the Tolgee API.
-       */
-      translations: Record<string, Record<string, { text: string; isPlural: boolean }>>;
       sourcePageId?: string;
     };
+
+/** One freshly cloned language page + its connected nodes, handed back to the
+ *  UI so IT can render + apply the translations (see `CreateCopyResult`). */
+export type CreatedCopyPage = {
+  pageId: string;
+  language: string;
+  nodes: NodeInfo[];
+};
 
 export type CreateCopyResult = {
   ok: boolean;
   createdPageIds: string[];
+  /**
+   * Languages mode only. This handler deliberately does NOT write translated
+   * text itself: ICU rendering (plurals, params) needs `Intl`, which doesn't
+   * exist in Figma's main-thread sandbox — every render of a `{...}` string
+   * silently failed here, leaving copies half in the source language. The UI
+   * renders these nodes exactly like the Download flow and writes them back
+   * via the ordinary `apply-translations` request, which also persists the
+   * raw `translation` into plugin data — so a fresh copy is by construction
+   * identical to clone + "Download all".
+   */
+  pages?: CreatedCopyPage[];
   error?: string;
 };
 
@@ -130,6 +141,7 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
     } else {
       // mode === "languages"
       const totalPages = options.languages.length;
+      const pages: CreatedCopyPage[] = [];
 
       for (let i = 0; i < totalPages; i++) {
         const lang = options.languages[i];
@@ -149,21 +161,18 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
           types: ["TEXT"],
           pluginData: { keys: [TOLGEE_NODE_INFO] },
         });
-        const translationsForLang = options.translations[lang] ?? {};
 
+        // No text is written here — see `CreateCopyResult.pages`: the UI
+        // renders + applies the translations, this side only collects the
+        // clone's connected nodes for it.
+        const nodes: NodeInfo[] = [];
         const total = textNodes.length;
         let processed = 0;
 
         for (const node of textNodes) {
           const info = getNodeInfo(node);
           if (info.connected && info.key) {
-            // Translations are keyed by `${ns}|${key}` on the UI side because
-            // the cloned node has a different `id` than the source node.
-            const lookupKey = `${info.ns ?? ""}|${info.key}`;
-            const resolved = resolveCopyNodeText(info, translationsForLang[lookupKey], lang);
-            if (resolved !== null) {
-              await writeTextSafely(node, resolved);
-            }
+            nodes.push(info);
           }
           processed++;
           if (processed % PROGRESS_INTERVAL === 0) {
@@ -173,15 +182,18 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
               correlationId: options.correlationId,
               current: overall,
               total: totalPages * 100,
-              phase: `writing-${lang}`,
+              phase: `scanning-${lang}`,
             });
             await yieldToEventLoop();
           }
         }
 
         markPageAsCopy(targetPage, sourcePage.id, lang);
+        pages.push({ pageId: targetPage.id, language: lang, nodes });
         if (switchedAwayFromCurrent) await figma.setCurrentPageAsync(targetPage);
       }
+
+      return { ok: true, createdPageIds, pages };
     }
 
     return { ok: true, createdPageIds };
@@ -248,33 +260,6 @@ export async function removeExistingCopyPages(
     page.remove();
   }
   return { switchedAwayFromCurrent };
-}
-
-/**
- * The text to write for one connected node in a language copy: the remote
- * translation for its key (falling back to the node's own persisted
- * `translation` on a miss, so the page never ends up empty), rendered
- * through THIS node's own plural/param samples — same as the regular Pull
- * flow — instead of writing the raw ICU pattern verbatim. `isPlural` comes
- * from the remote key when available (a per-KEY Tolgee property) since it's
- * more trustworthy than the copied node's own possibly-stale flag.
- *
- * Returns `null` when there's nothing to write (no remote match and no
- * persisted translation) — the caller leaves the node as cloned.
- */
-export function resolveCopyNodeText(
-  info: NodeInfo,
-  remote: { text: string; isPlural: boolean } | undefined,
-  language: string,
-): string | null {
-  const rawText = remote?.text ?? info.translation;
-  if (!rawText) return null;
-  const isPlural = remote?.isPlural ?? info.isPlural;
-  const out = renderIcuForNode(rawText, { ...info, isPlural }, language);
-  // Never write raw ICU onto a copy: on a render failure keep the cloned
-  // text instead (same spirit as Pull's formatNodeText keeping the node's
-  // current characters when the ICU won't render).
-  return out.error ? null : out.text;
 }
 
 /**
@@ -361,8 +346,8 @@ export async function checkCopyStaleness(copyPage: PageNode): Promise<CopyStalen
   // `removed` = connected strings the source lost (the copy still shows
   // them). Per-key maxes, so a surplus on one key never cancels a genuine
   // gap on another.
-  const sourceCounts = collectConnectedKeyCounts(sourcePage);
-  const copyCounts = collectConnectedKeyCounts(copyPage);
+  const sourceCounts = await collectConnectedKeyCounts(sourcePage);
+  const copyCounts = await collectConnectedKeyCounts(copyPage);
   let missingCount = 0;
   for (const [key, srcCount] of sourceCounts) {
     missingCount += Math.max(0, srcCount - (copyCounts.get(key) ?? 0));
@@ -383,17 +368,25 @@ export async function checkCopyStaleness(copyPage: PageNode): Promise<CopyStalen
  * copy's clone of that node predates the connection, so Download will never
  * touch it — the copy is stale all the same.
  */
-function collectConnectedKeyCounts(page: PageNode): Map<string, number> {
+async function collectConnectedKeyCounts(page: PageNode): Promise<Map<string, number>> {
   const textNodes = page.findAllWithCriteria({
     types: ["TEXT"],
     pluginData: { keys: [TOLGEE_NODE_INFO] },
   });
   const counts = new Map<string, number>();
+  let scanned = 0;
   for (const node of textNodes) {
     const info = getNodeInfo(node);
     if (info.connected && info.key) {
       const key = `${info.ns ?? ""}|${info.key}`;
       counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    // The staleness check runs TWO of these scans back-to-back on every
+    // CopyView open/page switch — unbroken, that's a visible canvas freeze
+    // on a large page (`getNodeInfo` is ~5 bridge reads per node).
+    scanned++;
+    if (scanned % 100 === 0) {
+      await yieldToEventLoop();
     }
   }
   return counts;

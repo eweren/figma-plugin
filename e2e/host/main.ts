@@ -199,11 +199,13 @@ window.addEventListener("message", (event) => {
       return;
     }
     case "create-copy": {
+      // No pages → the UI's apply phase is a no-op (mirrors an empty page).
       send({
         type: "create-copy-result",
         correlationId: msg.correlationId,
         ok: true,
         createdPageIds: [],
+        pages: [],
       });
       return;
     }

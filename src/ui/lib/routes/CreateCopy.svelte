@@ -8,8 +8,13 @@
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
   import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
+  import { applyCopyPages, type CopyTranslations } from "$ui/lib/logic/copyApply";
+  import type { MainToUi } from "$shared/messages";
 
   type Mode = "keys" | "languages";
+  type CreatedPages = NonNullable<
+    Extract<MainToUi, { type: "create-copy-result" }>["pages"]
+  >;
   type Stage = "idle" | "fetching" | "creating" | "done" | "error";
   type LanguageModel = components["schemas"]["LanguageModel"];
 
@@ -77,20 +82,21 @@
   });
 
   /**
-   * Build the per-language translations map the main thread expects. Keyed by
-   * `${ns}|${key}` so the handler can match cloned nodes (which have fresh
-   * IDs) back to the persisted Tolgee key + namespace. Carries `isPlural`
-   * alongside the raw text — a per-KEY Tolgee property — so the main thread
-   * can render ICU/plurals per node without trusting the copied node's own
-   * (possibly stale) `isPlural`.
+   * Build the per-language translations map. Keyed by `${ns}|${key}` so each
+   * cloned node (which has a fresh ID) can be matched back to its Tolgee key +
+   * namespace. Carries `isPlural` alongside the raw text — a per-KEY Tolgee
+   * property, trusted over the copied node's own (possibly stale) flag. The
+   * map stays HERE in the UI: the main thread only clones and returns the
+   * clones' connected nodes; this side renders + applies the text (ICU
+   * rendering needs `Intl`, which the main-thread sandbox doesn't have).
    */
   function buildTranslationsMap(
     keys: Awaited<ReturnType<typeof fetchAllTranslations>>,
     languages: string[],
-  ): Record<string, Record<string, { text: string; isPlural: boolean }>> {
-    const map: Record<string, Record<string, { text: string; isPlural: boolean }>> = {};
+  ): Record<string, CopyTranslations> {
+    const map: Record<string, CopyTranslations> = {};
     for (const lang of languages) {
-      const perLang: Record<string, { text: string; isPlural: boolean }> = {};
+      const perLang: CopyTranslations = {};
       for (const k of keys) {
         const idx = `${k.keyNamespace ?? ""}|${k.keyName}`;
         const text = k.translations[lang]?.text;
@@ -121,8 +127,7 @@
     correlationId: string;
     mode: Mode;
     languages?: string[];
-    translations?: Record<string, Record<string, { text: string; isPlural: boolean }>>;
-  }): Promise<{ ok: boolean; error?: string }> {
+  }): Promise<{ ok: boolean; pages?: CreatedPages; error?: string }> {
     return new Promise((resolve) => {
       const cleanup = (): void => {
         offProgress();
@@ -144,14 +149,13 @@
       const offResult = on("create-copy-result", (m) => {
         if (m.correlationId !== payload.correlationId) return;
         cleanup();
-        resolve({ ok: m.ok, error: m.error });
+        resolve({ ok: m.ok, pages: m.pages, error: m.error });
       });
       send({
         type: "create-copy",
         correlationId: payload.correlationId,
         mode: payload.mode,
         languages: payload.languages,
-        translations: payload.translations,
       });
     });
   }
@@ -211,16 +215,28 @@
     progress = {
       current: 0,
       total: selectedLangs.length * 100,
-      phase: "writing",
+      phase: "cloning",
     };
 
     const result = await dispatchCreate({
       correlationId: nextCorrelationId(),
       mode: "languages",
       languages: selectedLangs,
-      translations: translationsMap,
     });
-    if (result.ok) {
+    if (!result.ok) {
+      stage = "error";
+      errorMsg = result.error ?? "Unknown error";
+      return;
+    }
+
+    // The clones exist but hold the SOURCE page's text — render + write the
+    // translations from here (the main thread can't: no `Intl` in its
+    // sandbox). Same render + apply pipeline as the Download flow.
+    progress = { current: 0, total: 0, phase: "writing" };
+    const applied = await applyCopyPages(result.pages ?? [], translationsMap, (done, total) => {
+      progress = { current: done, total, phase: "writing" };
+    });
+    if (applied.ok) {
       stage = "done";
       send({
         type: "notify",
@@ -229,7 +245,7 @@
       appState.navigate({ name: "index" });
     } else {
       stage = "error";
-      errorMsg = result.error ?? "Unknown error";
+      errorMsg = applied.error ?? "Unknown error";
     }
   }
 
