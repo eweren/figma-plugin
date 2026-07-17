@@ -8,11 +8,35 @@ describe("formatIcuMessage", () => {
     expect(out.error).toBeNull();
   });
 
-  it("returns the raw message when params is an empty object (fast path)", () => {
-    // Even with ICU syntax in the source, an empty params bag short-circuits
-    // so the caller never pays the parser cost.
+  it("still formats a message containing braces even with empty params (H10 fast-path fix)", () => {
+    // A message with real, unfilled placeholders and no params can't be
+    // formatted — this is a genuine caller error, not the "plain ICU-escaped
+    // text" case the guard is for. It must fail LOUD (error populated), not
+    // silently short-circuit like the old fast path did.
     const out = formatIcuMessage("{name} likes {fruit}", {}, "en");
     expect(out.result).toBe("{name} likes {fruit}");
+    expect(out.error).not.toBeNull();
+  });
+
+  it("unescapes Tolgee's own ICU escaping even with no params (H10 regression)", () => {
+    // Tolgee escapes literal braces/apostrophes as `'{'`/`'}'`/`''` in the
+    // stored source. The old fast path (short-circuit on empty params)
+    // returned this escaped source untouched, writing it verbatim to the
+    // canvas instead of the intended literal text.
+    const out = formatIcuMessage("It''s a '{'test'}'", {}, "en");
+    expect(out.result).toBe("It's a {test}");
+    expect(out.error).toBeNull();
+  });
+
+  it("returns plain text with a brace unchanged in effect after unescaping", () => {
+    const out = formatIcuMessage("100 '{'", {}, "en");
+    expect(out.result).toBe("100 {");
+    expect(out.error).toBeNull();
+  });
+
+  it("skips the parser entirely for text with no apostrophe or brace (guard fast path)", () => {
+    const out = formatIcuMessage("Hello world", {}, "en");
+    expect(out.result).toBe("Hello world");
     expect(out.error).toBeNull();
   });
 
