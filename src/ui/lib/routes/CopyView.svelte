@@ -40,9 +40,11 @@
     auth.value.branchingEnabled ? (appState.value.config?.branch ?? "") : "",
   );
 
-  type Stage = "idle" | "pulling" | "applying" | "error";
+  type Stage = "idle" | "pulling" | "applying" | "error" | "recreating";
   let stage = $state<Stage>("idle");
   let errorMessage = $state<string | null>(null);
+  // Which action landed in "error" — so "Try again" retries the right one.
+  let lastFailedAction = $state<"download" | "recreate">("download");
   let fetchProgress = $state<{ loaded: number; total: number | null }>({
     loaded: 0,
     total: null,
@@ -53,6 +55,18 @@
   // Not `$state` — plain plumbing handle, mirrors Pull.svelte's watchdog.
   let applyWatchdog: RequestWatchdog | null = null;
   const APPLY_TRANSLATIONS_TIMEOUT_MS = 5 * 60_000;
+
+  // Connected keys on the SOURCE page that this copy doesn't have — the
+  // source gained new connections after the copy was made, and Download has
+  // no way to discover them (it only refreshes text for keys the copy
+  // already tracks). `null` until checked, or when there's nothing recorded
+  // to compare against (older copy, or one made by production).
+  let staleness = $state<{ missingCount: number } | null>(null);
+  let stalenessCorrelationId: string | null = null;
+  let recreateProgress = $state<{ current: number; total: number } | null>(null);
+  let recreateCorrelationId = $state<string | null>(null);
+  let recreateWatchdog: RequestWatchdog | null = null;
+  const RECREATE_TIMEOUT_MS = 5 * 60_000;
 
   /** "Download all" with nothing selected, "Download" over the current
    *  selection — mirrors production's Pull/Pull all split, just renamed to
@@ -93,6 +107,7 @@
   async function pull(): Promise<void> {
     const lang = language;
     if (!lang) return;
+    lastFailedAction = "download";
     const client = auth.value.client;
     if (!client) {
       stage = "error";
@@ -194,6 +209,122 @@
     });
     return off;
   });
+
+  // Re-checks whenever the current page changes (reading `pageName` gives
+  // Svelte a dependency to track) — this component stays mounted across
+  // page switches, so a one-shot effect would only ever check the FIRST
+  // copy page the user opened.
+  $effect(() => {
+    void appState.value.pageName;
+    const correlationId = nextCorrelationId();
+    stalenessCorrelationId = correlationId;
+    staleness = null;
+    send({ type: "request-copy-staleness", correlationId });
+  });
+
+  $effect(() => {
+    const off = on("copy-staleness-result", (msg) => {
+      if (msg.correlationId !== stalenessCorrelationId) return;
+      staleness = msg.ok && msg.missingCount ? { missingCount: msg.missingCount } : null;
+    });
+    return off;
+  });
+
+  /**
+   * Re-clones this copy from its recorded source page (same underlying
+   * `create-copy` mode the "Create page" flow already uses) so it picks up
+   * any keys connected on the original since this copy was made — Download
+   * alone can never discover those, it only refreshes text for keys the copy
+   * already tracks.
+   */
+  async function recreateCopy(): Promise<void> {
+    const sourcePageId = appState.value.config?.sourcePageId;
+    if (!sourcePageId) return;
+
+    lastFailedAction = "recreate";
+    stage = "recreating";
+    errorMessage = null;
+    recreateProgress = null;
+    const correlationId = nextCorrelationId();
+    recreateCorrelationId = correlationId;
+    recreateWatchdog?.clear();
+    recreateWatchdog = createIdleTimeout(RECREATE_TIMEOUT_MS, () => {
+      stage = "error";
+      errorMessage = "Timed out waiting for the copy to be recreated.";
+      recreateProgress = null;
+      recreateCorrelationId = null;
+      recreateWatchdog = null;
+    });
+
+    try {
+      if (!language) {
+        send({ type: "create-copy", correlationId, mode: "keys", sourcePageId });
+        return;
+      }
+      const client = auth.value.client;
+      if (!client) {
+        stage = "error";
+        errorMessage = "Not connected to Tolgee.";
+        return;
+      }
+      const keys = await fetchAllTranslations(client, {
+        languages: [language],
+        namespaces: undefined,
+        branch: branch || undefined,
+      });
+      const translationsForLang: Record<string, { text: string; isPlural: boolean }> = {};
+      for (const k of keys) {
+        const idx = `${k.keyNamespace ?? ""}|${k.keyName}`;
+        const text = k.translations[language]?.text;
+        if (text) translationsForLang[idx] = { text, isPlural: k.isPlural };
+      }
+      send({
+        type: "create-copy",
+        correlationId,
+        mode: "languages",
+        languages: [language],
+        translations: { [language]: translationsForLang },
+        sourcePageId,
+      });
+    } catch (err) {
+      stage = "error";
+      errorMessage = err instanceof Error ? err.message : String(err);
+      recreateWatchdog?.clear();
+      recreateWatchdog = null;
+    }
+  }
+
+  $effect(() => {
+    const off = on("create-copy-progress", (msg) => {
+      if (msg.correlationId !== recreateCorrelationId) return;
+      recreateWatchdog?.touch();
+      recreateProgress = { current: msg.current, total: msg.total };
+    });
+    return off;
+  });
+
+  $effect(() => {
+    const off = on("create-copy-result", (msg) => {
+      if (msg.correlationId !== recreateCorrelationId) return;
+      recreateWatchdog?.clear();
+      recreateWatchdog = null;
+      recreateProgress = null;
+      recreateCorrelationId = null;
+      if (msg.ok) {
+        stage = "idle";
+        staleness = null;
+        send({ type: "notify", text: "Copy recreated." });
+        // The main thread may have switched `figma.currentPage` to the fresh
+        // replacement (this page can't delete itself while active) —
+        // App.svelte's existing `currentpagechange` listener re-syncs
+        // config/selection for it automatically.
+      } else {
+        stage = "error";
+        errorMessage = msg.error ?? "Failed to recreate the copy.";
+      }
+    });
+    return off;
+  });
 </script>
 
 <div class="flex h-full flex-col">
@@ -206,7 +337,7 @@
     {#if language}
       <Button
         size="sm"
-        disabled={stage === "pulling" || stage === "applying"}
+        disabled={stage === "pulling" || stage === "applying" || stage === "recreating"}
         onclick={pull}
       >
         {downloadButtonLabel}
@@ -216,6 +347,27 @@
 
   <Tooltip.Provider delayDuration={200}>
     <div class="flex flex-1 flex-col overflow-auto p-3 space-y-3">
+      {#if staleness && stage !== "recreating"}
+        <!-- The source page gained connections since this copy was made —
+             Download can't discover those on its own (it only refreshes text
+             for keys the copy already tracks), so recreating is the only fix. -->
+        <div class="space-y-1.5">
+          <Message variant="info">
+            {staleness.missingCount}
+            {staleness.missingCount === 1 ? "key was" : "keys were"} connected on the original page
+            since this copy was made. Download only refreshes existing keys.
+          </Message>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={stage === "pulling" || stage === "applying"}
+            onclick={recreateCopy}
+          >
+            Recreate copy
+          </Button>
+        </div>
+      {/if}
+
       {#if stage === "pulling"}
         {#if hasUserSelection}
           <ProgressBar
@@ -242,9 +394,20 @@
           total={applyProgress?.total ?? null}
           label="Applying translations"
         />
+      {:else if stage === "recreating"}
+        <ProgressBar
+          loaded={recreateProgress?.current ?? 0}
+          total={recreateProgress?.total ?? null}
+          label="Recreating copy…"
+        />
       {:else if stage === "error"}
         <Message variant="error">{errorMessage ?? "Something went wrong."}</Message>
-        <Button variant="secondary" onclick={pull}>Try again</Button>
+        <Button
+          variant="secondary"
+          onclick={lastFailedAction === "recreate" ? recreateCopy : pull}
+        >
+          Try again
+        </Button>
       {:else if topStatusText}
         <p class="text-xs text-text-secondary">{topStatusText}</p>
       {/if}

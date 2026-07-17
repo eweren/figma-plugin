@@ -1,5 +1,5 @@
 import { attachBus, on, send } from "$main/bus";
-import { createCopy } from "$main/handlers/createCopy";
+import { checkCopyStaleness, createCopy } from "$main/handlers/createCopy";
 import { applyTranslations } from "$main/nodes/selection";
 import { cleanUpHighlights, highlightNode } from "$main/nodes/highlight";
 import { buildConnectedNodesInfo, scanConnectedNodes } from "$main/nodes/scan";
@@ -368,18 +368,34 @@ on("apply-translations", async (msg) => {
 on("create-copy", async (msg) => {
   const result =
     msg.mode === "keys"
-      ? await createCopy({ mode: "keys", correlationId: msg.correlationId })
+      ? await createCopy({
+          mode: "keys",
+          correlationId: msg.correlationId,
+          sourcePageId: msg.sourcePageId,
+        })
       : await createCopy({
           mode: "languages",
           correlationId: msg.correlationId,
           languages: msg.languages ?? [],
           translations: msg.translations ?? {},
+          sourcePageId: msg.sourcePageId,
         });
   send({
     type: "create-copy-result",
     correlationId: msg.correlationId,
     ok: result.ok,
     createdPageIds: result.createdPageIds,
+    error: result.error,
+  });
+});
+
+on("request-copy-staleness", async (msg) => {
+  const result = await checkCopyStaleness(figma.currentPage);
+  send({
+    type: "copy-staleness-result",
+    correlationId: msg.correlationId,
+    ok: result.ok,
+    missingCount: result.missingCount,
     error: result.error,
   });
 });

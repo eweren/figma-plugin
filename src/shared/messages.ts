@@ -159,6 +159,14 @@ export type MainToUi =
       error?: string;
     }
   | {
+      type: "copy-staleness-result";
+      correlationId: string;
+      ok: boolean;
+      /** Connected keys on the source page this copy doesn't have yet. */
+      missingCount?: number;
+      error?: string;
+    }
+  | {
       type: "command";
       command: "open" | "open-on-node";
     };
@@ -245,7 +253,14 @@ export type UiToMain =
        * plural sample / param values), same as the regular Pull flow.
        */
       translations?: Record<string, Record<string, { text: string; isPlural: boolean }>>;
-    };
+      /**
+       * Only set by CopyView's "Recreate copy" — `figma.currentPage` there is
+       * the copy itself, not the page to clone from. Omitted for the normal
+       * Index-invoked "Create page" flow (defaults to `figma.currentPage`).
+       */
+      sourcePageId?: string;
+    }
+  | { type: "request-copy-staleness"; correlationId: string };
 
 /**
  * Helper type to extract the message variant that carries a `correlationId`.

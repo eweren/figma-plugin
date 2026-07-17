@@ -10,9 +10,14 @@ import { applyRichText } from "$main/text/applyRichText";
  * Options for the `createCopy` handler. The two modes have different payloads
  * but share a `correlationId` so the UI can pair its `create-copy` request
  * with the `create-copy-result` it receives back.
+ *
+ * `sourcePageId` is only needed for "Recreate copy" (triggered FROM inside an
+ * existing copy — `figma.currentPage` is the copy itself there, not the page
+ * to clone from). Omitted for the normal Index-invoked "Create page" flow,
+ * which defaults to `figma.currentPage` exactly as before.
  */
 export type CreateCopyOptions =
-  | { mode: "keys"; correlationId: string }
+  | { mode: "keys"; correlationId: string; sourcePageId?: string }
   | {
       mode: "languages";
       correlationId: string;
@@ -24,6 +29,7 @@ export type CreateCopyOptions =
        * is responsible for assembling this from the Tolgee API.
        */
       translations: Record<string, Record<string, { text: string; isPlural: boolean }>>;
+      sourcePageId?: string;
     };
 
 export type CreateCopyResult = {
@@ -60,10 +66,19 @@ const PROGRESS_INTERVAL = 10;
  * caller's `correlationId`.
  */
 export async function createCopy(options: CreateCopyOptions): Promise<CreateCopyResult> {
-  const sourcePage = figma.currentPage;
+  const sourcePage = await resolveSourcePage(options.sourcePageId);
+  if (!sourcePage) {
+    return { ok: false, createdPageIds: [], error: "The original page no longer exists." };
+  }
   await sourcePage.loadAsync();
 
   const createdPageIds: string[] = [];
+  // Set when a removed copy turned out to be `figma.currentPage` itself (the
+  // "Recreate copy" flow, triggered from inside the copy being replaced) —
+  // Figma forbids deleting the active page, so we had to step onto
+  // `sourcePage` first. Land back on the fresh replacement afterwards
+  // instead of stranding the user on the source page.
+  let switchedAwayFromCurrent = false;
 
   try {
     if (options.mode === "keys") {
@@ -73,7 +88,8 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
       // capitalized "Keys") would never find/replace a copy the production
       // plugin created, and vice versa, letting copies pile up instead.
       const targetName = `${sourcePage.name} - keys`;
-      await removeExistingCopyPages(targetName);
+      switchedAwayFromCurrent ||= (await removeExistingCopyPages(targetName, sourcePage))
+        .switchedAwayFromCurrent;
       const targetPage = sourcePage.clone();
       targetPage.name = targetName;
       figma.root.appendChild(targetPage);
@@ -109,7 +125,8 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
         }
       }
 
-      markPageAsCopy(targetPage);
+      markPageAsCopy(targetPage, sourcePage.id);
+      if (switchedAwayFromCurrent) figma.currentPage = targetPage;
     } else {
       // mode === "languages"
       const totalPages = options.languages.length;
@@ -120,7 +137,8 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
 
         // Matches production's naming exactly — see the "keys" branch above.
         const targetName = `${sourcePage.name} - ${lang}`;
-        await removeExistingCopyPages(targetName);
+        switchedAwayFromCurrent ||= (await removeExistingCopyPages(targetName, sourcePage))
+          .switchedAwayFromCurrent;
         const targetPage = sourcePage.clone();
         targetPage.name = targetName;
         figma.root.appendChild(targetPage);
@@ -161,7 +179,8 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
           }
         }
 
-        markPageAsCopy(targetPage, lang);
+        markPageAsCopy(targetPage, sourcePage.id, lang);
+        if (switchedAwayFromCurrent) figma.currentPage = targetPage;
       }
     }
 
@@ -170,6 +189,15 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
     const error = err instanceof Error ? err.message : String(err);
     return { ok: false, createdPageIds, error };
   }
+}
+
+/** `sourcePageId` set (the "Recreate copy" flow) resolves that specific page;
+ *  otherwise defaults to `figma.currentPage` — the normal Index-invoked flow,
+ *  unchanged from before this existed. */
+async function resolveSourcePage(sourcePageId?: string): Promise<PageNode | null> {
+  if (!sourcePageId) return figma.currentPage;
+  const node = await figma.getNodeByIdAsync(sourcePageId);
+  return node?.type === "PAGE" ? node : null;
 }
 
 /** Whether a page is a previously-generated Tolgee copy (marked `pageCopy`). */
@@ -189,13 +217,35 @@ function isCopyPage(page: PageNode): boolean {
  * `pageCopy: true` are removed — a user's own same-named page is left alone
  * (matches the original plugin). Only pages whose name matches are loaded, so
  * this doesn't force-load the whole document under dynamic-page access.
+ *
+ * Figma forbids removing the CURRENTLY ACTIVE page — which happens when
+ * "Recreate copy" is run from inside the very copy being replaced. When that's
+ * the page about to be removed, we step onto `preferredFallback` (the source
+ * page, already loaded by the caller) first and report it via
+ * `switchedAwayFromCurrent` so the caller can land on the fresh replacement
+ * once it exists, instead of stranding the user on the fallback.
  */
-export async function removeExistingCopyPages(name: string): Promise<void> {
+export async function removeExistingCopyPages(
+  name: string,
+  preferredFallback?: PageNode,
+): Promise<{ switchedAwayFromCurrent: boolean }> {
+  let switchedAwayFromCurrent = false;
   for (const page of figma.root.children) {
     if (page.type !== "PAGE" || page.name !== name) continue;
     await page.loadAsync();
-    if (isCopyPage(page)) page.remove();
+    if (!isCopyPage(page)) continue;
+    if (page === figma.currentPage) {
+      const fallback =
+        preferredFallback ?? figma.root.children.find((p) => p !== page && p.type === "PAGE");
+      if (fallback) {
+        await fallback.loadAsync();
+        figma.currentPage = fallback as PageNode;
+        switchedAwayFromCurrent = true;
+      }
+    }
+    page.remove();
   }
+  return { switchedAwayFromCurrent };
 }
 
 /**
@@ -224,12 +274,14 @@ export function resolveCopyNodeText(
 /**
  * Write plugin data onto a freshly cloned page so the UI shows the read-only
  * `CopyView`. Skips `writeConfig` so we don't leak the marker into the
- * global/document scopes.
+ * global/document scopes. `sourcePageId` lets a later `checkCopyStaleness`
+ * find the original page again to compare connected keys.
  */
-function markPageAsCopy(page: PageNode, language?: string): void {
+function markPageAsCopy(page: PageNode, sourcePageId: string, language?: string): void {
   const payload: Record<string, unknown> = {
     pageCopy: true,
     pageInfo: true,
+    sourcePageId,
   };
   if (language) {
     payload.language = language;
@@ -256,4 +308,64 @@ async function writeTextSafely(
 
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+export type CopyStalenessResult = {
+  ok: boolean;
+  /** Connected keys on the source page that this copy doesn't have yet. */
+  missingCount?: number;
+  error?: string;
+};
+
+/**
+ * Compares `copyPage`'s connected keys against its recorded SOURCE page's
+ * current connected keys, so `CopyView` can warn when the original gained new
+ * connections since the copy was made. Download only refreshes text for keys
+ * the copy already tracks — it has no way to discover new ones on its own,
+ * so a growing gap here would otherwise go unnoticed indefinitely.
+ *
+ * Fails gracefully (an explanatory `error`, not a throw) whenever the
+ * comparison isn't possible: no `sourcePageId` recorded (a copy from before
+ * this existed, or from production) or the source page was since deleted.
+ */
+export async function checkCopyStaleness(copyPage: PageNode): Promise<CopyStalenessResult> {
+  const raw = copyPage.getPluginData(TOLGEE_PLUGIN_CONFIG_NAME);
+  let sourcePageId: string | undefined;
+  try {
+    sourcePageId = raw ? (JSON.parse(raw) as { sourcePageId?: string }).sourcePageId : undefined;
+  } catch {
+    return { ok: false, error: "Could not read this copy's plugin data." };
+  }
+  if (!sourcePageId) {
+    return { ok: false, error: "This copy predates staleness tracking." };
+  }
+
+  const sourcePage = await figma.getNodeByIdAsync(sourcePageId);
+  if (!sourcePage || sourcePage.type !== "PAGE") {
+    return { ok: false, error: "The original page no longer exists." };
+  }
+  await sourcePage.loadAsync();
+  await copyPage.loadAsync();
+
+  const sourceKeys = collectConnectedKeySet(sourcePage);
+  const copyKeys = collectConnectedKeySet(copyPage);
+  let missingCount = 0;
+  for (const key of sourceKeys) {
+    if (!copyKeys.has(key)) missingCount++;
+  }
+  return { ok: true, missingCount };
+}
+
+/** Every `${ns}|${key}` pair connected on `page`, for the staleness diff. */
+function collectConnectedKeySet(page: PageNode): Set<string> {
+  const textNodes = page.findAllWithCriteria({
+    types: ["TEXT"],
+    pluginData: { keys: [TOLGEE_NODE_INFO] },
+  });
+  const set = new Set<string>();
+  for (const node of textNodes) {
+    const info = getNodeInfo(node);
+    if (info.connected && info.key) set.add(`${info.ns ?? ""}|${info.key}`);
+  }
+  return set;
 }

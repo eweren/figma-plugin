@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TOLGEE_PLUGIN_CONFIG_NAME } from "$shared/constants";
+import { TOLGEE_NODE_INFO, TOLGEE_PLUGIN_CONFIG_NAME } from "$shared/constants";
 import type { NodeInfo } from "$shared/types";
-import { removeExistingCopyPages, resolveCopyNodeText } from "../createCopy";
+import { checkCopyStaleness, removeExistingCopyPages, resolveCopyNodeText } from "../createCopy";
 
 function makeNodeInfo(overrides: Partial<NodeInfo> = {}): NodeInfo {
   return {
@@ -17,27 +17,73 @@ function makeNodeInfo(overrides: Partial<NodeInfo> = {}): NodeInfo {
   };
 }
 
-type FakePage = {
-  type: "PAGE";
+type FakeTextNode = {
+  type: "TEXT";
+  id: string;
   name: string;
-  loadAsync: () => Promise<void>;
+  characters: string;
+  visible: boolean;
   getPluginData: (key: string) => string;
-  remove: () => void;
 };
 
-function page(name: string, pageData?: Record<string, unknown>): FakePage {
-  const raw = pageData ? JSON.stringify(pageData) : "";
+let nextNodeId = 0;
+
+function textNode(info: { key?: string; ns?: string; connected?: boolean } = {}): FakeTextNode {
+  nextNodeId++;
+  const data = JSON.stringify({
+    key: info.key ?? "",
+    ns: info.ns,
+    connected: info.connected ?? true,
+  });
   return {
-    type: "PAGE",
-    name,
-    loadAsync: vi.fn(async () => {}),
-    getPluginData: (key: string) => (key === TOLGEE_PLUGIN_CONFIG_NAME ? raw : ""),
-    remove: vi.fn(),
+    type: "TEXT",
+    id: `node-${nextNodeId}`,
+    name: "Layer",
+    characters: "",
+    visible: true,
+    getPluginData: (k: string) => (k === TOLGEE_NODE_INFO ? data : ""),
   };
 }
 
-function setPages(pages: FakePage[]) {
-  (globalThis as unknown as { figma: unknown }).figma = { root: { children: pages } };
+type FakePage = {
+  type: "PAGE";
+  id: string;
+  name: string;
+  loadAsync: () => Promise<void>;
+  getPluginData: (key: string) => string;
+  setPluginData: (key: string, value: string) => void;
+  remove: () => void;
+  findAllWithCriteria: () => FakeTextNode[];
+};
+
+function page(
+  name: string,
+  pageData?: Record<string, unknown>,
+  opts: { id?: string; textNodes?: FakeTextNode[] } = {},
+): FakePage {
+  let raw = pageData ? JSON.stringify(pageData) : "";
+  const textNodes = opts.textNodes ?? [];
+  return {
+    type: "PAGE",
+    id: opts.id ?? name,
+    name,
+    loadAsync: vi.fn(async () => {}),
+    getPluginData: (key: string) => (key === TOLGEE_PLUGIN_CONFIG_NAME ? raw : ""),
+    setPluginData: (key: string, value: string) => {
+      if (key === TOLGEE_PLUGIN_CONFIG_NAME) raw = value;
+    },
+    remove: vi.fn(),
+    findAllWithCriteria: () => textNodes,
+  };
+}
+
+function setPages(pages: FakePage[], currentPage?: FakePage) {
+  (globalThis as unknown as { figma: unknown }).figma = {
+    root: { children: pages },
+    currentPage: currentPage ?? pages[0],
+    getNodeByIdAsync: async (id: string) => pages.find((p) => p.id === id) ?? null,
+    mixed: Symbol("mixed"),
+  };
 }
 
 afterEach(() => {
@@ -72,6 +118,114 @@ describe("removeExistingCopyPages", () => {
     expect(otherCopy.remove).not.toHaveBeenCalled();
     // Non-matching pages aren't even loaded.
     expect(otherCopy.loadAsync).not.toHaveBeenCalled();
+  });
+
+  describe("when the page being removed is the currently active one", () => {
+    it("steps onto the preferred fallback first, then removes it (and reports it)", async () => {
+      const source = page("Home", undefined, { id: "src" });
+      const activeCopy = page("Home — en", { pageCopy: true }, { id: "copy" });
+      setPages([source, activeCopy], activeCopy);
+
+      const result = await removeExistingCopyPages("Home — en", source as never);
+
+      expect(result.switchedAwayFromCurrent).toBe(true);
+      expect(
+        (globalThis as unknown as { figma: { currentPage: FakePage } }).figma.currentPage,
+      ).toBe(source);
+      expect(activeCopy.remove).toHaveBeenCalledTimes(1);
+    });
+
+    it("doesn't touch the current page when the copy being removed isn't it", async () => {
+      const source = page("Home", undefined, { id: "src" });
+      const oldCopy = page("Home — en", { pageCopy: true }, { id: "copy" });
+      setPages([source, oldCopy], source);
+
+      const result = await removeExistingCopyPages("Home — en", source as never);
+
+      expect(result.switchedAwayFromCurrent).toBe(false);
+      expect(
+        (globalThis as unknown as { figma: { currentPage: FakePage } }).figma.currentPage,
+      ).toBe(source);
+      expect(oldCopy.remove).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+describe("checkCopyStaleness", () => {
+  it("reports 0 missing when the copy already has every key the source has", async () => {
+    const source = page("Home", undefined, {
+      id: "src",
+      textNodes: [textNode({ key: "a" }), textNode({ key: "b" })],
+    });
+    const copyPage = page(
+      "Home — en",
+      { pageCopy: true, sourcePageId: "src", language: "en" },
+      { id: "copy", textNodes: [textNode({ key: "a" }), textNode({ key: "b" })] },
+    );
+    setPages([source, copyPage], copyPage);
+
+    await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
+      ok: true,
+      missingCount: 0,
+    });
+  });
+
+  it("counts source keys the copy doesn't have yet", async () => {
+    const source = page("Home", undefined, {
+      id: "src",
+      textNodes: [textNode({ key: "a" }), textNode({ key: "b" }), textNode({ key: "c" })],
+    });
+    const copyPage = page(
+      "Home — en",
+      { pageCopy: true, sourcePageId: "src", language: "en" },
+      { id: "copy", textNodes: [textNode({ key: "a" })] },
+    );
+    setPages([source, copyPage], copyPage);
+
+    await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
+      ok: true,
+      missingCount: 2,
+    });
+  });
+
+  it("ignores nodes that aren't actually connected on either side", async () => {
+    const source = page("Home", undefined, {
+      id: "src",
+      textNodes: [textNode({ key: "a" }), textNode({ key: "unconnected", connected: false })],
+    });
+    const copyPage = page(
+      "Home — en",
+      { pageCopy: true, sourcePageId: "src", language: "en" },
+      { id: "copy", textNodes: [textNode({ key: "a" })] },
+    );
+    setPages([source, copyPage], copyPage);
+
+    await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
+      ok: true,
+      missingCount: 0,
+    });
+  });
+
+  it("fails gracefully when the copy has no sourcePageId recorded (older copy / production)", async () => {
+    const copyPage = page("Home — en", { pageCopy: true }, { id: "copy" });
+    setPages([copyPage], copyPage);
+
+    const result = await checkCopyStaleness(copyPage as never);
+    expect(result.ok).toBe(false);
+    expect(result.error).toBeTruthy();
+  });
+
+  it("fails gracefully when the recorded source page no longer exists", async () => {
+    const copyPage = page(
+      "Home — en",
+      { pageCopy: true, sourcePageId: "gone" },
+      { id: "copy" },
+    );
+    setPages([copyPage], copyPage);
+
+    const result = await checkCopyStaleness(copyPage as never);
+    expect(result.ok).toBe(false);
+    expect(result.error).toBeTruthy();
   });
 });
 

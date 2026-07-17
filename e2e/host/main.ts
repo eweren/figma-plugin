@@ -207,6 +207,17 @@ window.addEventListener("message", (event) => {
       });
       return;
     }
+    case "request-copy-staleness": {
+      // No staleness by default — power-tests can push a different result
+      // via `window.__e2e.send(...)` if a spec needs to exercise the banner.
+      send({
+        type: "copy-staleness-result",
+        correlationId: msg.correlationId,
+        ok: true,
+        missingCount: 0,
+      });
+      return;
+    }
   }
 });
 

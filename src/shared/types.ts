@@ -121,6 +121,16 @@ export type CurrentPageSettings = {
   pageStringDetails: boolean;
   pageSettings: boolean;
   nodeInfo?: NodeInfo;
+  /**
+   * The Figma page id this copy was cloned from — set only on pages created
+   * by `createCopy` (both "keys" and "languages" modes). Lets `CopyView`
+   * detect when the source page gained new connected keys since the copy
+   * was made (Download only refreshes text on keys the copy already has, it
+   * can't discover new ones) and offer to recreate the copy from scratch.
+   * Absent on copies from an older plugin version or from production —
+   * the staleness check just skips itself when it's missing.
+   */
+  sourcePageId?: string;
 };
 
 export type TolgeeConfig = CurrentDocumentSettings & CurrentPageSettings;
