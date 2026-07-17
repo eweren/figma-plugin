@@ -292,13 +292,21 @@
               <li
                 class="flex items-center gap-2 rounded border border-border bg-bg px-2 py-1.5"
               >
-                <span
-                  class="min-w-0 flex-1 truncate text-xs"
-                  class:text-text-secondary={!node.key}
-                  class:italic={!node.key}
-                >
-                  {formatKeyLabel(node)}
-                </span>
+                <div class="min-w-0 flex-1">
+                  <div
+                    class="truncate text-xs"
+                    class:text-text-secondary={!node.key}
+                    class:italic={!node.key}
+                  >
+                    {formatKeyLabel(node)}
+                  </div>
+                  <div
+                    class="truncate text-[11px] text-text-secondary"
+                    title={node.translation || node.characters}
+                  >
+                    {node.translation || node.characters || "—"}
+                  </div>
+                </div>
                 <TooltipIconButton label="Move to string" onclick={() => showOnCanvas(node.id)}>
                   <Target size={ICON.inline} />
                 </TooltipIconButton>
