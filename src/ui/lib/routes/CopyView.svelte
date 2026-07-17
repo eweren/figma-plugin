@@ -15,6 +15,7 @@
   import Group from "lucide-svelte/icons/group";
   import Target from "lucide-svelte/icons/target";
   import Info from "lucide-svelte/icons/info";
+  import Download from "lucide-svelte/icons/download";
 
   /**
    * Read-only view for a page the plugin itself generated as a copy (via
@@ -67,14 +68,19 @@
   // the result handler can report it once `applyProgress` is cleared.
   let pendingApplyCount = 0;
 
-  const statusText = $derived.by(() => {
-    if (!language) return "Shows Tolgee keys — doesn't sync back.";
+  // `null` means: don't show the top status line at all — the big
+  // instructional EmptyState below already says the same thing, so a top
+  // line here would just repeat it.
+  const topStatusText = $derived.by(() => {
+    if (!language) return "Shows Tolgee keys. Doesn't sync back.";
     if (lastResult === null) {
-      return "Download the current version of strings from Tolgee to Figma.";
+      return selectedNodes.length > 0
+        ? "Download strings from Tolgee to Figma."
+        : null;
     }
-    if (lastResult.count === 0) return "Downloaded — already up to date.";
+    if (lastResult.count === 0) return "Already up to date.";
     const noun = lastResult.count === 1 ? "string" : "strings";
-    return `Downloaded — ${lastResult.count} ${noun} updated.`;
+    return `Downloaded ${lastResult.count} ${noun}.`;
   });
 
   function formatKeyLabel(node: NodeInfo): string {
@@ -239,9 +245,9 @@
       {:else if stage === "error"}
         <Message variant="error">{errorMessage ?? "Something went wrong."}</Message>
         <Button variant="secondary" onclick={pull}>Try again</Button>
-      {:else}
+      {:else if topStatusText}
         <p class="flex items-start gap-1.5 text-xs text-text-secondary">
-          <span class="flex-1">{statusText}</span>
+          <span class="flex-1">{topStatusText}</span>
           <Tooltip.Root>
             <Tooltip.Trigger>
               {#snippet child({ props })}
@@ -265,11 +271,15 @@
 
       {#if stage === "idle" || stage === "error"}
         {#if selectedNodes.length === 0}
-          <EmptyState
-            icon={Group}
-            title="Select strings, frames for update"
-            description="Or download the whole page."
-          />
+          {#if language && lastResult === null}
+            <EmptyState
+              icon={Download}
+              title="Download strings from Tolgee to Figma."
+              description="Select a specific frame to update just that, or download the whole page."
+            />
+          {:else}
+            <EmptyState icon={Group} title="Select a string or frame" />
+          {/if}
         {:else}
           <ul class="flex flex-col gap-1">
             {#each selectedNodes as node (node.id)}

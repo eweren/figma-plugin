@@ -28,14 +28,14 @@ test.describe("CopyView", () => {
     ).toBeVisible({ timeout: 10_000 });
 
     await expect(
-      ui.getByText("Shows Tolgee keys — doesn't sync back."),
+      ui.getByText("Shows Tolgee keys. Doesn't sync back."),
     ).toBeVisible();
     await expect(
       ui.getByRole("button", { name: "Download all" }),
     ).not.toBeVisible();
   });
 
-  test("shows the download instruction and a Download button when a language is configured", async ({
+  test("shows the download instruction empty state and a Download button when a language is configured", async ({
     page,
   }) => {
     await page.goto(hostUrl({ ...PAGE_COPY, language: "cs" }));
@@ -45,9 +45,14 @@ test.describe("CopyView", () => {
       ui.getByRole("heading", { name: "Page 1 (copy)" }),
     ).toBeVisible({ timeout: 10_000 });
 
+    // Nothing selected + never downloaded this session -> the big
+    // instructional EmptyState carries the message, no separate top line.
+    await expect(
+      ui.getByText("Download strings from Tolgee to Figma."),
+    ).toBeVisible();
     await expect(
       ui.getByText(
-        "Download the current version of strings from Tolgee to Figma.",
+        "Select a specific frame to update just that, or download the whole page.",
       ),
     ).toBeVisible();
     // Nothing selected in this fixture -> "Download all" (vs "Download" for a selection).
