@@ -108,7 +108,7 @@ function scheduleEmitSelection(): void {
 
 async function emitPageChange(): Promise<void> {
   const config = await readMergedConfig();
-  send({ type: "page-changed", config });
+  send({ type: "page-changed", config, pageName: figma.currentPage.name });
   await emitSelection();
 }
 
@@ -150,6 +150,7 @@ on("ui-ready", async () => {
     selectedNodes: nodes,
     hasUserSelection: figma.currentPage.selection.length > 0,
     editorType: figma.editorType as "figma" | "dev",
+    pageName: figma.currentPage.name,
   });
 
   // Forward the invoked plugin command (if any) so the UI can route to the

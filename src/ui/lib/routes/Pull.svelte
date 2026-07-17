@@ -11,6 +11,7 @@
   import { fetchAllTranslations } from "$ui/lib/api/pull";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
   import { pullDiff, formatNodeText } from "$ui/lib/logic/pullDiff";
+  import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
 
   type Diff = ReturnType<typeof pullDiff>;
 
@@ -291,9 +292,7 @@
 
   function formatKeyLabel(ns: string | undefined, key: string): string {
     if (!key) return "(no key)";
-    // Never show a namespace prefix when the project doesn't have namespaces
-    // enabled — display-only, doesn't affect what's stored/pushed.
-    return ns && auth.value.namespacesEnabled ? `${ns}.${key}` : key;
+    return namespacedKeyLabel(ns, key, auth.value.namespacesEnabled);
   }
 </script>
 

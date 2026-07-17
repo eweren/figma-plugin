@@ -19,3 +19,17 @@ export function collectNamespaceNames(
   if (defaultNs) set.add(defaultNs);
   return [...set].sort((a, b) => a.localeCompare(b));
 }
+
+/**
+ * A key's display label, with its namespace prefixed — unless the project
+ * has namespaces disabled, in which case the prefix is always hidden (it
+ * would just be confusing UI noise for a concept the project doesn't use).
+ * Display-only: never affects what's stored/pushed.
+ */
+export function namespacedKeyLabel(
+  ns: string | undefined,
+  key: string,
+  namespacesEnabled: boolean,
+): string {
+  return ns && namespacesEnabled ? `${ns}.${key}` : key;
+}

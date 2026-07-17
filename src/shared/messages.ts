@@ -12,6 +12,10 @@ export type MainToUi =
       /** See `selection-changed.hasUserSelection`. */
       hasUserSelection: boolean;
       editorType: "figma" | "dev";
+      /** `figma.currentPage.name` — CopyView's header shows it directly
+          (the page name already carries the language, e.g. "Home - cs"),
+          so the UI never needs a page-content round trip just for a title. */
+      pageName: string;
       /** Optional: navigate to this route immediately after init (used by E2E tests). */
       initialRoute?: string;
     }
@@ -58,7 +62,7 @@ export type MainToUi =
       hasUserSelection: boolean;
       total: number;
     }
-  | { type: "page-changed"; config: Partial<TolgeeConfig> }
+  | { type: "page-changed"; config: Partial<TolgeeConfig>; pageName: string }
   | { type: "config-changed"; config: Partial<TolgeeConfig> }
   | {
       /** One exported frame. Screenshots stream one message per frame — a

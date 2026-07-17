@@ -21,6 +21,7 @@ type HostState = {
   selectedNodes: NodeInfo[];
   hasUserSelection: boolean;
   editorType: "figma" | "dev";
+  pageName: string;
   route?: string;
 };
 
@@ -31,6 +32,7 @@ function defaultState(): HostState {
     selectedNodes: [],
     hasUserSelection: false,
     editorType: "figma",
+    pageName: "Page 1",
     route: undefined,
   };
 }
@@ -97,6 +99,7 @@ window.addEventListener("message", (event) => {
         selectedNodes: state.selectedNodes,
         hasUserSelection: state.hasUserSelection,
         editorType: state.editorType,
+        pageName: state.pageName,
         ...(state.route ? { initialRoute: state.route } : {}),
       });
       return;

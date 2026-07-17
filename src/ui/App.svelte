@@ -119,6 +119,7 @@
       appState.setConfig(msg.config);
       appState.setSelection(msg.selectedNodes, msg.hasUserSelection);
       appState.setEditorType(msg.editorType);
+      appState.setPageName(msg.pageName);
       if (msg.initialRoute) {
         appState.navigate({ name: msg.initialRoute } as import("$shared/types").Route);
       }
@@ -143,6 +144,7 @@
     });
     const unsubPage = on("page-changed", (msg) => {
       appState.setConfig(msg.config);
+      appState.setPageName(msg.pageName);
       void maybeBootstrapAuth(msg.config);
     });
     const unsubCmd = on("command", (_msg) => {

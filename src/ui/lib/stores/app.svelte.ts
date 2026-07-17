@@ -22,6 +22,10 @@ type AppState = {
   scanning: boolean;
   route: Route;
   editorType: "figma" | "dev";
+  /** `figma.currentPage.name` — used directly in CopyView's header (the name
+      already carries the language, e.g. "Home - cs"), kept in sync on
+      `init`/`page-changed`. */
+  pageName: string;
   errorBanner: { message: string; severity: "error" | "warning" } | null;
   /**
    * Progress for ANY in-flight large `set-nodes-data` write — bulk actions in
@@ -67,6 +71,7 @@ function createAppState() {
     scanning: false,
     route: getInitialRoute(),
     editorType: "figma",
+    pageName: "",
     errorBanner: null,
     writeProgress: null,
   });
@@ -110,6 +115,9 @@ function createAppState() {
     },
     get editorType() {
       return state.editorType;
+    },
+    get pageName() {
+      return state.pageName;
     },
     get errorBanner() {
       return state.errorBanner;
@@ -193,6 +201,9 @@ function createAppState() {
     },
     setEditorType(t: "figma" | "dev") {
       state.editorType = t;
+    },
+    setPageName(name: string) {
+      state.pageName = name;
     },
     setError(banner: AppState["errorBanner"]) {
       state.errorBanner = banner;
