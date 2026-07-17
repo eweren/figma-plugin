@@ -5,16 +5,18 @@
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { nextCorrelationId, on, send } from "$ui/lib/bus";
   import { createIdleTimeout, type RequestWatchdog } from "$ui/lib/busRequest";
-  import { Button, EmptyState, Message, ProgressBar } from "$ui/lib/components/ui";
+  import { Badge, Button, EmptyState, Message, ProgressBar } from "$ui/lib/components/ui";
   import * as Tooltip from "$ui/lib/components/ui/tooltip";
   import TooltipIconButton from "$ui/lib/components/ui/tooltipIconButton.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
   import { pullDiff, formatNodeText } from "$ui/lib/logic/pullDiff";
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
+  import { hasRichFormat } from "$ui/lib/logic/icuParams";
   import Group from "lucide-svelte/icons/group";
   import Target from "lucide-svelte/icons/target";
   import Download from "lucide-svelte/icons/download";
+  import KeyRound from "lucide-svelte/icons/key-round";
 
   /**
    * Read-only view for a page the plugin itself generated as a copy (via
@@ -266,14 +268,29 @@
             <EmptyState icon={Group} title="Select a string or frame" />
           {/if}
         {:else}
-          <ul class="flex flex-col gap-1">
+          <!-- Mirrors NodeListItem's read-only half (string + Plural/Formatted
+               badges, key glyph below) — same visual language as the main
+               Index list, minus anything editable (this view never writes). -->
+          <ul>
             {#each connectedSelectedNodes as node (node.id)}
               <li
-                class="flex items-center gap-2 rounded border border-border bg-bg px-2 py-1.5"
+                class="flex items-start gap-1.5 border-b border-dashed border-border py-2.5 first:pt-0 last:border-b-0 last:pb-0"
               >
-                <span class="min-w-0 flex-1 truncate text-xs">
-                  {formatKeyLabel(node)}
-                </span>
+                <div class="min-w-0 flex-1 space-y-1.5">
+                  <div class="flex items-center gap-1.5">
+                    <span class="min-w-0 truncate text-xs text-text" title={node.characters}>
+                      {node.characters || "(empty)"}
+                    </span>
+                    {#if node.isPlural}<Badge>Plural</Badge>{/if}
+                    {#if hasRichFormat(node)}<Badge>Formatted</Badge>{/if}
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <KeyRound size={ICON.inline} class="shrink-0 text-secondary" />
+                    <span class="min-w-0 truncate text-xs font-semibold text-secondary">
+                      {formatKeyLabel(node)}
+                    </span>
+                  </div>
+                </div>
                 <TooltipIconButton label="Move to string" onclick={() => showOnCanvas(node.id)}>
                   <Target size={ICON.inline} />
                 </TooltipIconButton>
