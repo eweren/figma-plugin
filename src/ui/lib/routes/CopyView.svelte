@@ -81,8 +81,14 @@
   /** "Download all" with nothing selected, "Download" over the current
    *  selection — mirrors production's Pull/Pull all split, just renamed to
    *  match the "Download to Figma" wording already used by Pull.svelte and
-   *  Index's SyncButton elsewhere in this app. */
-  const downloadButtonLabel = $derived(hasUserSelection ? "Download" : "Download all");
+   *  Index's SyncButton elsewhere in this app. While a selection scan is
+   *  still streaming in (large selections, see `appState.scanning`), say so
+   *  instead of silently disabling — clicking mid-scan would download
+   *  whatever fraction of the selection had arrived so far, which is exactly
+   *  why the button is disabled then too (see the header below). */
+  const downloadButtonLabel = $derived(
+    appState.value.scanning ? "Scanning…" : hasUserSelection ? "Download" : "Download all",
+  );
 
   // Persists across the "toast disappears" problem: once a download
   // finishes, this stays on screen as a dismissable success message — the
@@ -144,31 +150,45 @@
     ),
   );
 
-  // Same figure for "Download all" (no selection) — a page-wide scan. This
-  // now honours the same ignore rules (hidden layers, digit-only strings) as
-  // the with-selection scan — a deliberate deviation from upstream, which
-  // leaves its own page-wide scan unfiltered — so the two counts stay
-  // comparable. Only fetched for the state that actually shows it (language
-  // copy, nothing selected, no download run yet this session) — `null`
-  // elsewhere, including while a fresh scan is loading.
-  let pageScan = $state<{ total: number; notConnected: number } | null>(null);
+  // Backs the "N strings (M not connected)" line shown on the "Download all"
+  // empty state — a page-wide scan. Kept as the raw node list (not just the
+  // derived counts) so `pull()` below can REUSE it instead of running the
+  // same page-wide scan a second time: for a large page that scan is real,
+  // measurable work, and without this the count display and Download all
+  // would each pay for their own full pass.
+  //
+  // Honours the same ignore rules (hidden layers, digit-only strings) as the
+  // with-selection scan — a deliberate deviation from upstream, which leaves
+  // its own page-wide scan unfiltered — so the two counts stay comparable.
+  // Only fetched for the state that actually shows it (language copy,
+  // nothing selected, no download run yet this session) — `null` elsewhere,
+  // including while a fresh scan is loading.
+  let pageScanNodes = $state<NodeInfo[] | null>(null);
+  const pageScan = $derived(
+    pageScanNodes
+      ? {
+          total: pageScanNodes.length,
+          notConnected: pageScanNodes.filter((n) => !n.connected).length,
+        }
+      : null,
+  );
 
   $effect(() => {
     void appState.value.pageName; // re-scan on page switch
     const shouldScan = Boolean(language) && selectedNodes.length === 0 && lastResult === null;
     if (!shouldScan) {
-      pageScan = null;
+      pageScanNodes = null;
       return;
     }
     let cancelled = false;
     requestPageConnectedNodes()
       .then((nodes) => {
         if (!cancelled) {
-          pageScan = { total: nodes.length, notConnected: nodes.filter((n) => !n.connected).length };
+          pageScanNodes = nodes;
         }
       })
       .catch(() => {
-        if (!cancelled) pageScan = null;
+        if (!cancelled) pageScanNodes = null;
       });
     return () => {
       cancelled = true;
@@ -200,11 +220,18 @@
     fetchProgress = { loaded: 0, total: null };
 
     try {
+      // Reuse the scan already sitting behind the "N strings" count line
+      // instead of re-scanning the whole page a second time — `pageScanNodes`
+      // reflects exactly what the user just saw before clicking. It's only
+      // ever missing when that scan hasn't resolved yet (e.g. clicked right
+      // as the empty state appeared), in which case we fall back to a fresh
+      // one same as before.
       const targetNodes: NodeInfo[] = hasUserSelection
         ? selectedNodes
-        : await requestPageConnectedNodes(undefined, (done, total) => {
+        : (pageScanNodes ??
+          (await requestPageConnectedNodes(undefined, (done, total) => {
             pageScanProgress = { done, total };
-          });
+          })));
 
       // Fetch ALL namespaces (not just the configured default) — each node
       // is matched to its remote key by its OWN `ns`, same reasoning as the
@@ -424,7 +451,10 @@
     {#if language}
       <Button
         size="sm"
-        disabled={stage === "pulling" || stage === "applying" || stage === "recreating"}
+        disabled={stage === "pulling" ||
+          stage === "applying" ||
+          stage === "recreating" ||
+          appState.value.scanning}
         onclick={pull}
       >
         {downloadButtonLabel}
