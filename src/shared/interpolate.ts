@@ -1,6 +1,6 @@
 import { formatIcuMessage } from "$shared/icu";
 import type { NodeInfo } from "$shared/types";
-import { getTolgeeFormat } from "$ui/lib/logic/tolgeeFormat";
+import { getTolgeeFormat } from "$shared/tolgeeFormat";
 
 /**
  * Port of the published plugin's render/diff core

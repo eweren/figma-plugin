@@ -4,7 +4,7 @@
     tolgeeFormatGenerateIcu,
     getPluralVariants,
     getVariantExample,
-  } from "$ui/lib/logic/tolgeeFormat";
+  } from "$shared/tolgeeFormat";
   import PluralVariantInput from "$ui/lib/components/domain/PluralVariantInput.svelte";
 
   type Props = {

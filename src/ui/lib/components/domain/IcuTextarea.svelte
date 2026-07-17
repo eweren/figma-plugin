@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tokenize, type Token } from "$ui/lib/logic/tolgeeFormat";
+  import { tokenize, type Token } from "$shared/tolgeeFormat";
 
   type Props = {
     value: string;

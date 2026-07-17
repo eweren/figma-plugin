@@ -1,6 +1,6 @@
 import type { TolgeeClient } from "$ui/lib/api/client";
 import type { NodeInfo } from "$shared/types";
-import { inferPluralCount } from "$ui/lib/logic/interpolate";
+import { inferPluralCount } from "$shared/interpolate";
 
 /**
  * Search result entry returned by `searchKeys`.

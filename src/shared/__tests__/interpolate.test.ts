@@ -6,7 +6,7 @@ import {
   isSimpleNode,
   renderIcuForNode,
   translationDiffersFromNode,
-} from "$ui/lib/logic/interpolate";
+} from "$shared/interpolate";
 
 const PLURAL = "{count, plural, one {# item} other {# items}}";
 

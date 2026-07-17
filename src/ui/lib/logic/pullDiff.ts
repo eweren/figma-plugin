@@ -1,6 +1,6 @@
 import type { NodeInfo } from "$shared/types";
 import type { PulledKey } from "$ui/lib/api/pull";
-import { renderIcuForNode } from "$ui/lib/logic/interpolate";
+import { renderIcuForNode } from "$shared/interpolate";
 
 export type PullDiffResult = {
   /** Nodes whose remote translation differs from the local `translation`. */

@@ -1,4 +1,4 @@
-import { getTolgeeFormat, tolgeeFormatGenerateIcu } from "$ui/lib/logic/tolgeeFormat";
+import { getTolgeeFormat, tolgeeFormatGenerateIcu } from "$shared/tolgeeFormat";
 import IntlMessageFormat from "intl-messageformat";
 import { describe, expect, it } from "vitest";
 

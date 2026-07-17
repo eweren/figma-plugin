@@ -1,8 +1,10 @@
 import { TOLGEE_NODE_INFO, TOLGEE_PLUGIN_CONFIG_NAME } from "$shared/constants";
+import { renderIcuForNode } from "$shared/interpolate";
+import type { NodeInfo } from "$shared/types";
 
 import { send } from "$main/bus";
 import { getNodeInfo } from "$main/nodes/getNodeInfo";
-import { loadFontCached } from "$main/text/applyRichText";
+import { applyRichText } from "$main/text/applyRichText";
 
 /**
  * Options for the `createCopy` handler. The two modes have different payloads
@@ -16,10 +18,12 @@ export type CreateCopyOptions =
       correlationId: string;
       languages: string[];
       /**
-       * Map of language tag -> map of `${ns}|${key}` -> translation text.
-       * The UI is responsible for assembling this from the Tolgee API.
+       * Map of language tag -> map of `${ns}|${key}` -> the key's raw
+       * translation + its `isPlural` flag (a per-KEY Tolgee property, so it's
+       * trusted over the copied node's own possibly-stale `isPlural`). The UI
+       * is responsible for assembling this from the Tolgee API.
        */
-      translations: Record<string, Record<string, string>>;
+      translations: Record<string, Record<string, { text: string; isPlural: boolean }>>;
     };
 
 export type CreateCopyResult = {
@@ -90,7 +94,7 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
         const info = getNodeInfo(node);
         if (info.connected && info.key) {
           const label = info.ns ? `${info.ns}.${info.key}` : info.key;
-          await writeTextSafely(node, label);
+          await writeTextSafely(node, label, { plainOnly: true });
         }
         processed++;
         if (processed % PROGRESS_INTERVAL === 0) {
@@ -138,9 +142,9 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
             // Translations are keyed by `${ns}|${key}` on the UI side because
             // the cloned node has a different `id` than the source node.
             const lookupKey = `${info.ns ?? ""}|${info.key}`;
-            const text = translationsForLang[lookupKey] ?? info.translation;
-            if (text) {
-              await writeTextSafely(node, text);
+            const resolved = resolveCopyNodeText(info, translationsForLang[lookupKey], lang);
+            if (resolved !== null) {
+              await writeTextSafely(node, resolved);
             }
           }
           processed++;
@@ -195,6 +199,29 @@ export async function removeExistingCopyPages(name: string): Promise<void> {
 }
 
 /**
+ * The text to write for one connected node in a language copy: the remote
+ * translation for its key (falling back to the node's own persisted
+ * `translation` on a miss, so the page never ends up empty), rendered
+ * through THIS node's own plural/param samples — same as the regular Pull
+ * flow — instead of writing the raw ICU pattern verbatim. `isPlural` comes
+ * from the remote key when available (a per-KEY Tolgee property) since it's
+ * more trustworthy than the copied node's own possibly-stale flag.
+ *
+ * Returns `null` when there's nothing to write (no remote match and no
+ * persisted translation) — the caller leaves the node as cloned.
+ */
+export function resolveCopyNodeText(
+  info: NodeInfo,
+  remote: { text: string; isPlural: boolean } | undefined,
+  language: string,
+): string | null {
+  const rawText = remote?.text ?? info.translation;
+  if (!rawText) return null;
+  const isPlural = remote?.isPlural ?? info.isPlural;
+  return renderIcuForNode(rawText, { ...info, isPlural }, language).text;
+}
+
+/**
  * Write plugin data onto a freshly cloned page so the UI shows the read-only
  * `CopyView`. Skips `writeConfig` so we don't leak the marker into the
  * global/document scopes.
@@ -211,33 +238,20 @@ function markPageAsCopy(page: PageNode, language?: string): void {
 }
 
 /**
- * Write `text` into `node.characters` after loading every font range present
- * in the existing text. Bails out silently when the node has missing fonts or
- * mixed fonts — those cases are very rare on connected nodes (writeTextNode
- * elsewhere has the same shape) and would otherwise abort the whole copy.
+ * Write `text` into `node` via the shared rich-text applier (bold/italic/
+ * underline from inline HTML tags, same as the regular Pull/apply-
+ * translations path) — bails out silently when the node has missing or
+ * mixed fonts, which are very rare on connected nodes and would otherwise
+ * abort the whole copy.
  */
-async function writeTextSafely(node: TextNode, text: string): Promise<void> {
+async function writeTextSafely(
+  node: TextNode,
+  text: string,
+  options?: { plainOnly?: boolean },
+): Promise<void> {
   if (node.hasMissingFont) return;
-
-  const length = node.characters.length;
-  if (length === 0) {
-    // Range APIs throw on an empty node ((0,1) is out of bounds) — and an
-    // uncaught throw here used to abort the WHOLE copy. Load the node's
-    // single font instead.
-    const font = node.fontName;
-    if (font === figma.mixed) return;
-    await loadFontCached(font);
-  } else {
-    const fonts = node.getRangeAllFontNames(0, length);
-    // Session-cached — language copies rewrite the same font set page after
-    // page; only the first page pays the actual loads.
-    await Promise.all(fonts.map((f) => loadFontCached(f)));
-  }
-
   if (node.fontName === figma.mixed) return;
-
-  node.autoRename = false;
-  node.characters = text;
+  await applyRichText(node, text, options);
 }
 
 function yieldToEventLoop(): Promise<void> {

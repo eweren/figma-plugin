@@ -1,5 +1,5 @@
 import type { NodeInfo } from "$shared/types";
-import { translationDiffersFromNodeCached } from "$ui/lib/logic/interpolate";
+import { translationDiffersFromNodeCached } from "$shared/interpolate";
 
 /**
  * Detection for the "manual changes detected" conflict — an ADVANCED connected

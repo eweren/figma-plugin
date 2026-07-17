@@ -237,10 +237,14 @@ export type UiToMain =
       languages?: string[];
       /**
        * Required when `mode === "languages"`. Map of language tag -> map of
-       * `${ns}|${key}` -> translation text. The UI builds this from the
-       * Tolgee API so the main thread doesn't need to refetch.
+       * `${ns}|${key}` -> the key's raw translation + its `isPlural` flag
+       * (a per-KEY property, consistent across every language, so the main
+       * thread doesn't have to trust the copied node's possibly-stale local
+       * `isPlural`). The UI builds this from the Tolgee API; the main thread
+       * still does the ICU/param rendering per node (each node keeps its own
+       * plural sample / param values), same as the regular Pull flow.
        */
-      translations?: Record<string, Record<string, string>>;
+      translations?: Record<string, Record<string, { text: string; isPlural: boolean }>>;
     };
 
 /**

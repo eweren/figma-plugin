@@ -19,8 +19,8 @@
     getPluralCategory,
     getTolgeeFormat,
     tolgeeFormatGenerateIcu,
-  } from "$ui/lib/logic/tolgeeFormat";
-  import { renderIcuForNode } from "$ui/lib/logic/interpolate";
+  } from "$shared/tolgeeFormat";
+  import { renderIcuForNode } from "$shared/interpolate";
   import type { NodeInfo } from "$shared/types";
 
   const route = $derived(appState.value.route);

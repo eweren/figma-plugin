@@ -79,20 +79,23 @@
   /**
    * Build the per-language translations map the main thread expects. Keyed by
    * `${ns}|${key}` so the handler can match cloned nodes (which have fresh
-   * IDs) back to the persisted Tolgee key + namespace.
+   * IDs) back to the persisted Tolgee key + namespace. Carries `isPlural`
+   * alongside the raw text — a per-KEY Tolgee property — so the main thread
+   * can render ICU/plurals per node without trusting the copied node's own
+   * (possibly stale) `isPlural`.
    */
   function buildTranslationsMap(
     keys: Awaited<ReturnType<typeof fetchAllTranslations>>,
     languages: string[],
-  ): Record<string, Record<string, string>> {
-    const map: Record<string, Record<string, string>> = {};
+  ): Record<string, Record<string, { text: string; isPlural: boolean }>> {
+    const map: Record<string, Record<string, { text: string; isPlural: boolean }>> = {};
     for (const lang of languages) {
-      const perLang: Record<string, string> = {};
+      const perLang: Record<string, { text: string; isPlural: boolean }> = {};
       for (const k of keys) {
         const idx = `${k.keyNamespace ?? ""}|${k.keyName}`;
         const text = k.translations[lang]?.text;
         if (text) {
-          perLang[idx] = text;
+          perLang[idx] = { text, isPlural: k.isPlural };
         }
       }
       map[lang] = perLang;
@@ -118,7 +121,7 @@
     correlationId: string;
     mode: Mode;
     languages?: string[];
-    translations?: Record<string, Record<string, string>>;
+    translations?: Record<string, Record<string, { text: string; isPlural: boolean }>>;
   }): Promise<{ ok: boolean; error?: string }> {
     return new Promise((resolve) => {
       const cleanup = (): void => {
@@ -186,7 +189,7 @@
     stage = "fetching";
     progress = null;
 
-    let translationsMap: Record<string, Record<string, string>>;
+    let translationsMap: Record<string, Record<string, { text: string; isPlural: boolean }>>;
     try {
       // All namespaces: the translations map is keyed by `${ns}|${key}` and the
       // main thread matches each cloned node by its own ns, so a page mixing

@@ -1,8 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { __test__ } from "../applyRichText";
+import { __test__, applyRichText } from "../applyRichText";
 
 const { findRanges, BR_REGEX } = __test__;
+
+function makeNode(characters: string, fontName: unknown) {
+  return {
+    characters,
+    autoRename: true,
+    fontName,
+    getRangeAllFontNames: vi.fn(() => {
+      throw new Error("must not read a font range on an empty node");
+    }),
+  };
+}
+
+afterEach(() => {
+  (globalThis as unknown as { figma?: unknown }).figma = undefined;
+});
 
 describe("findRanges", () => {
   it("returns empty when the tag is absent", () => {
@@ -42,5 +57,34 @@ describe("BR_REGEX", () => {
     ["a<br></br>b", "a\nb"],
   ])("normalises %s", (input, expected) => {
     expect(input.replace(BR_REGEX, "\n")).toBe(expected);
+  });
+});
+
+describe("applyRichText — empty node", () => {
+  it("loads the node's own fontName directly instead of reading a font range", async () => {
+    const font = { family: "EmptyNodeTestFont", style: "Regular" };
+    const loadFontAsync = vi.fn(async () => {});
+    (globalThis as unknown as { figma: unknown }).figma = { mixed: Symbol("mixed"), loadFontAsync };
+
+    const node = makeNode("", font);
+    await applyRichText(node as never, "Hello");
+
+    expect(node.getRangeAllFontNames).not.toHaveBeenCalled();
+    expect(loadFontAsync).toHaveBeenCalledWith(font);
+    expect(node.characters).toBe("Hello");
+  });
+
+  it("skips loading entirely when an empty node reports a mixed font", async () => {
+    const MIXED = Symbol("mixed");
+    const loadFontAsync = vi.fn(async () => {});
+    (globalThis as unknown as { figma: unknown }).figma = { mixed: MIXED, loadFontAsync };
+
+    const node = makeNode("", MIXED);
+    await applyRichText(node as never, "Hello");
+
+    expect(node.getRangeAllFontNames).not.toHaveBeenCalled();
+    expect(loadFontAsync).not.toHaveBeenCalled();
+    // Still writes the plain text even though no font could be pre-loaded.
+    expect(node.characters).toBe("Hello");
   });
 });

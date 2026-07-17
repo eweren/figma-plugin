@@ -3,8 +3,8 @@ import IntlMessageFormat from "intl-messageformat";
 import { isAdvancedString } from "./manualChange";
 // Local mini-implementation of `getTolgeeFormat` from `@tginternal/editor`.
 // The upstream package transitively pulls in `@codemirror/{state,view}`
-// (~500 kB raw / ~125 kB gzip) — see `./tolgeeFormat.ts` for the rationale.
-import { getTolgeeFormat } from "./tolgeeFormat";
+// (~500 kB raw / ~125 kB gzip) — see `$shared/tolgeeFormat.ts` for the rationale.
+import { getTolgeeFormat } from "$shared/tolgeeFormat";
 
 /**
  * Subset of `KeyWithTranslationsModel` we depend on for diffing. Kept narrow
