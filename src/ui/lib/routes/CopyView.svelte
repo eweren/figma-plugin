@@ -35,11 +35,6 @@
   const language = $derived(appState.value.config?.language);
   const selectedNodes = $derived(appState.value.selectedNodes);
   const hasUserSelection = $derived(appState.value.hasUserSelection);
-  // The list only ever means anything for genuinely CONNECTED keys — a node
-  // can carry a non-empty `key` from the auto-generated prefill suggestion
-  // while still being unconnected (never pushed to Tolgee), which reads as a
-  // real key if shown alongside connected ones.
-  const connectedSelectedNodes = $derived(selectedNodes.filter((n) => n.connected));
 
   const branch = $derived(
     auth.value.branchingEnabled ? (appState.value.config?.branch ?? "") : "",
@@ -80,9 +75,7 @@
   const topStatusText = $derived.by(() => {
     if (!language) return "Shows Tolgee keys. Doesn't sync back.";
     if (lastResult === null) {
-      return connectedSelectedNodes.length > 0
-        ? "Download strings to Figma."
-        : null;
+      return selectedNodes.length > 0 ? "Download strings to Figma." : null;
     }
     if (lastResult.count === 0) return "No changes found.";
     const noun = lastResult.count === 1 ? "string" : "strings";
@@ -257,7 +250,7 @@
       {/if}
 
       {#if stage === "idle" || stage === "error"}
-        {#if connectedSelectedNodes.length === 0}
+        {#if selectedNodes.length === 0}
           {#if language && lastResult === null}
             <EmptyState
               icon={Download}
@@ -268,11 +261,19 @@
             <EmptyState icon={Group} title="Select a string or frame" />
           {/if}
         {:else}
+          <!-- Count row mirrors Index's (no select-all checkbox — nothing here
+               is bulk-actionable). -->
+          <div class="text-xs text-text-secondary">
+            {selectedNodes.length} {selectedNodes.length === 1 ? "string" : "strings"}
+          </div>
           <!-- Mirrors NodeListItem's read-only half (string + Plural/Formatted
                badges, key glyph below) — same visual language as the main
-               Index list, minus anything editable (this view never writes). -->
+               Index list, minus anything editable (this view never writes).
+               Unconnected nodes are listed too, with "Not connected" instead
+               of a key — hiding them read as if the selection were smaller
+               than it is. -->
           <ul>
-            {#each connectedSelectedNodes as node (node.id)}
+            {#each selectedNodes as node (node.id)}
               <li
                 class="flex items-start gap-1.5 border-b border-dashed border-border py-2.5 first:pt-0 last:border-b-0 last:pb-0"
               >
@@ -281,14 +282,20 @@
                     <span class="min-w-0 truncate text-xs text-text" title={node.characters}>
                       {node.characters || "(empty)"}
                     </span>
-                    {#if node.isPlural}<Badge>Plural</Badge>{/if}
-                    {#if hasRichFormat(node)}<Badge>Formatted</Badge>{/if}
+                    {#if node.connected}
+                      {#if node.isPlural}<Badge>Plural</Badge>{/if}
+                      {#if hasRichFormat(node)}<Badge>Formatted</Badge>{/if}
+                    {/if}
                   </div>
                   <div class="flex items-center gap-1.5">
-                    <KeyRound size={ICON.inline} class="shrink-0 text-secondary" />
-                    <span class="min-w-0 truncate text-xs font-semibold text-secondary">
-                      {formatKeyLabel(node)}
-                    </span>
+                    {#if node.connected}
+                      <KeyRound size={ICON.inline} class="shrink-0 text-secondary" />
+                      <span class="min-w-0 truncate text-xs font-semibold text-secondary">
+                        {formatKeyLabel(node)}
+                      </span>
+                    {:else}
+                      <span class="text-xs italic text-text-secondary">Not connected</span>
+                    {/if}
                   </div>
                 </div>
                 <TooltipIconButton label="Move to string" onclick={() => showOnCanvas(node.id)}>
