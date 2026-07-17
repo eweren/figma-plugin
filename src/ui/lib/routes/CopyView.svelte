@@ -263,6 +263,12 @@
   $effect(() => {
     const off = on("copy-staleness-result", (msg) => {
       if (msg.correlationId !== stalenessCorrelationId) return;
+      if (!msg.ok && msg.error) {
+        // A skipped check is expected for copies made before sourcePageId
+        // tracking existed, but it must never be INVISIBLE — diagnosing
+        // "the banner never shows" blind cost a full report round-trip once.
+        console.warn("[tolgee] copy staleness check skipped:", msg.error);
+      }
       staleness = msg.ok && msg.missingCount ? { missingCount: msg.missingCount } : null;
     });
     return off;
@@ -392,8 +398,8 @@
         <div class="space-y-1.5">
           <Message variant="info">
             {staleness.missingCount}
-            {staleness.missingCount === 1 ? "key was" : "keys were"} connected on the original page
-            since this copy was made. Download only refreshes existing keys.
+            {staleness.missingCount === 1 ? "string was" : "strings were"} connected on the
+            original page since this copy was made. Download only refreshes existing strings.
           </Message>
           <Button
             size="sm"

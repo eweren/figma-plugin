@@ -18,6 +18,10 @@ const PAGE_KEYS = [
   "pageCopy",
   "pageStringDetails",
   "nodeInfo",
+  // Written by `markPageAsCopy` directly (bypassing splitConfig), but listed
+  // here so any future writeConfig echoing it back routes it to the PAGE
+  // scope — doc-scoped it would leak onto every other page's merged config.
+  "sourcePageId",
 ] as const satisfies ReadonlyArray<keyof CurrentPageSettings>;
 
 /**

@@ -206,6 +206,53 @@ describe("checkCopyStaleness", () => {
     });
   });
 
+  it("counts an ADDITIONAL node connected to an already-connected key (set-diff regression)", async () => {
+    // Real-world repro: the source already had key "a" connected on one node
+    // when the copy was made; the user then connected a SECOND node to that
+    // same key. A set-based diff sees no new key and stays silent — but the
+    // copy's clone of that second node predates the connection, so Download
+    // will never touch it. Counts must flag it.
+    const source = page("Home", undefined, {
+      id: "src",
+      textNodes: [textNode({ key: "a" }), textNode({ key: "a" })],
+    });
+    const copyPage = page(
+      "Home — en",
+      { pageCopy: true, sourcePageId: "src", language: "en" },
+      { id: "copy", textNodes: [textNode({ key: "a" })] },
+    );
+    setPages([source, copyPage], copyPage);
+
+    await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
+      ok: true,
+      missingCount: 1,
+    });
+  });
+
+  it("does NOT flag a copy that has MORE nodes on a key than the source", async () => {
+    // The additions-only design: the source losing nodes (deletions) is out
+    // of scope, and a per-key surplus on the copy side must not go negative
+    // and cancel out genuine missing counts elsewhere.
+    const source = page("Home", undefined, {
+      id: "src",
+      textNodes: [textNode({ key: "a" }), textNode({ key: "b" })],
+    });
+    const copyPage = page(
+      "Home — en",
+      { pageCopy: true, sourcePageId: "src", language: "en" },
+      {
+        id: "copy",
+        textNodes: [textNode({ key: "a" }), textNode({ key: "a" }), textNode({ key: "b" })],
+      },
+    );
+    setPages([source, copyPage], copyPage);
+
+    await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
+      ok: true,
+      missingCount: 0,
+    });
+  });
+
   it("fails gracefully when the copy has no sourcePageId recorded (older copy / production)", async () => {
     const copyPage = page("Home — en", { pageCopy: true }, { id: "copy" });
     setPages([copyPage], copyPage);

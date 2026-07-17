@@ -312,7 +312,7 @@ function yieldToEventLoop(): Promise<void> {
 
 export type CopyStalenessResult = {
   ok: boolean;
-  /** Connected keys on the source page that this copy doesn't have yet. */
+  /** Connected strings on the source page that this copy doesn't have yet. */
   missingCount?: number;
   error?: string;
 };
@@ -347,25 +347,36 @@ export async function checkCopyStaleness(copyPage: PageNode): Promise<CopyStalen
   await sourcePage.loadAsync();
   await copyPage.loadAsync();
 
-  const sourceKeys = collectConnectedKeySet(sourcePage);
-  const copyKeys = collectConnectedKeySet(copyPage);
+  const sourceCounts = collectConnectedKeyCounts(sourcePage);
+  const copyCounts = collectConnectedKeyCounts(copyPage);
   let missingCount = 0;
-  for (const key of sourceKeys) {
-    if (!copyKeys.has(key)) missingCount++;
+  for (const [key, srcCount] of sourceCounts) {
+    missingCount += Math.max(0, srcCount - (copyCounts.get(key) ?? 0));
   }
   return { ok: true, missingCount };
 }
 
-/** Every `${ns}|${key}` pair connected on `page`, for the staleness diff. */
-function collectConnectedKeySet(page: PageNode): Set<string> {
+/**
+ * Connected string COUNT per `${ns}|${key}` on `page` — counts, not a set.
+ * Node ids differ between a source page and its clone, so nodes can't be
+ * matched individually; per-key counts are the closest stable proxy. A set
+ * comparison missed the real-world case that surfaced this: connecting an
+ * ADDITIONAL node to an already-connected key changes no key set, but the
+ * copy's clone of that node predates the connection, so Download will never
+ * touch it — the copy is stale all the same.
+ */
+function collectConnectedKeyCounts(page: PageNode): Map<string, number> {
   const textNodes = page.findAllWithCriteria({
     types: ["TEXT"],
     pluginData: { keys: [TOLGEE_NODE_INFO] },
   });
-  const set = new Set<string>();
+  const counts = new Map<string, number>();
   for (const node of textNodes) {
     const info = getNodeInfo(node);
-    if (info.connected && info.key) set.add(`${info.ns ?? ""}|${info.key}`);
+    if (info.connected && info.key) {
+      const key = `${info.ns ?? ""}|${info.key}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
   }
-  return set;
+  return counts;
 }

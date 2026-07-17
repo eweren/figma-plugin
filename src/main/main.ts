@@ -1,5 +1,9 @@
 import { attachBus, on, send } from "$main/bus";
-import { checkCopyStaleness, createCopy } from "$main/handlers/createCopy";
+import {
+  checkCopyStaleness,
+  type CopyStalenessResult,
+  createCopy,
+} from "$main/handlers/createCopy";
 import { applyTranslations } from "$main/nodes/selection";
 import { cleanUpHighlights, highlightNode } from "$main/nodes/highlight";
 import { buildConnectedNodesInfo, scanConnectedNodes } from "$main/nodes/scan";
@@ -390,7 +394,15 @@ on("create-copy", async (msg) => {
 });
 
 on("request-copy-staleness", async (msg) => {
-  const result = await checkCopyStaleness(figma.currentPage);
+  // A throw here would otherwise vanish (the main bus doesn't wrap handlers)
+  // and the UI would wait forever with no banner and no trace — the check
+  // must ALWAYS answer, even if only with the failure reason.
+  let result: CopyStalenessResult;
+  try {
+    result = await checkCopyStaleness(figma.currentPage);
+  } catch (err) {
+    result = { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
   send({
     type: "copy-staleness-result",
     correlationId: msg.correlationId,
