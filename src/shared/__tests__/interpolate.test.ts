@@ -46,6 +46,22 @@ describe("renderIcuForNode", () => {
     expect(out.text).toBe("Hello {name");
     expect(out.error).toBeInstanceOf(Error);
   });
+
+  it("renders a plural even when isPlural is false — the ICU's own structure wins", () => {
+    // Real-world case: Tolgee's key-level "isPlural" setting disagreed with
+    // the translation's actual ICU shape (typed as a plural without the key
+    // ever being marked plural). Trusting the flag meant no sample was ever
+    // seeded, IntlMessageFormat threw on the missing argument, and the whole
+    // raw pattern landed on the canvas verbatim instead of rendering.
+    const node = makeNode({ isPlural: false, pluralParamValue: "9" });
+    const out = renderIcuForNode(
+      "{value, plural, one {J'ai # pomme} many {J'ai # pommes} other {J'ai # pommes}}",
+      node,
+      "fr",
+    );
+    expect(out.error).toBeUndefined();
+    expect(out.text).toBe("J'ai 9 pommes");
+  });
 });
 
 describe("isSimpleNode", () => {

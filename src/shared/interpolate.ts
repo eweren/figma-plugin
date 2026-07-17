@@ -45,10 +45,20 @@ function namedPlaceholders(icu: string): string[] {
  * ICU params for rendering `icu` with this node's samples: the named
  * `paramsValues`, plus the plural variable seeded with its sample count when the
  * ICU is a plural and no sample is already provided for it.
+ *
+ * Whether `icu` IS a plural is decided by its own STRUCTURE (`getTolgeeFormat`
+ * parses it and returns a `.parameter` only for a genuine top-level
+ * `{name, plural, ...}` form), not by the node's `isPlural` flag — that flag
+ * mirrors Tolgee's KEY setting, which can be stale or simply wrong for a key
+ * whose translation was typed as ICU plural syntax without the key itself
+ * ever being marked plural. Trusting the flag there meant a correctly-shaped
+ * plural silently rendered as its own raw ICU pattern (no sample ever seeded,
+ * so `IntlMessageFormat` throws on the missing argument) whenever the two
+ * disagreed — this makes the render succeed regardless of which side lied.
  */
 export function renderParams(icu: string, node: RenderNode): Record<string, string> {
   const params: Record<string, string> = { ...(node.paramsValues ?? {}) };
-  const pluralName = node.isPlural ? getTolgeeFormat(icu, true, false).parameter : undefined;
+  const pluralName = getTolgeeFormat(icu, true, false).parameter;
   if (pluralName && !(pluralName in params)) {
     params[pluralName] = numericCount(node.pluralParamValue) ?? "1";
   }

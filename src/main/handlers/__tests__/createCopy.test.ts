@@ -252,6 +252,23 @@ describe("resolveCopyNodeText", () => {
     expect(result).toBe("3 apples");
   });
 
+  it("renders correctly even when BOTH isPlural flags say false but the ICU is a plural", () => {
+    // Real Tolgee data can disagree with itself: a key's own "isPlural"
+    // setting was never toggled on even though its translation was typed as
+    // ICU plural syntax. Neither flag can be trusted — only the ICU's own
+    // structure can, which is what renderParams now keys off.
+    const info = makeNodeInfo({ isPlural: false, pluralParamValue: "9" });
+    const result = resolveCopyNodeText(
+      info,
+      {
+        text: "{value, plural, one {J'ai # pomme} many {J'ai # pommes} other {J'ai # pommes}}",
+        isPlural: false,
+      },
+      "fr",
+    );
+    expect(result).toBe("J'ai 9 pommes");
+  });
+
   it("falls back to the node's persisted translation when there's no remote match", () => {
     const info = makeNodeInfo({ isPlural: true, pluralParamValue: "2", translation: PLURAL });
     const result = resolveCopyNodeText(info, undefined, "en");
