@@ -63,7 +63,12 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
 
   try {
     if (options.mode === "keys") {
-      const targetName = `${sourcePage.name} — Keys`;
+      // Matches production's naming exactly (`${name} - keys`, hyphen +
+      // lowercase) — `removeExistingCopyPages` below replaces a previous copy
+      // by EXACT name match, so a mismatched format (e.g. an em dash or
+      // capitalized "Keys") would never find/replace a copy the production
+      // plugin created, and vice versa, letting copies pile up instead.
+      const targetName = `${sourcePage.name} - keys`;
       await removeExistingCopyPages(targetName);
       const targetPage = sourcePage.clone();
       targetPage.name = targetName;
@@ -109,7 +114,8 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
         const lang = options.languages[i];
         if (!lang) continue;
 
-        const targetName = `${sourcePage.name} — ${lang}`;
+        // Matches production's naming exactly — see the "keys" branch above.
+        const targetName = `${sourcePage.name} - ${lang}`;
         await removeExistingCopyPages(targetName);
         const targetPage = sourcePage.clone();
         targetPage.name = targetName;
