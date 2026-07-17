@@ -107,6 +107,33 @@
     return `${n} ${noun}`;
   });
 
+  // Same "N to update" figure for "Download all" (no selection) — a
+  // page-wide scan of every connected node, since that's exactly what
+  // Download all is about to touch. Only fetched for the state that actually
+  // shows it (language copy, nothing selected, no download run yet this
+  // session) — `null` elsewhere, including while a fresh scan is loading.
+  let pageConnectedCount = $state<number | null>(null);
+
+  $effect(() => {
+    void appState.value.pageName; // re-scan on page switch
+    const shouldScan = Boolean(language) && selectedNodes.length === 0 && lastResult === null;
+    if (!shouldScan) {
+      pageConnectedCount = null;
+      return;
+    }
+    let cancelled = false;
+    requestPageConnectedNodes()
+      .then((nodes) => {
+        if (!cancelled) pageConnectedCount = nodes.length;
+      })
+      .catch(() => {
+        if (!cancelled) pageConnectedCount = null;
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
+
   function formatKeyLabel(node: NodeInfo): string {
     return namespacedKeyLabel(node.ns, node.key, auth.value.namespacesEnabled);
   }
@@ -426,6 +453,11 @@
       {#if stage === "idle" || stage === "error"}
         {#if selectedNodes.length === 0}
           {#if language && lastResult === null}
+            {#if pageConnectedCount !== null}
+              <div class="text-xs text-text-secondary">
+                {pageConnectedCount} {pageConnectedCount === 1 ? "string" : "strings"} to update
+              </div>
+            {/if}
             <EmptyState
               icon={Download}
               title="Download strings to Figma."
