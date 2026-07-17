@@ -85,24 +85,47 @@
   const downloadButtonLabel = $derived(hasUserSelection ? "Download" : "Download all");
 
   // Persists across the "toast disappears" problem: once a download
-  // finishes, this stays on screen (replacing the pre-download instruction
-  // text) until the NEXT download starts — the user gets to see what
-  // actually happened instead of relying on a fleeting notification.
+  // finishes, this stays on screen as a dismissable success message — the
+  // user gets to see what actually happened instead of relying on a fleeting
+  // notification. Cleared by the selection-change watch below, or manually
+  // via the message's own close button.
   let lastResult = $state<{ count: number } | null>(null);
   // Count of nodes an in-flight apply is updating — captured at send time so
   // the result handler can report it once `applyProgress` is cleared.
   let pendingApplyCount = 0;
 
-  // `null` means: don't show the top status line at all. Before any download
-  // this session, the count row below already carries the same "N to update"
-  // meaning — a separate line here would just repeat it; the instructional
-  // EmptyState (no selection) says it too, on its own.
-  const topStatusText = $derived.by(() => {
-    if (!language) return "Shows Tolgee keys. Doesn't sync back.";
-    if (lastResult === null) return null;
+  // Static description for "keys" copies — unrelated to `lastResult`, always
+  // shown when there's no download button at all.
+  const languageDescriptionText = $derived(
+    !language ? "Shows Tolgee keys. Doesn't sync back." : null,
+  );
+
+  const lastResultText = $derived.by(() => {
+    if (!lastResult) return null;
     if (lastResult.count === 0) return "No changes found.";
     const noun = lastResult.count === 1 ? "string" : "strings";
     return `Downloaded ${lastResult.count} ${noun}.`;
+  });
+
+  // Not `$state` — plain closure memory for the selection-change watch below,
+  // compared by VALUE (not by the `selectedNodes` array's reference) so a
+  // content-only patch (e.g. `apply-translations-result` rewriting the just-
+  // downloaded nodes' `characters` in place) doesn't look like a selection
+  // change and wipe out the success message we just showed for it.
+  let lastSelectionSignature: string | null = null;
+
+  // Any ACTUAL selection change — a different set of node ids, a flip of
+  // `hasUserSelection`, or switching to a different copy page — means the
+  // success message and the view below it describe a selection that's no
+  // longer current. Clearing `lastResult` here both dismisses the banner and
+  // lets the view re-render from the fresh selection (the with/without-
+  // selection branches below no longer gate on `lastResult` at all).
+  $effect(() => {
+    const signature = `${appState.value.pageName}|${hasUserSelection}|${selectedNodes.map((n) => n.id).join(",")}`;
+    if (lastSelectionSignature !== null && signature !== lastSelectionSignature) {
+      lastResult = null;
+    }
+    lastSelectionSignature = signature;
   });
 
   /** "N strings" (+ "(M not connected)" when there are any) — the raw count
@@ -468,13 +491,15 @@
         >
           Try again
         </Button>
-      {:else if topStatusText}
-        <p class="text-xs text-text-secondary">{topStatusText}</p>
+      {:else if lastResult}
+        <Message variant="success" onDismiss={() => (lastResult = null)}>{lastResultText}</Message>
+      {:else if languageDescriptionText}
+        <p class="text-xs text-text-secondary">{languageDescriptionText}</p>
       {/if}
 
       {#if stage === "idle" || stage === "error"}
         {#if selectedNodes.length === 0}
-          {#if language && lastResult === null}
+          {#if language}
             {#if pageScan}
               <div class="text-xs text-text-secondary">
                 {formatCountLine(pageScan.total, pageScan.notConnected)}
