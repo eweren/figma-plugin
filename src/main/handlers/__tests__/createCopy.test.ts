@@ -78,12 +78,18 @@ function page(
 }
 
 function setPages(pages: FakePage[], currentPage?: FakePage) {
-  (globalThis as unknown as { figma: unknown }).figma = {
+  const figma = {
     root: { children: pages },
     currentPage: currentPage ?? pages[0],
     getNodeByIdAsync: async (id: string) => pages.find((p) => p.id === id) ?? null,
+    // The sync `figma.currentPage` SETTER throws under dynamic-page access —
+    // production code must only ever switch via this async API.
+    setCurrentPageAsync: async (page: FakePage) => {
+      figma.currentPage = page;
+    },
     mixed: Symbol("mixed"),
   };
+  (globalThis as unknown as { figma: unknown }).figma = figma;
 }
 
 afterEach(() => {
@@ -167,6 +173,7 @@ describe("checkCopyStaleness", () => {
     await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
       ok: true,
       missingCount: 0,
+      removedCount: 0,
     });
   });
 
@@ -185,6 +192,7 @@ describe("checkCopyStaleness", () => {
     await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
       ok: true,
       missingCount: 2,
+      removedCount: 0,
     });
   });
 
@@ -203,6 +211,7 @@ describe("checkCopyStaleness", () => {
     await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
       ok: true,
       missingCount: 0,
+      removedCount: 0,
     });
   });
 
@@ -226,13 +235,14 @@ describe("checkCopyStaleness", () => {
     await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
       ok: true,
       missingCount: 1,
+      removedCount: 0,
     });
   });
 
-  it("does NOT flag a copy that has MORE nodes on a key than the source", async () => {
-    // The additions-only design: the source losing nodes (deletions) is out
-    // of scope, and a per-key surplus on the copy side must not go negative
-    // and cancel out genuine missing counts elsewhere.
+  it("reports strings the source LOST as removedCount, never as negative missing", async () => {
+    // The copy has a surplus on key "a" (the source lost a node since the
+    // copy was made). That surplus must surface as `removedCount` — and per-
+    // key maxes keep it from cancelling genuine missing counts elsewhere.
     const source = page("Home", undefined, {
       id: "src",
       textNodes: [textNode({ key: "a" }), textNode({ key: "b" })],
@@ -250,6 +260,28 @@ describe("checkCopyStaleness", () => {
     await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
       ok: true,
       missingCount: 0,
+      removedCount: 1,
+    });
+  });
+
+  it("counts both directions independently in one check", async () => {
+    // Source gained key "c" AND lost one "a" node; neither direction may
+    // cancel the other.
+    const source = page("Home", undefined, {
+      id: "src",
+      textNodes: [textNode({ key: "a" }), textNode({ key: "c" })],
+    });
+    const copyPage = page(
+      "Home — en",
+      { pageCopy: true, sourcePageId: "src", language: "en" },
+      { id: "copy", textNodes: [textNode({ key: "a" }), textNode({ key: "a" })] },
+    );
+    setPages([source, copyPage], copyPage);
+
+    await expect(checkCopyStaleness(copyPage as never)).resolves.toEqual({
+      ok: true,
+      missingCount: 1,
+      removedCount: 1,
     });
   });
 

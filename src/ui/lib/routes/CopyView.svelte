@@ -56,13 +56,23 @@
   let applyWatchdog: RequestWatchdog | null = null;
   const APPLY_TRANSLATIONS_TIMEOUT_MS = 5 * 60_000;
 
-  // Connected keys on the SOURCE page that this copy doesn't have — the
-  // source gained new connections after the copy was made, and Download has
-  // no way to discover them (it only refreshes text for keys the copy
-  // already tracks). `null` until checked, or when there's nothing recorded
+  // Structural drift between this copy and its SOURCE page: strings the
+  // source gained (`added`) or lost (`removed`) since the copy was made.
+  // Download can't fix either — it only refreshes text on strings the copy
+  // already tracks. `null` until checked, or when there's nothing recorded
   // to compare against (older copy, or one made by production).
-  let staleness = $state<{ missingCount: number } | null>(null);
+  let staleness = $state<{ added: number; removed: number } | null>(null);
   let stalenessCorrelationId: string | null = null;
+
+  const stalenessText = $derived.by(() => {
+    if (!staleness) return "";
+    const parts: string[] = [];
+    if (staleness.added > 0) {
+      parts.push(`${staleness.added} ${staleness.added === 1 ? "string" : "strings"} added`);
+    }
+    if (staleness.removed > 0) parts.push(`${staleness.removed} removed`);
+    return `The original page changed since this copy was made (${parts.join(", ")}). Download only refreshes existing strings.`;
+  });
   let recreateProgress = $state<{ current: number; total: number } | null>(null);
   let recreateCorrelationId = $state<string | null>(null);
   let recreateWatchdog: RequestWatchdog | null = null;
@@ -269,7 +279,9 @@
         // "the banner never shows" blind cost a full report round-trip once.
         console.warn("[tolgee] copy staleness check skipped:", msg.error);
       }
-      staleness = msg.ok && msg.missingCount ? { missingCount: msg.missingCount } : null;
+      const added = msg.missingCount ?? 0;
+      const removed = msg.removedCount ?? 0;
+      staleness = msg.ok && added + removed > 0 ? { added, removed } : null;
     });
     return off;
   });
@@ -396,11 +408,7 @@
              Download can't discover those on its own (it only refreshes text
              for keys the copy already tracks), so recreating is the only fix. -->
         <div class="space-y-1.5">
-          <Message variant="info">
-            {staleness.missingCount}
-            {staleness.missingCount === 1 ? "string was" : "strings were"} connected on the
-            original page since this copy was made. Download only refreshes existing strings.
-          </Message>
+          <Message variant="info">{stalenessText}</Message>
           <Button
             size="sm"
             variant="secondary"

@@ -215,6 +215,7 @@ window.addEventListener("message", (event) => {
         correlationId: msg.correlationId,
         ok: true,
         missingCount: 0,
+        removedCount: 0,
       });
       return;
     }

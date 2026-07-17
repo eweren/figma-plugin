@@ -408,6 +408,7 @@ on("request-copy-staleness", async (msg) => {
     correlationId: msg.correlationId,
     ok: result.ok,
     missingCount: result.missingCount,
+    removedCount: result.removedCount,
     error: result.error,
   });
 });

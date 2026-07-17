@@ -162,8 +162,10 @@ export type MainToUi =
       type: "copy-staleness-result";
       correlationId: string;
       ok: boolean;
-      /** Connected keys on the source page this copy doesn't have yet. */
+      /** Connected strings on the source page this copy doesn't have yet. */
       missingCount?: number;
+      /** Connected strings the source page lost since the copy was made. */
+      removedCount?: number;
       error?: string;
     }
   | {

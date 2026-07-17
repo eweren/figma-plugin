@@ -126,7 +126,7 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
       }
 
       markPageAsCopy(targetPage, sourcePage.id);
-      if (switchedAwayFromCurrent) figma.currentPage = targetPage;
+      if (switchedAwayFromCurrent) await figma.setCurrentPageAsync(targetPage);
     } else {
       // mode === "languages"
       const totalPages = options.languages.length;
@@ -180,7 +180,7 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
         }
 
         markPageAsCopy(targetPage, sourcePage.id, lang);
-        if (switchedAwayFromCurrent) figma.currentPage = targetPage;
+        if (switchedAwayFromCurrent) await figma.setCurrentPageAsync(targetPage);
       }
     }
 
@@ -239,7 +239,9 @@ export async function removeExistingCopyPages(
         preferredFallback ?? figma.root.children.find((p) => p !== page && p.type === "PAGE");
       if (fallback) {
         await fallback.loadAsync();
-        figma.currentPage = fallback as PageNode;
+        // The sync `figma.currentPage` setter throws under
+        // `documentAccess: "dynamic-page"` — only the async API is allowed.
+        await figma.setCurrentPageAsync(fallback as PageNode);
         switchedAwayFromCurrent = true;
       }
     }
@@ -318,6 +320,9 @@ export type CopyStalenessResult = {
   ok: boolean;
   /** Connected strings on the source page that this copy doesn't have yet. */
   missingCount?: number;
+  /** Connected strings the source page LOST since the copy was made (the
+      copy still shows them). */
+  removedCount?: number;
   error?: string;
 };
 
@@ -351,13 +356,22 @@ export async function checkCopyStaleness(copyPage: PageNode): Promise<CopyStalen
   await sourcePage.loadAsync();
   await copyPage.loadAsync();
 
+  // Both directions from the same two scans — deletions cost nothing extra.
+  // `missing` = connected strings the source gained since the copy was made;
+  // `removed` = connected strings the source lost (the copy still shows
+  // them). Per-key maxes, so a surplus on one key never cancels a genuine
+  // gap on another.
   const sourceCounts = collectConnectedKeyCounts(sourcePage);
   const copyCounts = collectConnectedKeyCounts(copyPage);
   let missingCount = 0;
   for (const [key, srcCount] of sourceCounts) {
     missingCount += Math.max(0, srcCount - (copyCounts.get(key) ?? 0));
   }
-  return { ok: true, missingCount };
+  let removedCount = 0;
+  for (const [key, copyCount] of copyCounts) {
+    removedCount += Math.max(0, copyCount - (sourceCounts.get(key) ?? 0));
+  }
+  return { ok: true, missingCount, removedCount };
 }
 
 /**
