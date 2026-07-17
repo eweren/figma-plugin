@@ -105,23 +105,38 @@
     return `Downloaded ${lastResult.count} ${noun}.`;
   });
 
+  // "N strings to update" must mean the same thing with and without a
+  // selection: the CONNECTED strings Download would actually consider.
+  // Neither raw list length works for that — the selection includes
+  // unconnected nodes, and the page-wide scan returns every node carrying
+  // ANY plugin data (a prefilled-but-never-connected key counts too) — so
+  // both sides filter to `connected` before counting. (The two figures can
+  // still differ legitimately: the selection scan honours the ignore rules —
+  // hidden layers, digit-only strings — while the page-wide Download all
+  // deliberately updates even those, matching production.)
+  const connectedSelectedCount = $derived(
+    selectedNodes.filter((n) => n.connected).length,
+  );
+
   // The count row's wording: "N to update" before any download this session
   // (an implicit call to action, doubling as the instruction that used to be
   // a separate line), plain "N string(s)" once a download has actually run
   // (they're no longer "to update" — `topStatusText` above carries what
   // happened instead) or for a "keys" copy (no download exists here at all).
   const countRowText = $derived.by(() => {
+    if (language && lastResult === null) {
+      const n = connectedSelectedCount;
+      return `${n} ${n === 1 ? "string" : "strings"} to update`;
+    }
     const n = selectedNodes.length;
-    const noun = n === 1 ? "string" : "strings";
-    if (language && lastResult === null) return `${n} ${noun} to update`;
-    return `${n} ${noun}`;
+    return `${n} ${n === 1 ? "string" : "strings"}`;
   });
 
   // Same "N to update" figure for "Download all" (no selection) — a
-  // page-wide scan of every connected node, since that's exactly what
-  // Download all is about to touch. Only fetched for the state that actually
-  // shows it (language copy, nothing selected, no download run yet this
-  // session) — `null` elsewhere, including while a fresh scan is loading.
+  // page-wide scan, counted with the same connected-only rule as above.
+  // Only fetched for the state that actually shows it (language copy,
+  // nothing selected, no download run yet this session) — `null` elsewhere,
+  // including while a fresh scan is loading.
   let pageConnectedCount = $state<number | null>(null);
 
   $effect(() => {
@@ -134,7 +149,7 @@
     let cancelled = false;
     requestPageConnectedNodes()
       .then((nodes) => {
-        if (!cancelled) pageConnectedCount = nodes.length;
+        if (!cancelled) pageConnectedCount = nodes.filter((n) => n.connected).length;
       })
       .catch(() => {
         if (!cancelled) pageConnectedCount = null;
