@@ -97,8 +97,7 @@
           class="w-full"
         />
         <p class="text-[10px] text-text-secondary">
-          Pick existing tags or type a new one. Each new key uploaded from the
-          plugin gets these tags.
+          Pick existing tags or type a new one.
         </p>
       </div>
     {/if}

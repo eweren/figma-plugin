@@ -45,13 +45,9 @@
           <Tooltip.Content
             side="left"
             align="center"
-            class="max-w-[15rem] space-y-1.5 leading-snug"
+            class="max-w-[15rem] leading-snug"
           >
             <p>Skips strings made only of digits — "100", "42".</p>
-            <p>
-              Enable "Including formatted numbers" to also skip decimals,
-              separators and signs like "1,234.00" or "+420".
-            </p>
           </Tooltip.Content>
         </Tooltip.Root>
       {/snippet}
