@@ -105,54 +105,47 @@
     return `Downloaded ${lastResult.count} ${noun}.`;
   });
 
-  // "N strings to update" must mean the same thing with and without a
-  // selection: the CONNECTED strings Download would actually consider.
-  // Neither raw list length works for that — the selection includes
-  // unconnected nodes, and the page-wide scan returns every node carrying
-  // ANY plugin data (a prefilled-but-never-connected key counts too) — so
-  // both sides filter to `connected` before counting. (The two figures can
-  // still differ legitimately: the selection scan honours the ignore rules —
-  // hidden layers, digit-only strings — while the page-wide Download all
-  // deliberately updates even those, matching production.)
-  const connectedSelectedCount = $derived(
-    selectedNodes.filter((n) => n.connected).length,
+  /** "N strings" (+ "(M not connected)" when there are any) — the raw count
+   *  of whatever's being looked at, plus how many of those are NOT actually
+   *  connected (a prefilled-but-never-pushed key still shows up in a
+   *  selection/page scan, but Download silently skips it). */
+  function formatCountLine(total: number, notConnected: number): string {
+    const base = `${total} ${total === 1 ? "string" : "strings"}`;
+    return notConnected > 0 ? `${base} (${notConnected} not connected)` : base;
+  }
+
+  const countRowText = $derived(
+    formatCountLine(
+      selectedNodes.length,
+      selectedNodes.filter((n) => !n.connected).length,
+    ),
   );
 
-  // The count row's wording: "N to update" before any download this session
-  // (an implicit call to action, doubling as the instruction that used to be
-  // a separate line), plain "N string(s)" once a download has actually run
-  // (they're no longer "to update" — `topStatusText` above carries what
-  // happened instead) or for a "keys" copy (no download exists here at all).
-  const countRowText = $derived.by(() => {
-    if (language && lastResult === null) {
-      const n = connectedSelectedCount;
-      return `${n} ${n === 1 ? "string" : "strings"} to update`;
-    }
-    const n = selectedNodes.length;
-    return `${n} ${n === 1 ? "string" : "strings"}`;
-  });
-
-  // Same "N to update" figure for "Download all" (no selection) — a
-  // page-wide scan, counted with the same connected-only rule as above.
-  // Only fetched for the state that actually shows it (language copy,
-  // nothing selected, no download run yet this session) — `null` elsewhere,
-  // including while a fresh scan is loading.
-  let pageConnectedCount = $state<number | null>(null);
+  // Same figure for "Download all" (no selection) — a page-wide scan.
+  // Note this legitimately can't be directly compared to the with-selection
+  // count: the selection scan honours the ignore rules (hidden layers,
+  // digit-only strings) while page-wide Download all deliberately updates
+  // even those, matching production. Only fetched for the state that
+  // actually shows it (language copy, nothing selected, no download run yet
+  // this session) — `null` elsewhere, including while a fresh scan is loading.
+  let pageScan = $state<{ total: number; notConnected: number } | null>(null);
 
   $effect(() => {
     void appState.value.pageName; // re-scan on page switch
     const shouldScan = Boolean(language) && selectedNodes.length === 0 && lastResult === null;
     if (!shouldScan) {
-      pageConnectedCount = null;
+      pageScan = null;
       return;
     }
     let cancelled = false;
     requestPageConnectedNodes()
       .then((nodes) => {
-        if (!cancelled) pageConnectedCount = nodes.filter((n) => n.connected).length;
+        if (!cancelled) {
+          pageScan = { total: nodes.length, notConnected: nodes.filter((n) => !n.connected).length };
+        }
       })
       .catch(() => {
-        if (!cancelled) pageConnectedCount = null;
+        if (!cancelled) pageScan = null;
       });
     return () => {
       cancelled = true;
@@ -482,9 +475,9 @@
       {#if stage === "idle" || stage === "error"}
         {#if selectedNodes.length === 0}
           {#if language && lastResult === null}
-            {#if pageConnectedCount !== null}
+            {#if pageScan}
               <div class="text-xs text-text-secondary">
-                {pageConnectedCount} {pageConnectedCount === 1 ? "string" : "strings"} to update
+                {formatCountLine(pageScan.total, pageScan.notConnected)}
               </div>
             {/if}
             <EmptyState
