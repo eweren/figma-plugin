@@ -1,5 +1,6 @@
 import { TOLGEE_NODE_INFO } from "$shared/constants";
 import type { NodeInfo } from "$shared/types";
+import { type IgnoreSettings, shouldIgnoreNode } from "./filter";
 import { getNodeInfo } from "./getNodeInfo";
 
 /**
@@ -41,26 +42,56 @@ const INFO_YIELD_EVERY = 50;
  *  (`nodes-set-progress`, `apply-translations-progress`). */
 const PROGRESS_MIN_TOTAL = 100;
 
+/** Walk up from a connected text node to the page root to find out whether
+ *  any CONTAINER between it and the page is hidden — the same "ancestor
+ *  hidden" concept `scanSelectedTextNodes` threads down during its recursive
+ *  walk, needed for the opt-in "ignore hidden layers including children"
+ *  filter. Unlike a full-document walk, this stays cheap here: it only ever
+ *  runs once per node `findAllWithCriteria` already matched (i.e. bounded to
+ *  the page's CONNECTED nodes), not once per node on the page. */
+function computeAncestorHidden(node: TextNode): boolean {
+  let parent = node.parent;
+  while (parent && parent.type !== "PAGE") {
+    if ("visible" in parent && parent.visible === false) return true;
+    parent = parent.parent;
+  }
+  return false;
+}
+
 /**
  * Build a `NodeInfo` for every given text node, yielding to the event loop
  * every `INFO_YIELD_EVERY` nodes so a page-wide scan of thousands of connected
  * nodes doesn't freeze the canvas thread. `getNodeInfo` costs ~5 bridge reads
  * (incl. a full `characters` copy) per node.
  *
- * `onProgress` is called at each yield point with the running count, but only
- * when `nodes.length > PROGRESS_MIN_TOTAL` — see that constant's doc.
+ * Nodes the user's ignore settings would exclude (hidden layers, digit-only
+ * strings, prefixed layer names, …) are filtered out here too — a page-wide
+ * "Download all" should skip exactly what a with-selection scan would skip,
+ * rather than touching everything regardless of those settings.
+ *
+ * `onProgress` is called at each yield point with the running (scanned, not
+ * kept) count, but only when `nodes.length > PROGRESS_MIN_TOTAL` — see that
+ * constant's doc.
  */
 export async function buildConnectedNodesInfo(
   nodes: TextNode[],
+  settings: Partial<IgnoreSettings>,
+  needsAncestorHidden: boolean,
   onProgress?: (done: number, total: number) => void,
 ): Promise<NodeInfo[]> {
   const total = nodes.length;
   const infos: NodeInfo[] = [];
+  let scanned = 0;
   for (const node of nodes) {
-    infos.push(getNodeInfo(node));
-    if (infos.length % INFO_YIELD_EVERY === 0) {
+    const characters = node.characters;
+    const ancestorHidden = needsAncestorHidden ? computeAncestorHidden(node) : false;
+    if (!shouldIgnoreNode(node, ancestorHidden, settings, characters)) {
+      infos.push(getNodeInfo(node, characters));
+    }
+    scanned++;
+    if (scanned % INFO_YIELD_EVERY === 0) {
       if (total > PROGRESS_MIN_TOTAL) {
-        onProgress?.(infos.length, total);
+        onProgress?.(scanned, total);
       }
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }

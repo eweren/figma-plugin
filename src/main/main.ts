@@ -255,11 +255,19 @@ on("set-branch", async (msg) => {
 
 on("request-page-connected-nodes", async (msg) => {
   const nodes = await scanConnectedNodes();
+  // Same ignore settings (hidden layers, digit-only strings, prefixed layer
+  // names, …) the with-selection scan already applies — a page-wide
+  // "Download all" should skip the same nodes a selection scan would, not
+  // touch everything regardless of those settings.
+  const config = await readMergedConfig();
+  const needsAncestorHidden = Boolean(
+    (config.ignoreHiddenLayers ?? true) && config.ignoreHiddenLayersIncludingChildren,
+  );
   // Chunked — `getNodeInfo` is ~5 bridge reads (incl. a full `characters`
   // copy) per node, and a page-wide Pull can hit thousands of connected nodes.
   // `buildConnectedNodesInfo` reports progress (guarded to `total > 100`) so
   // the UI's watchdog can tell a slow-but-alive scan from a hung one.
-  const infos = await buildConnectedNodesInfo(nodes, (done, total) => {
+  const infos = await buildConnectedNodesInfo(nodes, config, needsAncestorHidden, (done, total) => {
     send({
       type: "page-connected-nodes-progress",
       correlationId: msg.correlationId,

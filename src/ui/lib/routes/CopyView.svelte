@@ -121,13 +121,13 @@
     ),
   );
 
-  // Same figure for "Download all" (no selection) — a page-wide scan.
-  // Note this legitimately can't be directly compared to the with-selection
-  // count: the selection scan honours the ignore rules (hidden layers,
-  // digit-only strings) while page-wide Download all deliberately updates
-  // even those, matching production. Only fetched for the state that
-  // actually shows it (language copy, nothing selected, no download run yet
-  // this session) — `null` elsewhere, including while a fresh scan is loading.
+  // Same figure for "Download all" (no selection) — a page-wide scan. This
+  // now honours the same ignore rules (hidden layers, digit-only strings) as
+  // the with-selection scan — a deliberate deviation from upstream, which
+  // leaves its own page-wide scan unfiltered — so the two counts stay
+  // comparable. Only fetched for the state that actually shows it (language
+  // copy, nothing selected, no download run yet this session) — `null`
+  // elsewhere, including while a fresh scan is loading.
   let pageScan = $state<{ total: number; notConnected: number } | null>(null);
 
   $effect(() => {
