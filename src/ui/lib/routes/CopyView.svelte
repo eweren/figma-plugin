@@ -33,6 +33,11 @@
   const language = $derived(appState.value.config?.language);
   const selectedNodes = $derived(appState.value.selectedNodes);
   const hasUserSelection = $derived(appState.value.hasUserSelection);
+  // The list only ever means anything for genuinely CONNECTED keys — a node
+  // can carry a non-empty `key` from the auto-generated prefill suggestion
+  // while still being unconnected (never pushed to Tolgee), which reads as a
+  // real key if shown alongside connected ones.
+  const connectedSelectedNodes = $derived(selectedNodes.filter((n) => n.connected));
 
   const branch = $derived(
     auth.value.branchingEnabled ? (appState.value.config?.branch ?? "") : "",
@@ -73,7 +78,7 @@
   const topStatusText = $derived.by(() => {
     if (!language) return "Shows Tolgee keys. Doesn't sync back.";
     if (lastResult === null) {
-      return selectedNodes.length > 0
+      return connectedSelectedNodes.length > 0
         ? "Download strings to Figma."
         : null;
     }
@@ -83,7 +88,6 @@
   });
 
   function formatKeyLabel(node: NodeInfo): string {
-    if (!node.key) return "Not connected";
     return namespacedKeyLabel(node.ns, node.key, auth.value.namespacesEnabled);
   }
 
@@ -251,7 +255,7 @@
       {/if}
 
       {#if stage === "idle" || stage === "error"}
-        {#if selectedNodes.length === 0}
+        {#if connectedSelectedNodes.length === 0}
           {#if language && lastResult === null}
             <EmptyState
               icon={Download}
@@ -263,25 +267,13 @@
           {/if}
         {:else}
           <ul class="flex flex-col gap-1">
-            {#each selectedNodes as node (node.id)}
+            {#each connectedSelectedNodes as node (node.id)}
               <li
                 class="flex items-center gap-2 rounded border border-border bg-bg px-2 py-1.5"
               >
-                <div class="min-w-0 flex-1">
-                  <div
-                    class="truncate text-xs"
-                    class:text-text-secondary={!node.key}
-                    class:italic={!node.key}
-                  >
-                    {formatKeyLabel(node)}
-                  </div>
-                  <div
-                    class="truncate text-[11px] text-text-secondary"
-                    title={node.translation || node.characters}
-                  >
-                    {node.translation || node.characters || "—"}
-                  </div>
-                </div>
+                <span class="min-w-0 flex-1 truncate text-xs">
+                  {formatKeyLabel(node)}
+                </span>
                 <TooltipIconButton label="Move to string" onclick={() => showOnCanvas(node.id)}>
                   <Target size={ICON.inline} />
                 </TooltipIconButton>
