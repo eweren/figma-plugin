@@ -83,17 +83,28 @@
   // the result handler can report it once `applyProgress` is cleared.
   let pendingApplyCount = 0;
 
-  // `null` means: don't show the top status line at all — the big
-  // instructional EmptyState below already says the same thing, so a top
-  // line here would just repeat it.
+  // `null` means: don't show the top status line at all. Before any download
+  // this session, the count row below already carries the same "N to update"
+  // meaning — a separate line here would just repeat it; the instructional
+  // EmptyState (no selection) says it too, on its own.
   const topStatusText = $derived.by(() => {
     if (!language) return "Shows Tolgee keys. Doesn't sync back.";
-    if (lastResult === null) {
-      return selectedNodes.length > 0 ? "Download strings to Figma." : null;
-    }
+    if (lastResult === null) return null;
     if (lastResult.count === 0) return "No changes found.";
     const noun = lastResult.count === 1 ? "string" : "strings";
     return `Downloaded ${lastResult.count} ${noun}.`;
+  });
+
+  // The count row's wording: "N to update" before any download this session
+  // (an implicit call to action, doubling as the instruction that used to be
+  // a separate line), plain "N string(s)" once a download has actually run
+  // (they're no longer "to update" — `topStatusText` above carries what
+  // happened instead) or for a "keys" copy (no download exists here at all).
+  const countRowText = $derived.by(() => {
+    const n = selectedNodes.length;
+    const noun = n === 1 ? "string" : "strings";
+    if (language && lastResult === null) return `${n} ${noun} to update`;
+    return `${n} ${noun}`;
   });
 
   function formatKeyLabel(node: NodeInfo): string {
@@ -426,9 +437,7 @@
         {:else}
           <!-- Count row mirrors Index's (no select-all checkbox — nothing here
                is bulk-actionable). -->
-          <div class="text-xs text-text-secondary">
-            {selectedNodes.length} {selectedNodes.length === 1 ? "string" : "strings"}
-          </div>
+          <div class="text-xs text-text-secondary">{countRowText}</div>
           <!-- Mirrors NodeListItem's read-only half (string + Plural/Formatted
                badges, key glyph below) — same visual language as the main
                Index list, minus anything editable (this view never writes).
@@ -452,8 +461,8 @@
                   </div>
                   <div class="flex items-center gap-1.5">
                     {#if node.connected}
-                      <KeyRound size={ICON.inline} class="shrink-0 text-secondary" />
-                      <span class="min-w-0 truncate text-xs font-semibold text-secondary">
+                      <KeyRound size={ICON.inline} class="shrink-0 text-text-secondary" />
+                      <span class="min-w-0 truncate text-xs font-semibold text-text-secondary">
                         {formatKeyLabel(node)}
                       </span>
                     {:else}
