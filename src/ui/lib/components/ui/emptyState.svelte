@@ -8,7 +8,7 @@
   // lucide icon or the Tolgee brand mark. The muted, FULLY OPAQUE
   // `text-icon-muted` colour avoids the overlap seams translucent colours
   // create on glyphs with crossing strokes.
-  import type { Component, ComponentType, Snippet, SvelteComponent } from "svelte";
+  import type { Component, ComponentType, SvelteComponent } from "svelte";
   import { ICON } from "$shared/iconSizes";
 
   // Accepts both Svelte 5 components (the Tolgee brand mark) and the legacy
@@ -21,11 +21,9 @@
     icon?: IconComponent;
     title: string;
     description?: string;
-    /** Small inline element next to the title — e.g. an info tooltip icon. */
-    trailing?: Snippet;
   };
 
-  let { icon: Icon, title, description, trailing }: Props = $props();
+  let { icon: Icon, title, description }: Props = $props();
 </script>
 
 <div
@@ -35,10 +33,7 @@
     <Icon size={ICON.hero} class="text-icon-muted" />
   {/if}
   <div class="space-y-0.5 text-text-secondary">
-    <p class="flex items-center justify-center gap-1 text-sm">
-      <span>{title}</span>
-      {#if trailing}{@render trailing()}{/if}
-    </p>
+    <p class="text-sm">{title}</p>
     {#if description}
       <p class="text-xs">{description}</p>
     {/if}

@@ -14,7 +14,6 @@
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import Group from "lucide-svelte/icons/group";
   import Target from "lucide-svelte/icons/target";
-  import Info from "lucide-svelte/icons/info";
   import Download from "lucide-svelte/icons/download";
 
   /**
@@ -78,7 +77,7 @@
         ? "Download strings to Figma."
         : null;
     }
-    if (lastResult.count === 0) return "Already up to date.";
+    if (lastResult.count === 0) return "No changes found.";
     const noun = lastResult.count === 1 ? "string" : "strings";
     return `Downloaded ${lastResult.count} ${noun}.`;
   });
@@ -129,8 +128,10 @@
       const diff = pullDiff(targetNodes, remoteKeys, lang);
       if (diff.changedNodes.length === 0) {
         stage = "idle";
+        // Just describes THIS check's result — Tolgee can change again a
+        // second later, so this is never phrased as an ongoing guarantee.
         lastResult = { count: 0 };
-        send({ type: "notify", text: "Already up to date." });
+        send({ type: "notify", text: "No changes found." });
         return;
       }
 
@@ -214,27 +215,6 @@
     {/if}
   </header>
 
-  {#snippet syncInfoIcon()}
-    <Tooltip.Root>
-      <Tooltip.Trigger>
-        {#snippet child({ props })}
-          <span
-            {...props}
-            class="shrink-0 text-text-secondary transition-colors hover:text-text-brand"
-            role="button"
-            tabindex={-1}
-            aria-label="Why strings on this page don't sync back"
-          >
-            <Info size={ICON.inline} />
-          </span>
-        {/snippet}
-      </Tooltip.Trigger>
-      <Tooltip.Content side="top" class="max-w-[16rem] leading-snug">
-        Strings on this page don't sync back to Tolgee.
-      </Tooltip.Content>
-    </Tooltip.Root>
-  {/snippet}
-
   <Tooltip.Provider delayDuration={200}>
     <div class="flex flex-1 flex-col overflow-auto p-3 space-y-3">
       {#if stage === "pulling"}
@@ -267,10 +247,7 @@
         <Message variant="error">{errorMessage ?? "Something went wrong."}</Message>
         <Button variant="secondary" onclick={pull}>Try again</Button>
       {:else if topStatusText}
-        <p class="flex items-start gap-1.5 text-xs text-text-secondary">
-          <span class="flex-1">{topStatusText}</span>
-          {@render syncInfoIcon()}
-        </p>
+        <p class="text-xs text-text-secondary">{topStatusText}</p>
       {/if}
 
       {#if stage === "idle" || stage === "error"}
@@ -280,9 +257,7 @@
               icon={Download}
               title="Download strings to Figma."
               description="Download all, or select frames to update specific strings."
-            >
-              {#snippet trailing()}{@render syncInfoIcon()}{/snippet}
-            </EmptyState>
+            />
           {:else}
             <EmptyState icon={Group} title="Select a string or frame" />
           {/if}
