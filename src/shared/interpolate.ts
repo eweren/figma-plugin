@@ -59,8 +59,14 @@ function namedPlaceholders(icu: string): string[] {
 export function renderParams(icu: string, node: RenderNode): Record<string, string> {
   const params: Record<string, string> = { ...(node.paramsValues ?? {}) };
   const pluralName = getTolgeeFormat(icu, true, false).parameter;
-  if (pluralName && !(pluralName in params)) {
-    params[pluralName] = numericCount(node.pluralParamValue) ?? "1";
+  if (pluralName) {
+    // The plural argument MUST be numeric — IntlMessageFormat doesn't throw
+    // on a non-numeric value, it silently coerces it to NaN ("Mám NaN
+    // jablek" on the canvas). Old node data can carry the arg NAME (or "")
+    // as its own sample, so a non-numeric `paramsValues` entry falls
+    // through to `pluralParamValue`, then to "1".
+    params[pluralName] =
+      numericCount(params[pluralName]) ?? numericCount(node.pluralParamValue) ?? "1";
   }
   // Seed any other named placeholder with its OWN name so it renders as e.g.
   // "Hello, name!" instead of a literal "{name}" or an ICU throw — the original

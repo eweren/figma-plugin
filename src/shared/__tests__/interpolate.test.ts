@@ -47,6 +47,20 @@ describe("renderIcuForNode", () => {
     expect(out.error).toBeInstanceOf(Error);
   });
 
+  it("overrides a NON-NUMERIC plural sample instead of rendering NaN", () => {
+    // Old node data can carry the plural arg's NAME as its own sample
+    // (paramsValues: {value: "value"}) — IntlMessageFormat doesn't throw on
+    // that, it silently coerces to NaN ("Mám NaN jablek" on canvas). The
+    // numeric fallback chain must kick in: pluralParamValue, then "1".
+    const CS =
+      "{value, plural, one {Mám # jablko} few {Mám # jablka} many {Mám # jablka} other {Mám # jablek}}";
+    const poisoned = makeNode({ paramsValues: { value: "value" }, pluralParamValue: "9" });
+    expect(renderIcuForNode(CS, poisoned, "cs").text).toBe("Mám 9 jablek");
+
+    const emptySample = makeNode({ paramsValues: { value: "" } });
+    expect(renderIcuForNode(CS, emptySample, "cs").text).toBe("Mám 1 jablko");
+  });
+
   it("renders a plural even when isPlural is false — the ICU's own structure wins", () => {
     // Real-world case: Tolgee's key-level "isPlural" setting disagreed with
     // the translation's actual ICU shape (typed as a plural without the key

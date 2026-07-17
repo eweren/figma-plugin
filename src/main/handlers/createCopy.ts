@@ -268,7 +268,11 @@ export function resolveCopyNodeText(
   const rawText = remote?.text ?? info.translation;
   if (!rawText) return null;
   const isPlural = remote?.isPlural ?? info.isPlural;
-  return renderIcuForNode(rawText, { ...info, isPlural }, language).text;
+  const out = renderIcuForNode(rawText, { ...info, isPlural }, language);
+  // Never write raw ICU onto a copy: on a render failure keep the cloned
+  // text instead (same spirit as Pull's formatNodeText keeping the node's
+  // current characters when the ICU won't render).
+  return out.error ? null : out.text;
 }
 
 /**

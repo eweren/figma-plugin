@@ -332,4 +332,12 @@ describe("resolveCopyNodeText", () => {
     const result = resolveCopyNodeText(info, { text: "<b>Bold text</b>", isPlural: false }, "en");
     expect(result).toBe("<b>Bold text</b>");
   });
+
+  it("returns null on an unrenderable ICU instead of dumping the raw pattern", () => {
+    // Malformed ICU (unclosed brace) can't render — the copy must keep the
+    // node's cloned text rather than overwrite it with the raw pattern.
+    const info = makeNodeInfo();
+    const result = resolveCopyNodeText(info, { text: "Ahoj {name", isPlural: false }, "cs");
+    expect(result).toBeNull();
+  });
 });
