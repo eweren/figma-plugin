@@ -1,6 +1,7 @@
 import type { NodeInfo } from "$shared/types";
 import type { PulledKey } from "$ui/lib/api/pull";
 import { renderIcuForNode } from "$shared/interpolate";
+import { plainCanvasText } from "$shared/richText";
 
 export type PullDiffResult = {
   /** Nodes whose remote translation differs from the local `translation`. */
@@ -39,6 +40,24 @@ function indexRemote(remoteKeys: PulledKey[]): Map<string, PulledKey> {
  * Nodes that aren't connected to a key are ignored — they have nothing to
  * pull. Connected nodes without a remote key land in `missingKeys`.
  */
+/**
+ * Whether the canvas characters differ from what applying `remoteText` would
+ * ACTUALLY write. The comparison must run the remote text through the same
+ * pipeline the apply path uses — ICU render (quote unescaping, param
+ * seeding), then the shared `plainCanvasText` markup strip (`<b>` becomes a
+ * font range, not characters; `<br>` becomes "\n") — because comparing the
+ * canvas against the RAW remote text made every formatted string look
+ * permanently drifted and re-download as "changed" on every single pull.
+ *
+ * A render failure counts as "no drift": we can't know what the canvas
+ * should look like, and re-applying on unknowns would loop forever too.
+ */
+function canvasDrifted(node: NodeInfo, remoteText: string, language: string): boolean {
+  const out = renderIcuForNode(remoteText, node, language);
+  if (out.error) return false;
+  return node.characters !== plainCanvasText(out.text);
+}
+
 export function pullDiff(
   localNodes: NodeInfo[],
   remoteKeys: PulledKey[],
@@ -82,15 +101,15 @@ export function pullDiff(
     } else if (
       // The cached translation matches the remote, but the rendered canvas
       // characters have drifted (e.g. someone typed over the layer manually).
-      // For simple, non-plural / non-parametric keys we can safely re-apply
-      // the remote text so the canvas matches the source of truth again.
+      // For non-plural / non-parametric keys we can safely re-apply the
+      // remote text so the canvas matches the source of truth again.
       // Skip if `characters` is empty — that's not real drift, it just means
       // the node hasn't been rendered yet (typical in tests / fresh syncs).
       node.characters &&
-      node.characters !== remoteText &&
       !remoteIsPlural &&
       !node.isPlural &&
-      (!node.paramsValues || Object.keys(node.paramsValues).length === 0)
+      (!node.paramsValues || Object.keys(node.paramsValues).length === 0) &&
+      canvasDrifted(node, remoteText, language)
     ) {
       changedNodes.push({
         node,

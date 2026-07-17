@@ -81,6 +81,95 @@ describe("pullDiff", () => {
     expect(diff.missingKeys).toEqual([]);
   });
 
+  it("does NOT re-download a formatted string whose canvas is the tag-stripped render (Zuzka's perpetual '2 strings')", () => {
+    // After a successful download, the canvas holds the PLAIN text ("Tučný
+    // text" in a bold font) while `translation` holds the raw markup. The
+    // drift check must compare against what apply would WRITE, not the raw
+    // remote text — otherwise every formatted string re-downloads forever.
+    const node = makeNode({
+      key: "Advaced-BoldText",
+      translation: "<b>Tučný text</b>",
+      characters: "Tučný text",
+      connected: true,
+    });
+    const remote = makeRemoteKey({
+      keyName: "Advaced-BoldText",
+      translations: { cs: { text: "<b>Tučný text</b>" } },
+    });
+    const diff = pullDiff([node], [remote], "cs");
+
+    expect(diff.changedNodes).toEqual([]);
+    expect(diff.unchangedNodes).toEqual([node]);
+  });
+
+  it("still re-applies a formatted string whose canvas GENUINELY drifted", () => {
+    const node = makeNode({
+      key: "Advaced-BoldText",
+      translation: "<b>Tučný text</b>",
+      characters: "někdo to přepsal",
+      connected: true,
+    });
+    const remote = makeRemoteKey({
+      keyName: "Advaced-BoldText",
+      translations: { cs: { text: "<b>Tučný text</b>" } },
+    });
+    const diff = pullDiff([node], [remote], "cs");
+
+    expect(diff.changedNodes).toHaveLength(1);
+    expect(diff.changedNodes[0]?.newText).toBe("<b>Tučný text</b>");
+  });
+
+  it("treats <br> as the newline it becomes on canvas, not as drift", () => {
+    const node = makeNode({
+      key: "two-lines",
+      translation: "první<br/>druhý",
+      characters: "první\ndruhý",
+      connected: true,
+    });
+    const remote = makeRemoteKey({
+      keyName: "two-lines",
+      translations: { cs: { text: "první<br/>druhý" } },
+    });
+    const diff = pullDiff([node], [remote], "cs");
+
+    expect(diff.changedNodes).toEqual([]);
+    expect(diff.unchangedNodes).toEqual([node]);
+  });
+
+  it("treats ICU quote-escaping ('' -> ') as rendered, not as drift", () => {
+    const node = makeNode({
+      key: "apostrophe",
+      translation: "It''s done",
+      characters: "It's done",
+      connected: true,
+    });
+    const remote = makeRemoteKey({
+      keyName: "apostrophe",
+      translations: { en: { text: "It''s done" } },
+    });
+    const diff = pullDiff([node], [remote], "en");
+
+    expect(diff.changedNodes).toEqual([]);
+    expect(diff.unchangedNodes).toEqual([node]);
+  });
+
+  it("never flags drift when the remote ICU cannot be rendered", () => {
+    const node = makeNode({
+      key: "broken",
+      translation: "{unclosed",
+      characters: "whatever is on canvas",
+      connected: true,
+    });
+    const remote = makeRemoteKey({
+      keyName: "broken",
+      translations: { en: { text: "{unclosed" } },
+    });
+    const diff = pullDiff([node], [remote], "en");
+
+    expect(diff.changedNodes).toEqual([]);
+    expect(diff.unchangedNodes).toEqual([node]);
+  });
+
   it("classifies an empty remote translation as missing (no destructive overwrite)", () => {
     const node = makeNode({
       key: "greeting",
