@@ -6,6 +6,7 @@
   import { nextCorrelationId, on, send } from "$ui/lib/bus";
   import { createIdleTimeout, type RequestWatchdog } from "$ui/lib/busRequest";
   import { Button, EmptyState, Message, ProgressBar } from "$ui/lib/components/ui";
+  import * as Tooltip from "$ui/lib/components/ui/tooltip";
   import TooltipIconButton from "$ui/lib/components/ui/tooltipIconButton.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
@@ -13,21 +14,22 @@
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import Group from "lucide-svelte/icons/group";
   import Target from "lucide-svelte/icons/target";
+  import Info from "lucide-svelte/icons/info";
 
   /**
    * Read-only view for a page the plugin itself generated as a copy (via
    * "Create page" in Index) — matches production's `CopyView`: no editing,
-   * just a Pull/Pull all action to refresh the copy's texts from the latest
-   * Tolgee translations, and a plain list of the current selection so the
-   * user can jump back to a layer on canvas. `App.svelte` routes here
-   * whenever `config.pageCopy` is set, regardless of the active route, so
-   * there's no "back" affordance — same as production.
+   * just a Download/Download all action to refresh the copy's strings from
+   * the latest Tolgee translations, and a plain list of the current
+   * selection so the user can jump back to a layer on canvas. `App.svelte`
+   * routes here whenever `config.pageCopy` is set, regardless of the active
+   * route, so there's no "back" affordance — same as production.
    */
 
   // The copy's language, persisted page-scoped by `markPageAsCopy` at
   // creation time. Undefined/empty means a "keys" copy (shows Tolgee keys
-  // instead of translations) — those never get a Pull button, matching
-  // production (Pull only re-fetches translations, keys never change).
+  // instead of translations) — those never get a Download button, matching
+  // production (Download only re-fetches translations, keys never change).
   const language = $derived(appState.value.config?.language);
   const selectedNodes = $derived(appState.value.selectedNodes);
   const hasUserSelection = $derived(appState.value.hasUserSelection);
@@ -50,9 +52,30 @@
   let applyWatchdog: RequestWatchdog | null = null;
   const APPLY_TRANSLATIONS_TIMEOUT_MS = 5 * 60_000;
 
-  /** "Pull all" with nothing selected, "Pull" over the current selection —
-   *  same wording and same all-vs-selection split as production. */
-  const pullButtonLabel = $derived(hasUserSelection ? "Pull" : "Pull all");
+  /** "Download all" with nothing selected, "Download" over the current
+   *  selection — mirrors production's Pull/Pull all split, just renamed to
+   *  match the "Download to Figma" wording already used by Pull.svelte and
+   *  Index's SyncButton elsewhere in this app. */
+  const downloadButtonLabel = $derived(hasUserSelection ? "Download" : "Download all");
+
+  // Persists across the "toast disappears" problem: once a download
+  // finishes, this stays on screen (replacing the pre-download instruction
+  // text) until the NEXT download starts — the user gets to see what
+  // actually happened instead of relying on a fleeting notification.
+  let lastResult = $state<{ count: number } | null>(null);
+  // Count of nodes an in-flight apply is updating — captured at send time so
+  // the result handler can report it once `applyProgress` is cleared.
+  let pendingApplyCount = 0;
+
+  const statusText = $derived.by(() => {
+    if (!language) return "Shows Tolgee keys — doesn't sync back.";
+    if (lastResult === null) {
+      return "Download the current version of strings from Tolgee to Figma.";
+    }
+    if (lastResult.count === 0) return "Downloaded — already up to date.";
+    const noun = lastResult.count === 1 ? "string" : "strings";
+    return `Downloaded — ${lastResult.count} ${noun} updated.`;
+  });
 
   function formatKeyLabel(node: NodeInfo): string {
     if (!node.key) return "Not connected";
@@ -100,7 +123,8 @@
       const diff = pullDiff(targetNodes, remoteKeys, lang);
       if (diff.changedNodes.length === 0) {
         stage = "idle";
-        send({ type: "notify", text: "Nothing to update." });
+        lastResult = { count: 0 };
+        send({ type: "notify", text: "Already up to date." });
         return;
       }
 
@@ -117,6 +141,7 @@
   ): void {
     stage = "applying";
     applyProgress = { done: 0, total: changedNodes.length };
+    pendingApplyCount = changedNodes.length;
     const correlationId = nextCorrelationId();
     applyCorrelationId = correlationId;
     applyWatchdog?.clear();
@@ -153,7 +178,9 @@
       applyProgress = null;
       if (msg.ok) {
         stage = "idle";
-        send({ type: "notify", text: `Updated translations for ${language}.` });
+        lastResult = { count: pendingApplyCount };
+        const noun = pendingApplyCount === 1 ? "string" : "strings";
+        send({ type: "notify", text: `Downloaded ${pendingApplyCount} ${noun} to Figma.` });
       } else {
         stage = "error";
         errorMessage = msg.errors[0] ?? "Failed to apply translations to one or more nodes.";
@@ -176,79 +203,94 @@
         disabled={stage === "pulling" || stage === "applying"}
         onclick={pull}
       >
-        {pullButtonLabel}
+        {downloadButtonLabel}
       </Button>
     {/if}
   </header>
 
-  <div class="flex-1 overflow-auto p-3 space-y-3">
-    {#if stage === "pulling"}
-      {#if hasUserSelection}
+  <Tooltip.Provider delayDuration={200}>
+    <div class="flex-1 overflow-auto p-3 space-y-3">
+      {#if stage === "pulling"}
+        {#if hasUserSelection}
+          <ProgressBar
+            loaded={fetchProgress.loaded}
+            total={fetchProgress.total}
+            label="Loading translations from Tolgee"
+          />
+        {:else if pageScanProgress}
+          <ProgressBar
+            loaded={pageScanProgress.done}
+            total={pageScanProgress.total}
+            label="Scanning page for connected keys…"
+          />
+        {:else}
+          <ProgressBar
+            loaded={fetchProgress.loaded}
+            total={fetchProgress.total}
+            label="Loading translations from Tolgee"
+          />
+        {/if}
+      {:else if stage === "applying"}
         <ProgressBar
-          loaded={fetchProgress.loaded}
-          total={fetchProgress.total}
-          label="Loading translations from Tolgee"
+          loaded={applyProgress?.done ?? 0}
+          total={applyProgress?.total ?? null}
+          label="Applying translations"
         />
-      {:else if pageScanProgress}
-        <ProgressBar
-          loaded={pageScanProgress.done}
-          total={pageScanProgress.total}
-          label="Scanning page for connected keys…"
-        />
+      {:else if stage === "error"}
+        <Message variant="error">{errorMessage ?? "Something went wrong."}</Message>
+        <Button variant="secondary" onclick={pull}>Try again</Button>
       {:else}
-        <ProgressBar
-          loaded={fetchProgress.loaded}
-          total={fetchProgress.total}
-          label="Loading translations from Tolgee"
-        />
+        <p class="flex items-start gap-1.5 text-xs text-text-secondary">
+          <span class="flex-1">{statusText}</span>
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+                <span
+                  {...props}
+                  class="shrink-0 text-text-secondary transition-colors hover:text-text-brand"
+                  role="button"
+                  tabindex={-1}
+                  aria-label="Why strings on this page don't sync back"
+                >
+                  <Info size={ICON.inline} />
+                </span>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content side="top" class="max-w-[16rem] leading-snug">
+              Strings on this page don't sync back to Tolgee.
+            </Tooltip.Content>
+          </Tooltip.Root>
+        </p>
       {/if}
-    {:else if stage === "applying"}
-      <ProgressBar
-        loaded={applyProgress?.done ?? 0}
-        total={applyProgress?.total ?? null}
-        label="Applying translations"
-      />
-    {:else if stage === "error"}
-      <Message variant="error">{errorMessage ?? "Something went wrong."}</Message>
-      <Button variant="secondary" onclick={pull}>Try again</Button>
-    {:else if language}
-      <Message variant="info">
-        Texts here don't sync back to Tolgee. Pull updates them with the latest
-        translations.
-      </Message>
-    {:else}
-      <Message variant="info">
-        Texts here show Tolgee keys and don't sync back.
-      </Message>
-    {/if}
 
-    {#if stage === "idle" || stage === "error"}
-      {#if selectedNodes.length === 0}
-        <EmptyState
-          icon={Group}
-          title="Select texts for translation"
-          description="Single texts or frames."
-        />
-      {:else}
-        <ul class="flex flex-col gap-1">
-          {#each selectedNodes as node (node.id)}
-            <li
-              class="flex items-center gap-2 rounded border border-border bg-bg px-2 py-1.5"
-            >
-              <span
-                class="min-w-0 flex-1 truncate text-xs"
-                class:text-text-secondary={!node.key}
-                class:italic={!node.key}
+      {#if stage === "idle" || stage === "error"}
+        {#if selectedNodes.length === 0}
+          <EmptyState
+            icon={Group}
+            title="Select strings, frames for update"
+            description="Or download the whole page."
+          />
+        {:else}
+          <ul class="flex flex-col gap-1">
+            {#each selectedNodes as node (node.id)}
+              <li
+                class="flex items-center gap-2 rounded border border-border bg-bg px-2 py-1.5"
               >
-                {formatKeyLabel(node)}
-              </span>
-              <TooltipIconButton label="Move to string" onclick={() => showOnCanvas(node.id)}>
-                <Target size={ICON.inline} />
-              </TooltipIconButton>
-            </li>
-          {/each}
-        </ul>
+                <span
+                  class="min-w-0 flex-1 truncate text-xs"
+                  class:text-text-secondary={!node.key}
+                  class:italic={!node.key}
+                >
+                  {formatKeyLabel(node)}
+                </span>
+                <TooltipIconButton label="Move to string" onclick={() => showOnCanvas(node.id)}>
+                  <Target size={ICON.inline} />
+                </TooltipIconButton>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       {/if}
-    {/if}
-  </div>
+    </div>
+  </Tooltip.Provider>
 </div>

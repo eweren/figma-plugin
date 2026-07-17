@@ -17,7 +17,7 @@ test.describe("CopyView", () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test("shows the keys message and no Pull button when no language is configured", async ({
+  test("shows the keys message and no Download button when no language is configured", async ({
     page,
   }) => {
     await page.goto(hostUrl(PAGE_COPY));
@@ -28,12 +28,14 @@ test.describe("CopyView", () => {
     ).toBeVisible({ timeout: 10_000 });
 
     await expect(
-      ui.getByText("Texts here show Tolgee keys and don't sync back."),
+      ui.getByText("Shows Tolgee keys — doesn't sync back."),
     ).toBeVisible();
-    await expect(ui.getByRole("button", { name: "Pull all" })).not.toBeVisible();
+    await expect(
+      ui.getByRole("button", { name: "Download all" }),
+    ).not.toBeVisible();
   });
 
-  test("shows the sync info message and a Pull button when a language is configured", async ({
+  test("shows the download instruction and a Download button when a language is configured", async ({
     page,
   }) => {
     await page.goto(hostUrl({ ...PAGE_COPY, language: "cs" }));
@@ -45,11 +47,13 @@ test.describe("CopyView", () => {
 
     await expect(
       ui.getByText(
-        "Texts here don't sync back to Tolgee. Pull updates them with the latest translations.",
+        "Download the current version of strings from Tolgee to Figma.",
       ),
     ).toBeVisible();
-    // Nothing selected in this fixture -> "Pull all" (vs "Pull" for a selection).
-    await expect(ui.getByRole("button", { name: "Pull all" })).toBeVisible();
+    // Nothing selected in this fixture -> "Download all" (vs "Download" for a selection).
+    await expect(
+      ui.getByRole("button", { name: "Download all" }),
+    ).toBeVisible();
   });
 
   test("Settings is reachable from a copy page context", async ({ page }) => {
