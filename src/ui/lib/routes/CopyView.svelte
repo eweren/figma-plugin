@@ -515,8 +515,8 @@
           {#if language}
             <EmptyState
               icon={Download}
-              title="Select strings for download"
-              description="Pick frames or texts."
+              title="Download strings to Figma."
+              description="All, or just the selected frames."
             />
           {:else}
             <EmptyState
