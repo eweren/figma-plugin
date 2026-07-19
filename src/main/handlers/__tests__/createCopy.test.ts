@@ -411,6 +411,40 @@ describe("createCopy — ignore settings", () => {
     expect(result.ok).toBe(true);
     expect(result.pages?.[0]?.nodes.map((n) => n.id)).toEqual(["n1"]);
   });
+
+  it("keys mode: prefixes the label with the namespace when namespacesEnabled is true", async () => {
+    const namespaced = writableTextNode({
+      id: "n1",
+      characters: "Hello",
+      key: "greeting",
+      ns: "marketing",
+    });
+    const src = cloneableSourcePage("Home", [namespaced]);
+    installFigmaForCreateCopy(src);
+
+    await createCopy({ mode: "keys", correlationId: "c4", namespacesEnabled: true }, {});
+
+    expect(namespaced.characters).toBe("marketing.greeting");
+  });
+
+  it("keys mode: writes the plain key when namespacesEnabled is false, even if the node has an ns", async () => {
+    // A node can carry a real `ns` (e.g. legacy data, or namespaces toggled
+    // off after some keys were connected) even while the project-wide
+    // feature is disabled — the label must match what Pull/CopyView/
+    // StringDetails show for that same node (namespacedKeyLabel's gate).
+    const namespaced = writableTextNode({
+      id: "n1",
+      characters: "Hello",
+      key: "greeting",
+      ns: "marketing",
+    });
+    const src = cloneableSourcePage("Home", [namespaced]);
+    installFigmaForCreateCopy(src);
+
+    await createCopy({ mode: "keys", correlationId: "c5", namespacesEnabled: false }, {});
+
+    expect(namespaced.characters).toBe("greeting");
+  });
 });
 
 // NOTE: the per-node render logic (formerly `resolveCopyNodeText` here) moved

@@ -390,6 +390,7 @@ on("create-copy", async (msg) => {
             mode: "keys",
             correlationId: msg.correlationId,
             sourcePageId: msg.sourcePageId,
+            namespacesEnabled: msg.namespacesEnabled,
           },
           settings,
         )

@@ -18,7 +18,13 @@ import { applyRichText } from "$main/text/applyRichText";
  * which defaults to `figma.currentPage` exactly as before.
  */
 export type CreateCopyOptions =
-  | { mode: "keys"; correlationId: string; sourcePageId?: string }
+  | {
+      mode: "keys";
+      correlationId: string;
+      sourcePageId?: string;
+      /** See `UiToMain`'s `create-copy.namespacesEnabled` doc. */
+      namespacesEnabled?: boolean;
+    }
   | {
       mode: "languages";
       correlationId: string;
@@ -145,7 +151,14 @@ export async function createCopy(
         if (!shouldIgnoreNode(node, ancestorHidden, settings, characters)) {
           const info = getNodeInfo(node, characters);
           if (info.connected && info.key) {
-            const label = info.ns ? `${info.ns}.${info.key}` : info.key;
+            // Matches `namespacedKeyLabel`'s gate (Pull/CopyView/StringDetails):
+            // a node can carry a real `ns` even when namespaces are toggled
+            // off in Settings (e.g. legacy data, or the project disabled the
+            // feature after some keys were already namespaced) — without this
+            // check the copy would show "ns.key" while every other screen
+            // shows plain "key" for that exact node.
+            const label =
+              info.ns && options.namespacesEnabled ? `${info.ns}.${info.key}` : info.key;
             await writeTextSafely(node, label, { plainOnly: true });
           }
         }

@@ -267,6 +267,14 @@ export type UiToMain =
        * Index-invoked "Create page" flow (defaults to `figma.currentPage`).
        */
       sourcePageId?: string;
+      /**
+       * `mode: "keys"` only — whether to prefix the written key label with its
+       * namespace (`ns.key` vs plain `key`), matching `namespacedKeyLabel`'s
+       * gate everywhere else in the app. The main thread has no access to
+       * `auth.value.namespacesEnabled` (a UI-side, API-derived flag, not a
+       * persisted setting `readMergedConfig` can see), so the UI sends it.
+       */
+      namespacesEnabled?: boolean;
     }
   | { type: "request-copy-staleness"; correlationId: string };
 

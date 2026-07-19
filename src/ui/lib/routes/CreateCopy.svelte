@@ -156,6 +156,9 @@
         correlationId: payload.correlationId,
         mode: payload.mode,
         languages: payload.languages,
+        // "keys" mode only (see UiToMain's doc) — the main thread can't read
+        // this UI-side, API-derived flag itself, so it rides along here.
+        namespacesEnabled: auth.value.namespacesEnabled,
       });
     });
   }
