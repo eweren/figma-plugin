@@ -19,6 +19,7 @@
   import { formatKey, keyFormatUsesParents } from "$shared/keyFormat";
   import { keyContextForNode, pendingPrefills } from "$ui/lib/logic/prefillKey";
   import { cancelNodeSave, queueNodeSave } from "$ui/lib/logic/saveQueue";
+  import { runWithConcurrency } from "$ui/lib/logic/asyncPool";
 
   // Every bulk write below is the user's NEWER intent for its target rows —
   // drop any still-queued debounced inline edits for them so a later flush
@@ -626,10 +627,19 @@
 
     const matches: { node: NodeInfo; r: KeySearchResult }[] = [];
     const notConnected: { text: string; hint: string }[] = [];
+    const groupList = Array.from(groups.values());
 
-    for (const { text, ns, nodes } of groups.values()) {
-      // Cancelled mid-run (taking too long, or user backed out) → abort.
-      if (matchCancelled) break;
+    // Up to 5 searches in flight at once instead of one at a time — a
+    // selection with thousands of unconnected strings could otherwise take
+    // minutes (one request round-trip per group, back to back). `matches`/
+    // `notConnected` are plain arrays, not `$state`, and JS is single-
+    // threaded, so concurrent pushes from different workers never race.
+    const AUTO_CONNECT_CONCURRENCY = 5;
+    await runWithConcurrency(groupList, AUTO_CONNECT_CONCURRENCY, async ({ text, ns, nodes }) => {
+      // Cancelled mid-run (taking too long, or user backed out) → don't
+      // start new searches. In-flight ones (up to the concurrency limit)
+      // still finish, but everything gets discarded below regardless.
+      if (matchCancelled) return;
       const v = text.toLowerCase();
       let exact: KeySearchResult[] = [];
       try {
@@ -659,8 +669,8 @@
           hint: "Several keys match this text exactly — open Connect to pick one.",
         });
       }
-      matchProgress = { done: matchProgress.done + 1, total: groups.size };
-    }
+      matchProgress = { done: matchProgress.done + 1, total: groupList.length };
+    });
 
     // Aborted → discard (the dialog is already closed by cancelMatch).
     if (matchCancelled) {
