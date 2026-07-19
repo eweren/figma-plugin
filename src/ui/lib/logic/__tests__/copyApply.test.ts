@@ -1,5 +1,8 @@
 import type { NodeInfo } from "$shared/types";
+import { plainCanvasText } from "$shared/richText";
 import { buildCopyUpdates, type CopyTranslations } from "$ui/lib/logic/copyApply";
+import { pullDiff } from "$ui/lib/logic/pullDiff";
+import type { PulledKey } from "$ui/lib/api/pull";
 import { describe, expect, it } from "vitest";
 
 // Ported from the former main-thread `resolveCopyNodeText` tests — the render
@@ -119,5 +122,99 @@ describe("buildCopyUpdates", () => {
       ["a", "Hola web"],
       ["b", "Hola"],
     ]);
+  });
+});
+
+describe("recreate -> immediate Download round trip", () => {
+  // Zuzka reported that clicking "Recreate copy" and then immediately
+  // "Download all" still shows a nonzero downloaded count, as if Recreate
+  // hadn't actually applied the translations. This reproduces the FULL
+  // pipeline end to end (buildCopyUpdates -> simulated apply-translations
+  // write -> pullDiff) using the exact remote data Recreate itself would
+  // have used, to check whether the two are genuinely idempotent or whether
+  // there's a real logic bug hiding in the gap between them.
+  function simulateWriteThenRediff(
+    node: NodeInfo,
+    remoteKey: PulledKey,
+    language: string,
+  ): ReturnType<typeof pullDiff> {
+    const translations: CopyTranslations = {
+      [`${node.ns ?? ""}|${node.key}`]: {
+        text: remoteKey.translations[language]?.text ?? "",
+        isPlural: remoteKey.isPlural,
+      },
+    };
+    const [update] = buildCopyUpdates([node], translations, language);
+    if (!update) throw new Error("expected buildCopyUpdates to produce an update");
+
+    // Exactly what applyTranslations (src/main/nodes/selection.ts) persists:
+    // translation + isPlural from the update, characters via the SAME
+    // plainCanvasText transform applyRichText uses. pluralParamValue/
+    // paramsValues are untouched (buildCopyUpdates never sends them), so the
+    // clone keeps whatever it inherited from the source at clone time.
+    const postWrite: NodeInfo = {
+      ...node,
+      translation: update.translation,
+      isPlural: update.isPlural ?? false,
+      characters: plainCanvasText(update.text),
+    };
+
+    return pullDiff([postWrite], [remoteKey], language);
+  }
+
+  it("a simple string is unchanged after recreate + immediate download", () => {
+    const node = makeNode({ translation: "old text", characters: "old text" });
+    const remoteKey: PulledKey = {
+      keyName: "k",
+      isPlural: false,
+      translations: { en: { text: "Hello there" } },
+    };
+
+    const diff = simulateWriteThenRediff(node, remoteKey, "en");
+
+    expect(diff.changedNodes).toEqual([]);
+    expect(diff.unchangedNodes).toHaveLength(1);
+  });
+
+  it("a plural string is unchanged after recreate + immediate download", () => {
+    const node = makeNode({ isPlural: false, pluralParamValue: "9" });
+    const remoteKey: PulledKey = {
+      keyName: "k",
+      isPlural: true,
+      translations: { en: { text: "{count, plural, one {# apple} other {# apples}}" } },
+    };
+
+    const diff = simulateWriteThenRediff(node, remoteKey, "en");
+
+    expect(diff.changedNodes).toEqual([]);
+    expect(diff.unchangedNodes).toHaveLength(1);
+  });
+
+  it("a parametrized string is unchanged after recreate + immediate download", () => {
+    const node = makeNode({ paramsValues: { name: "Zuzana" } });
+    const remoteKey: PulledKey = {
+      keyName: "k",
+      isPlural: false,
+      translations: { es: { text: "¡Hola {name}!" } },
+    };
+
+    const diff = simulateWriteThenRediff(node, remoteKey, "es");
+
+    expect(diff.changedNodes).toEqual([]);
+    expect(diff.unchangedNodes).toHaveLength(1);
+  });
+
+  it("a rich-text (bold/italic) string is unchanged after recreate + immediate download", () => {
+    const node = makeNode();
+    const remoteKey: PulledKey = {
+      keyName: "k",
+      isPlural: false,
+      translations: { en: { text: "<b>Bold</b> and <i>italic</i>" } },
+    };
+
+    const diff = simulateWriteThenRediff(node, remoteKey, "en");
+
+    expect(diff.changedNodes).toEqual([]);
+    expect(diff.unchangedNodes).toHaveLength(1);
   });
 });
