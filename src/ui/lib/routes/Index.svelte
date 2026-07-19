@@ -931,149 +931,154 @@
           class="flex-1"
         />
 
-        <DropdownMenu.Root>
-          <Tooltip.Root>
-            <Tooltip.Trigger>
-              {#snippet child({ props: tooltipProps })}
-                <DropdownMenu.Trigger>
-                  {#snippet child({ props: menuProps })}
-                    <IconButton
-                      {...tooltipProps}
-                      {...menuProps}
-                      size="md"
-                      aria-label="Filter"
-                    >
-                      <span class="relative">
-                        <ListFilter size={ICON.action} />
-                        {#if filterActive}
-                          <span
-                            class="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-bg-brand"
-                          ></span>
-                        {/if}
-                      </span>
-                    </IconButton>
-                  {/snippet}
-                </DropdownMenu.Trigger>
-              {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Content side="bottom">Filter strings</Tooltip.Content>
-          </Tooltip.Root>
-          <DropdownMenu.Content
-            align="end"
-            class="flex max-h-[var(--bits-dropdown-menu-content-available-height)] min-w-[13rem] flex-col overflow-hidden"
-          >
-            <!-- Scrollable section list — can outgrow the plugin window, so it
-                 gets its own scroll instead of the whole dropdown running off
-                 screen. "Clear filters" below stays pinned, outside this div. -->
-            <div class="min-h-0 flex-1 overflow-y-auto">
-              <!-- CONNECTION: one axis (pick one). Replaces the old "hide
-                   connected" — clearer as a positive choice. -->
-              <div
-                class="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
-              >
-                Connection
-              </div>
-              {@render radioItem(
-                connection === "all",
-                "All",
-                null,
-                () => (connection = "all"),
-              )}
-              {@render radioItem(
-                connection === "connected",
-                "Connected",
-                stats.connectedNodeCount,
-                () => (connection = "connected"),
-              )}
-              {@render radioItem(
-                connection === "unconnected",
-                "Not connected",
-                stats.unconnectedCount,
-                () => (connection = "unconnected"),
-              )}
-              {#if missingKeyCount > 0}
-                {@render radioItem(
-                  connection === "missing",
-                  "Missing in Tolgee",
-                  missingKeyCount,
-                  () => (connection = "missing"),
-                )}
-              {/if}
-
-              <!-- ADVANCED + GROUPED: "show only" subsets — a single active choice
-                   across both, so the result is always predictable. -->
-              <DropdownMenu.Separator />
-              <div
-                class="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
-              >
-                Advanced
-              </div>
-              {@render radioItem(
-                showOnly === "plural",
-                "Plural",
-                stats.pluralCount,
-                () => toggleShowOnly("plural"),
-              )}
-              {@render radioItem(
-                showOnly === "formatted",
-                "Formatted",
-                stats.formattedCount,
-                () => toggleShowOnly("formatted"),
-              )}
-
-              <DropdownMenu.Separator />
-              <div
-                class="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
-              >
-                Grouped
-              </div>
-              {@render radioItem(
-                showOnly === "sameString",
-                "Same string",
-                stats.duplicateNodeCount,
-                () => toggleShowOnly("sameString"),
-              )}
-              {@render radioItem(
-                showOnly === "sameKey",
-                "Same key (conflict)",
-                stats.conflictNodeCount,
-                () => toggleShowOnly("sameKey"),
-              )}
-
-              {#if auth.value.namespacesEnabled}
-                <!-- NAMESPACE: multi-select — show only strings in the picked
-                     namespaces ("<none>" = no namespace). -->
-                <DropdownMenu.Separator />
-                <div
-                  class="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
-                >
-                  Namespace
-                </div>
-                {#each nsFilterOptions as o (o.value)}
-                  <DropdownMenu.Item
-                    closeOnSelect={false}
-                    onSelect={() => toggleNsFilter(o.value)}
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props: tooltipProps })}
+              <!-- A plain span carries the tooltip's hover/focus behavior;
+                   DropdownMenu.Trigger keeps its own untouched button inside.
+                   Putting BOTH sets of trigger props on the SAME button (via
+                   `{...tooltipProps} {...menuProps}`) silently broke the
+                   dropdown's floating-ui positioning — its content rendered
+                   off-screen (verified: y: -568) even though its open state
+                   was correctly true. Each trigger needs its own element. -->
+              <span {...tooltipProps} class="inline-flex">
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger>
+                    {#snippet child({ props: menuProps })}
+                      <IconButton {...menuProps} size="md" aria-label="Filter">
+                        <span class="relative">
+                          <ListFilter size={ICON.action} />
+                          {#if filterActive}
+                            <span
+                              class="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-bg-brand"
+                            ></span>
+                          {/if}
+                        </span>
+                      </IconButton>
+                    {/snippet}
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content
+                    align="end"
+                    class="flex max-h-[var(--bits-dropdown-menu-content-available-height)] min-w-[13rem] flex-col overflow-hidden"
                   >
-                    <Checkbox checked={nsFilter.has(o.value)} />
-                    <span class="flex-1">{o.label}</span>
-                  </DropdownMenu.Item>
-                {/each}
-              {/if}
-            </div>
+                    <!-- Scrollable section list — can outgrow the plugin window, so
+                         it gets its own scroll instead of the whole dropdown running
+                         off screen. "Clear filters" below stays pinned, outside this
+                         div. -->
+                    <div class="min-h-0 flex-1 overflow-y-auto">
+                      <!-- CONNECTION: one axis (pick one). Replaces the old "hide
+                           connected" — clearer as a positive choice. -->
+                      <div
+                        class="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
+                      >
+                        Connection
+                      </div>
+                      {@render radioItem(
+                        connection === "all",
+                        "All",
+                        null,
+                        () => (connection = "all"),
+                      )}
+                      {@render radioItem(
+                        connection === "connected",
+                        "Connected",
+                        stats.connectedNodeCount,
+                        () => (connection = "connected"),
+                      )}
+                      {@render radioItem(
+                        connection === "unconnected",
+                        "Not connected",
+                        stats.unconnectedCount,
+                        () => (connection = "unconnected"),
+                      )}
+                      {#if missingKeyCount > 0}
+                        {@render radioItem(
+                          connection === "missing",
+                          "Missing in Tolgee",
+                          missingKeyCount,
+                          () => (connection = "missing"),
+                        )}
+                      {/if}
 
-            {#if anyViewFilter}
-              <DropdownMenu.Separator class="shrink-0" />
-              <DropdownMenu.Item
-                closeOnSelect={false}
-                onSelect={clearViewFilters}
-                class="shrink-0"
-              >
-                <X size={ICON.inline} class="text-icon" />
-                <span class="flex-1">Clear filters</span>
-              </DropdownMenu.Item>
-            {/if}
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
+                      <!-- ADVANCED + GROUPED: "show only" subsets — a single active
+                           choice across both, so the result is always predictable. -->
+                      <DropdownMenu.Separator />
+                      <div
+                        class="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
+                      >
+                        Advanced
+                      </div>
+                      {@render radioItem(
+                        showOnly === "plural",
+                        "Plural",
+                        stats.pluralCount,
+                        () => toggleShowOnly("plural"),
+                      )}
+                      {@render radioItem(
+                        showOnly === "formatted",
+                        "Formatted",
+                        stats.formattedCount,
+                        () => toggleShowOnly("formatted"),
+                      )}
+
+                      <DropdownMenu.Separator />
+                      <div
+                        class="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
+                      >
+                        Grouped
+                      </div>
+                      {@render radioItem(
+                        showOnly === "sameString",
+                        "Same string",
+                        stats.duplicateNodeCount,
+                        () => toggleShowOnly("sameString"),
+                      )}
+                      {@render radioItem(
+                        showOnly === "sameKey",
+                        "Same key (conflict)",
+                        stats.conflictNodeCount,
+                        () => toggleShowOnly("sameKey"),
+                      )}
+
+                      {#if auth.value.namespacesEnabled}
+                        <!-- NAMESPACE: multi-select — show only strings in the picked
+                             namespaces ("<none>" = no namespace). -->
+                        <DropdownMenu.Separator />
+                        <div
+                          class="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-text-secondary"
+                        >
+                          Namespace
+                        </div>
+                        {#each nsFilterOptions as o (o.value)}
+                          <DropdownMenu.Item
+                            closeOnSelect={false}
+                            onSelect={() => toggleNsFilter(o.value)}
+                          >
+                            <Checkbox checked={nsFilter.has(o.value)} />
+                            <span class="flex-1">{o.label}</span>
+                          </DropdownMenu.Item>
+                        {/each}
+                      {/if}
+                    </div>
+
+                    {#if anyViewFilter}
+                      <DropdownMenu.Separator class="shrink-0" />
+                      <DropdownMenu.Item
+                        closeOnSelect={false}
+                        onSelect={clearViewFilters}
+                        class="shrink-0"
+                      >
+                        <X size={ICON.inline} class="text-icon" />
+                        <span class="flex-1">Clear filters</span>
+                      </DropdownMenu.Item>
+                    {/if}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+              </span>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content side="bottom">Filter strings</Tooltip.Content>
+        </Tooltip.Root>
       </div>
 
       {#if stats.conflictKeyLabels.length > 0}
