@@ -521,8 +521,8 @@
           {:else}
             <EmptyState
               icon={KeyRound}
-              title="Select strings for their key"
-              description="Pick frames or texts."
+              title="Select a string or frame"
+              description="Shows its key below."
             />
           {/if}
         {:else}
