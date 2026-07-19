@@ -2,7 +2,9 @@ import { TOLGEE_NODE_INFO, TOLGEE_PLUGIN_CONFIG_NAME } from "$shared/constants";
 import type { NodeInfo } from "$shared/types";
 
 import { send } from "$main/bus";
+import { type IgnoreSettings, shouldIgnoreNode } from "$main/nodes/filter";
 import { getNodeInfo } from "$main/nodes/getNodeInfo";
+import { computeAncestorHidden } from "$main/nodes/scan";
 import { applyRichText } from "$main/text/applyRichText";
 
 /**
@@ -73,15 +75,35 @@ const PROGRESS_INTERVAL = 10;
  * removed so repeated copies replace rather than pile up — matching the original
  * plugin.
  *
+ * `settings` (hidden layers, digit-only strings, prefixed layer names, …) is
+ * applied exactly like the with-selection and page-wide scans — production's
+ * `copyPageEndpoint` runs the same filter (`findTextNodes` → `shouldIncludeNode`)
+ * before touching a node, so a node the user asked to ignore was never part of
+ * the copy in the first place. This handler used to skip that filter entirely
+ * (only `findAllWithCriteria`'s pluginData match + `connected && key`), so an
+ * ignored node's text got overwritten with its key/translation same as any
+ * other connected node — a regression against both production and this app's
+ * own Download/Pull, which already respect the setting.
+ *
  * Progress is reported via `create-copy-progress` messages keyed by the
  * caller's `correlationId`.
  */
-export async function createCopy(options: CreateCopyOptions): Promise<CreateCopyResult> {
+export async function createCopy(
+  options: CreateCopyOptions,
+  settings: Partial<IgnoreSettings> = {},
+): Promise<CreateCopyResult> {
   const sourcePage = await resolveSourcePage(options.sourcePageId);
   if (!sourcePage) {
     return { ok: false, createdPageIds: [], error: "The original page no longer exists." };
   }
   await sourcePage.loadAsync();
+
+  // Matches the guard `request-page-connected-nodes` uses: the ancestor-chain
+  // walk only matters (and is only worth its cost) when BOTH the base
+  // "hidden layers" filter and its "including children" opt-in are on.
+  const needsAncestorHidden = Boolean(
+    (settings.ignoreHiddenLayers ?? true) && settings.ignoreHiddenLayersIncludingChildren,
+  );
 
   const createdPageIds: string[] = [];
   // Set when a removed copy turned out to be `figma.currentPage` itself (the
@@ -118,10 +140,14 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
       let processed = 0;
 
       for (const node of textNodes) {
-        const info = getNodeInfo(node);
-        if (info.connected && info.key) {
-          const label = info.ns ? `${info.ns}.${info.key}` : info.key;
-          await writeTextSafely(node, label, { plainOnly: true });
+        const characters = node.characters;
+        const ancestorHidden = needsAncestorHidden ? computeAncestorHidden(node) : false;
+        if (!shouldIgnoreNode(node, ancestorHidden, settings, characters)) {
+          const info = getNodeInfo(node, characters);
+          if (info.connected && info.key) {
+            const label = info.ns ? `${info.ns}.${info.key}` : info.key;
+            await writeTextSafely(node, label, { plainOnly: true });
+          }
         }
         processed++;
         if (processed % PROGRESS_INTERVAL === 0) {
@@ -170,9 +196,13 @@ export async function createCopy(options: CreateCopyOptions): Promise<CreateCopy
         let processed = 0;
 
         for (const node of textNodes) {
-          const info = getNodeInfo(node);
-          if (info.connected && info.key) {
-            nodes.push(info);
+          const characters = node.characters;
+          const ancestorHidden = needsAncestorHidden ? computeAncestorHidden(node) : false;
+          if (!shouldIgnoreNode(node, ancestorHidden, settings, characters)) {
+            const info = getNodeInfo(node, characters);
+            if (info.connected && info.key) {
+              nodes.push(info);
+            }
           }
           processed++;
           if (processed % PROGRESS_INTERVAL === 0) {

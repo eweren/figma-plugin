@@ -49,7 +49,7 @@ const PROGRESS_MIN_TOTAL = 100;
  *  filter. Unlike a full-document walk, this stays cheap here: it only ever
  *  runs once per node `findAllWithCriteria` already matched (i.e. bounded to
  *  the page's CONNECTED nodes), not once per node on the page. */
-function computeAncestorHidden(node: TextNode): boolean {
+export function computeAncestorHidden(node: TextNode): boolean {
   let parent = node.parent;
   while (parent && parent.type !== "PAGE") {
     if ("visible" in parent && parent.visible === false) return true;

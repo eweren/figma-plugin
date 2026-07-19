@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TOLGEE_NODE_INFO, TOLGEE_PLUGIN_CONFIG_NAME } from "$shared/constants";
-import { checkCopyStaleness, removeExistingCopyPages } from "../createCopy";
+import { checkCopyStaleness, createCopy, removeExistingCopyPages } from "../createCopy";
 
 type FakeTextNode = {
   type: "TEXT";
@@ -290,6 +290,126 @@ describe("checkCopyStaleness", () => {
     const result = await checkCopyStaleness(copyPage as never);
     expect(result.ok).toBe(false);
     expect(result.error).toBeTruthy();
+  });
+});
+
+describe("createCopy — ignore settings", () => {
+  /** Minimal TEXT-node stand-in that also supports the plain-text write path
+   *  (`writeTextSafely` → `applyRichText` with `plainOnly: true`), unlike the
+   *  read-only `textNode()` helper above. */
+  function writableTextNode(props: {
+    id: string;
+    characters: string;
+    key?: string;
+    ns?: string;
+    connected?: boolean;
+    visible?: boolean;
+    name?: string;
+  }) {
+    const pluginData = new Map<string, string>();
+    pluginData.set(
+      TOLGEE_NODE_INFO,
+      JSON.stringify({ key: props.key ?? "", ns: props.ns, connected: props.connected ?? true }),
+    );
+    return {
+      type: "TEXT" as const,
+      id: props.id,
+      name: props.name ?? "Layer",
+      characters: props.characters,
+      visible: props.visible ?? true,
+      autoRename: true,
+      fontName: { family: "Inter", style: "Regular" },
+      getRangeAllFontNames: () => [{ family: "Inter", style: "Regular" }],
+      getPluginData: (k: string) => pluginData.get(k) ?? "",
+      setPluginData: (k: string, v: string) => pluginData.set(k, v),
+    };
+  }
+  type WritableTextNode = ReturnType<typeof writableTextNode>;
+
+  /** A source page whose `.clone()` returns a second page backed by the SAME
+   *  node list — good enough to exercise the per-node filter without
+   *  modelling Figma's actual clone semantics. */
+  function cloneableSourcePage(name: string, textNodes: WritableTextNode[]) {
+    const clone = {
+      type: "PAGE" as const,
+      id: `${name}-clone`,
+      name,
+      loadAsync: vi.fn(async () => {}),
+      getPluginData: () => "",
+      setPluginData: vi.fn(),
+      findAllWithCriteria: () => textNodes,
+    };
+    return {
+      type: "PAGE" as const,
+      id: name,
+      name,
+      loadAsync: vi.fn(async () => {}),
+      getPluginData: () => "",
+      setPluginData: vi.fn(),
+      findAllWithCriteria: () => textNodes,
+      clone: () => clone,
+    };
+  }
+
+  function installFigmaForCreateCopy(sourcePage: ReturnType<typeof cloneableSourcePage>) {
+    (globalThis as unknown as { figma: unknown }).figma = {
+      currentPage: sourcePage,
+      root: { children: [sourcePage], appendChild: vi.fn() },
+      getNodeByIdAsync: async (id: string) => (id === sourcePage.id ? sourcePage : null),
+      setCurrentPageAsync: async () => {},
+      loadFontAsync: async () => {},
+      mixed: Symbol("mixed"),
+    };
+  }
+
+  it("does not overwrite hidden / numeric nodes in keys mode (default settings)", async () => {
+    const visible = writableTextNode({ id: "n1", characters: "Hello", key: "greeting" });
+    const hidden = writableTextNode({
+      id: "n2",
+      characters: "Hidden",
+      key: "hiddenKey",
+      visible: false,
+    });
+    const numeric = writableTextNode({ id: "n3", characters: "42", key: "numKey" });
+    const src = cloneableSourcePage("Home", [visible, hidden, numeric]);
+    installFigmaForCreateCopy(src);
+
+    const result = await createCopy({ mode: "keys", correlationId: "c1" }, {});
+
+    expect(result.ok).toBe(true);
+    expect(visible.characters).toBe("greeting");
+    expect(hidden.characters).toBe("Hidden");
+    expect(numeric.characters).toBe("42");
+  });
+
+  it("writes hidden nodes too once ignoreHiddenLayers is turned off", async () => {
+    const hidden = writableTextNode({
+      id: "n1",
+      characters: "Hidden",
+      key: "hiddenKey",
+      visible: false,
+    });
+    const src = cloneableSourcePage("Home", [hidden]);
+    installFigmaForCreateCopy(src);
+
+    await createCopy({ mode: "keys", correlationId: "c2" }, { ignoreHiddenLayers: false });
+
+    expect(hidden.characters).toBe("hiddenKey");
+  });
+
+  it("excludes ignored nodes from the collected node list in languages mode", async () => {
+    const visible = writableTextNode({ id: "n1", characters: "Hello", key: "greeting" });
+    const numeric = writableTextNode({ id: "n2", characters: "42", key: "numKey" });
+    const src = cloneableSourcePage("Home", [visible, numeric]);
+    installFigmaForCreateCopy(src);
+
+    const result = await createCopy(
+      { mode: "languages", correlationId: "c3", languages: ["cs"] },
+      {},
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.pages?.[0]?.nodes.map((n) => n.id)).toEqual(["n1"]);
   });
 });
 

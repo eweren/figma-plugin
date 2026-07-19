@@ -378,19 +378,30 @@ on("apply-translations", async (msg) => {
 });
 
 on("create-copy", async (msg) => {
+  // Same ignore settings (hidden layers, digit-only strings, prefixed layer
+  // names, …) every other scan/write path already applies — a node the user
+  // asked to ignore shouldn't have its text overwritten just because it's
+  // being copied instead of downloaded to.
+  const settings = await readMergedConfig();
   const result =
     msg.mode === "keys"
-      ? await createCopy({
-          mode: "keys",
-          correlationId: msg.correlationId,
-          sourcePageId: msg.sourcePageId,
-        })
-      : await createCopy({
-          mode: "languages",
-          correlationId: msg.correlationId,
-          languages: msg.languages ?? [],
-          sourcePageId: msg.sourcePageId,
-        });
+      ? await createCopy(
+          {
+            mode: "keys",
+            correlationId: msg.correlationId,
+            sourcePageId: msg.sourcePageId,
+          },
+          settings,
+        )
+      : await createCopy(
+          {
+            mode: "languages",
+            correlationId: msg.correlationId,
+            languages: msg.languages ?? [],
+            sourcePageId: msg.sourcePageId,
+          },
+          settings,
+        );
   send({
     type: "create-copy-result",
     correlationId: msg.correlationId,
