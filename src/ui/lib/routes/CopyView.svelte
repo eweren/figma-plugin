@@ -14,6 +14,7 @@
   import { applyCopyPages, type CopyTranslations } from "$ui/lib/logic/copyApply";
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import { hasRichFormat } from "$ui/lib/logic/icuParams";
+  import { computeVirtualWindow } from "$ui/lib/logic/virtualWindow";
   import Target from "lucide-svelte/icons/target";
   import Download from "lucide-svelte/icons/download";
   import KeyRound from "lucide-svelte/icons/key-round";
@@ -318,7 +319,13 @@
 
     try {
       if (!language) {
-        send({ type: "create-copy", correlationId, mode: "keys", sourcePageId });
+        send({
+          type: "create-copy",
+          correlationId,
+          mode: "keys",
+          sourcePageId,
+          namespacesEnabled: auth.value.namespacesEnabled,
+        });
         return;
       }
       const client = auth.value.client;
@@ -408,6 +415,56 @@
     });
     return off;
   });
+
+  // ---- Chrome/list split & windowing ----------------------------------------
+  // Chrome (staleness banner, progress/error/success messages, count row)
+  // stays fixed above; the selection list gets its OWN scroll region so a huge
+  // manual selection doesn't have to share scroll math with everything above
+  // it — same split Index/NodeList already uses, not just a perf tweak.
+  const chromeVisible = $derived(
+    stage !== "idle" || Boolean(staleness) || lastResult !== null || selectedNodes.length > 0,
+  );
+
+  // Same threshold/overscan as NodeList.svelte, for consistency — this list's
+  // rows are lighter (no inputs/menu, just one icon button), so windowing
+  // matters less per-row, but a large MANUAL selection on a copy page is the
+  // same class of "thousands of rows" risk Index already solved.
+  const LIST_VIRTUALIZE_FROM = 60;
+  const LIST_OVERSCAN = 6;
+  const LIST_FALLBACK_ROW_PX = 60;
+
+  let listViewport = $state<HTMLElement | null>(null);
+  let listScrollTop = $state(0);
+  let listViewportHeight = $state(0);
+  let listRowHeight = $state(LIST_FALLBACK_ROW_PX);
+
+  const listVirtual = $derived(selectedNodes.length >= LIST_VIRTUALIZE_FROM);
+  const listWindow = $derived(
+    computeVirtualWindow(
+      selectedNodes.length,
+      listScrollTop,
+      listViewportHeight,
+      listRowHeight,
+      LIST_OVERSCAN,
+    ),
+  );
+  const visibleSelectedNodes = $derived(
+    listVirtual ? selectedNodes.slice(listWindow.start, listWindow.end) : selectedNodes,
+  );
+
+  // Measures the AVERAGE rendered row height whenever the visible window
+  // changes, same reasoning as NodeList.svelte: connected vs "Not connected"
+  // rows differ by a line, so a single-row sample would oscillate as the
+  // window's first row flips type. 2px tolerance keeps this from looping.
+  $effect(() => {
+    void visibleSelectedNodes;
+    if (!listVirtual || !listViewport) return;
+    const list = listViewport.querySelector("ul");
+    const count = list?.children.length ?? 0;
+    if (!list || count === 0) return;
+    const measured = list.getBoundingClientRect().height / count;
+    if (measured > 0 && Math.abs(measured - listRowHeight) > 2) listRowHeight = measured;
+  });
 </script>
 
 <div class="flex h-full flex-col">
@@ -441,128 +498,157 @@
       {/if}
     </header>
 
-    <div class="flex flex-1 flex-col overflow-auto p-3 space-y-3">
-      {#if staleness && stage !== "recreating"}
-        <!-- The source page gained connections since this copy was made —
-             Download can't discover those on its own (it only refreshes text
-             for keys the copy already tracks), so recreating is the only fix. -->
-        <Message variant="info" class="items-start">
-          <div class="space-y-1.5">
-            <p>The original page changed since this copy was made.</p>
-            <Button
-              size="sm"
-              variant="outline"
-              class="bg-bg!"
-              disabled={stage === "pulling" || stage === "applying"}
-              onclick={recreateCopy}
-            >
-              Recreate copy
-            </Button>
-          </div>
-        </Message>
-      {/if}
+    <div class="flex flex-1 flex-col overflow-hidden">
+      {#if chromeVisible}
+        <!-- Fixed above the list (own scroll region below) — a staleness
+             banner or count row shouldn't scroll out of view just because
+             the selection below it is long. -->
+        <div class="flex shrink-0 flex-col gap-3 p-3">
+          {#if staleness && stage !== "recreating"}
+            <!-- The source page gained connections since this copy was made —
+                 Download can't discover those on its own (it only refreshes text
+                 for keys the copy already tracks), so recreating is the only fix. -->
+            <Message variant="info" class="items-start">
+              <div class="space-y-1.5">
+                <p>The original page changed since this copy was made.</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="bg-bg!"
+                  disabled={stage === "pulling" || stage === "applying"}
+                  onclick={recreateCopy}
+                >
+                  Recreate copy
+                </Button>
+              </div>
+            </Message>
+          {/if}
 
-      {#if stage === "pulling"}
-        {#if hasUserSelection}
-          <ProgressBar
-            loaded={fetchProgress.loaded}
-            total={fetchProgress.total}
-            label="Loading translations from Tolgee"
-          />
-        {:else if pageScanProgress}
-          <ProgressBar
-            loaded={pageScanProgress.done}
-            total={pageScanProgress.total}
-            label="Scanning page for connected keys…"
-          />
-        {:else}
-          <ProgressBar
-            loaded={fetchProgress.loaded}
-            total={fetchProgress.total}
-            label="Loading translations from Tolgee"
-          />
-        {/if}
-      {:else if stage === "applying"}
-        <ProgressBar
-          loaded={applyProgress?.done ?? 0}
-          total={applyProgress?.total ?? null}
-          label="Applying translations"
-        />
-      {:else if stage === "recreating"}
-        <ProgressBar
-          loaded={recreateProgress?.current ?? 0}
-          total={recreateProgress?.total ?? null}
-          label="Recreating copy…"
-        />
-      {:else if stage === "error"}
-        <Message variant="error">{errorMessage ?? "Something went wrong."}</Message>
-        <Button
-          variant="secondary"
-          onclick={lastFailedAction === "recreate" ? recreateCopy : pull}
-        >
-          Try again
-        </Button>
-      {:else if lastResult}
-        <Message variant="success" onDismiss={() => (lastResult = null)}>{lastResultText}</Message>
+          {#if stage === "pulling"}
+            {#if hasUserSelection}
+              <ProgressBar
+                loaded={fetchProgress.loaded}
+                total={fetchProgress.total}
+                label="Loading translations from Tolgee"
+              />
+            {:else if pageScanProgress}
+              <ProgressBar
+                loaded={pageScanProgress.done}
+                total={pageScanProgress.total}
+                label="Scanning page for connected keys…"
+              />
+            {:else}
+              <ProgressBar
+                loaded={fetchProgress.loaded}
+                total={fetchProgress.total}
+                label="Loading translations from Tolgee"
+              />
+            {/if}
+          {:else if stage === "applying"}
+            <ProgressBar
+              loaded={applyProgress?.done ?? 0}
+              total={applyProgress?.total ?? null}
+              label="Applying translations"
+            />
+          {:else if stage === "recreating"}
+            <ProgressBar
+              loaded={recreateProgress?.current ?? 0}
+              total={recreateProgress?.total ?? null}
+              label="Recreating copy…"
+            />
+          {:else if stage === "error"}
+            <Message variant="error">{errorMessage ?? "Something went wrong."}</Message>
+            <Button
+              variant="secondary"
+              disabled={lastFailedAction === "download" && appState.value.scanning}
+              onclick={lastFailedAction === "recreate" ? recreateCopy : pull}
+            >
+              Try again
+            </Button>
+          {:else if lastResult}
+            <Message variant="success" onDismiss={() => (lastResult = null)}>{lastResultText}</Message>
+          {/if}
+
+          {#if (stage === "idle" || stage === "error") && selectedNodes.length > 0}
+            <!-- Count row mirrors Index's (no select-all checkbox — nothing here
+                 is bulk-actionable). -->
+            <div class="text-xs text-text-secondary">{countRowText}</div>
+          {/if}
+        </div>
       {/if}
 
       {#if stage === "idle" || stage === "error"}
         {#if selectedNodes.length === 0}
-          {#if language}
-            <EmptyState
-              icon={Download}
-              title="Download strings to Figma."
-              description="All, or just the selected frames."
-            />
-          {:else}
-            <EmptyState
-              icon={KeyRound}
-              title="Select a string or frame"
-              description="Shows its key below."
-            />
-          {/if}
+          <div class="flex flex-1 flex-col overflow-auto px-3 pb-3">
+            {#if language}
+              <EmptyState
+                icon={Download}
+                title="Download strings to Figma."
+                description="All, or just the selected frames."
+              />
+            {:else}
+              <EmptyState
+                icon={KeyRound}
+                title="Select a string or frame"
+                description="Shows its key below."
+              />
+            {/if}
+          </div>
         {:else}
-          <!-- Count row mirrors Index's (no select-all checkbox — nothing here
-               is bulk-actionable). -->
-          <div class="text-xs text-text-secondary">{countRowText}</div>
-          <!-- Mirrors NodeListItem's read-only half (string + Plural/Formatted
-               badges, key glyph below) — same visual language as the main
-               Index list, minus anything editable (this view never writes).
-               Unconnected nodes are listed too, with "Not connected" instead
-               of a key — hiding them read as if the selection were smaller
-               than it is. -->
-          <ul>
-            {#each selectedNodes as node (node.id)}
-              <li
-                class="flex items-start gap-1.5 border-b border-dashed border-border py-2.5 first:pt-0 last:border-b-0 last:pb-0"
-              >
-                <div class="min-w-0 flex-1 space-y-1.5">
-                  <div class="flex items-center gap-1.5">
-                    <span class="min-w-0 truncate text-xs text-text" title={node.characters}>
-                      {node.characters || "(empty)"}
-                    </span>
-                    {#if node.connected}
-                      {#if node.isPlural}<Badge>Plural</Badge>{/if}
-                      {#if hasRichFormat(node)}<Badge>Formatted</Badge>{/if}
-                    {/if}
-                  </div>
-                  <div class="flex items-center gap-1.5">
-                    {#if node.connected}
-                      <KeyRound size={ICON.inline} class="shrink-0 text-text-secondary" />
-                      <span class="min-w-0 truncate text-xs font-semibold text-text-secondary">
-                        {formatKeyLabel(node)}
+          <!-- Own scroll region, windowed above LIST_VIRTUALIZE_FROM rows (see
+               script) — mirrors NodeList.svelte's split so a huge manual
+               selection doesn't mount hundreds of rows at once. -->
+          <div
+            bind:this={listViewport}
+            bind:clientHeight={listViewportHeight}
+            onscroll={() => (listScrollTop = listViewport?.scrollTop ?? 0)}
+            class="flex-1 min-h-0 overflow-auto px-3 pb-3"
+          >
+            {#if listWindow.padTop > 0}
+              <div style="height: {listWindow.padTop}px" aria-hidden="true"></div>
+            {/if}
+            <!-- Mirrors NodeListItem's read-only half (string + Plural/Formatted
+                 badges, key glyph below) — same visual language as the main
+                 Index list, minus anything editable (this view never writes).
+                 Unconnected nodes are listed too, with "Not connected" instead
+                 of a key — hiding them read as if the selection were smaller
+                 than it is. -->
+            <ul>
+              {#each visibleSelectedNodes as node (node.id)}
+                <li
+                  class="flex items-start gap-1.5 border-b border-dashed border-border py-2.5 first:pt-0 last:border-b-0 last:pb-0"
+                >
+                  <div class="min-w-0 flex-1 space-y-1.5">
+                    <div class="flex items-center gap-1.5">
+                      <span class="min-w-0 truncate text-xs text-text" title={node.characters}>
+                        {node.characters || "(empty)"}
                       </span>
-                    {:else}
-                      <span class="text-xs italic text-text-secondary">Not connected</span>
-                    {/if}
+                      {#if node.connected}
+                        {#if node.isPlural}<Badge>Plural</Badge>{/if}
+                        {#if hasRichFormat(node)}<Badge>Formatted</Badge>{/if}
+                      {/if}
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                      {#if node.connected}
+                        <KeyRound size={ICON.inline} class="shrink-0 text-text-secondary" />
+                        <span class="min-w-0 truncate text-xs font-semibold text-text-secondary">
+                          {formatKeyLabel(node)}
+                        </span>
+                      {:else}
+                        <span class="text-xs italic text-text-secondary">Not connected</span>
+                      {/if}
+                    </div>
                   </div>
-                </div>
-                <TooltipIconButton label="Move to string" onclick={() => showOnCanvas(node.id)}>
-                  <Target size={ICON.inline} />
-                </TooltipIconButton>
-              </li>
-            {/each}
-          </ul>
+                  <TooltipIconButton label="Move to string" onclick={() => showOnCanvas(node.id)}>
+                    <Target size={ICON.inline} />
+                  </TooltipIconButton>
+                </li>
+              {/each}
+            </ul>
+            {#if listWindow.padBottom > 0}
+              <div style="height: {listWindow.padBottom}px" aria-hidden="true"></div>
+            {/if}
+          </div>
         {/if}
       {/if}
     </div>
