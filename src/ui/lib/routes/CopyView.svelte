@@ -155,51 +155,6 @@
     ),
   );
 
-  // Backs the "N strings (M not connected)" line shown on the "Download all"
-  // empty state — a page-wide scan. Kept as the raw node list (not just the
-  // derived counts) so `pull()` below can REUSE it instead of running the
-  // same page-wide scan a second time: for a large page that scan is real,
-  // measurable work, and without this the count display and Download all
-  // would each pay for their own full pass.
-  //
-  // Honours the same ignore rules (hidden layers, digit-only strings) as the
-  // with-selection scan — a deliberate deviation from upstream, which leaves
-  // its own page-wide scan unfiltered — so the two counts stay comparable.
-  // Only fetched for the state that actually shows it (language copy,
-  // nothing selected, no download run yet this session) — `null` elsewhere,
-  // including while a fresh scan is loading.
-  let pageScanNodes = $state<NodeInfo[] | null>(null);
-  const pageScan = $derived(
-    pageScanNodes
-      ? {
-          total: pageScanNodes.length,
-          notConnected: pageScanNodes.filter((n) => !n.connected).length,
-        }
-      : null,
-  );
-
-  $effect(() => {
-    void appState.value.pageName; // re-scan on page switch
-    const shouldScan = Boolean(language) && selectedNodes.length === 0 && lastResult === null;
-    if (!shouldScan) {
-      pageScanNodes = null;
-      return;
-    }
-    let cancelled = false;
-    requestPageConnectedNodes()
-      .then((nodes) => {
-        if (!cancelled) {
-          pageScanNodes = nodes;
-        }
-      })
-      .catch(() => {
-        if (!cancelled) pageScanNodes = null;
-      });
-    return () => {
-      cancelled = true;
-    };
-  });
-
   function formatKeyLabel(node: NodeInfo): string {
     return namespacedKeyLabel(node.ns, node.key, auth.value.namespacesEnabled);
   }
@@ -225,18 +180,14 @@
     fetchProgress = { loaded: 0, total: null };
 
     try {
-      // Reuse the scan already sitting behind the "N strings" count line
-      // instead of re-scanning the whole page a second time — `pageScanNodes`
-      // reflects exactly what the user just saw before clicking. It's only
-      // ever missing when that scan hasn't resolved yet (e.g. clicked right
-      // as the empty state appeared), in which case we fall back to a fresh
-      // one same as before.
+      // "Download all" has no eager page-wide scan to reuse (removed — it
+      // cost a full scan just to show a count nobody could act on), so this
+      // is always a fresh scan on click.
       const targetNodes: NodeInfo[] = hasUserSelection
         ? selectedNodes
-        : (pageScanNodes ??
-          (await requestPageConnectedNodes(undefined, (done, total) => {
+        : await requestPageConnectedNodes(undefined, (done, total) => {
             pageScanProgress = { done, total };
-          })));
+          });
 
       // Fetch ALL namespaces (not just the configured default) — each node
       // is matched to its remote key by its OWN `ns`, same reasoning as the
@@ -561,11 +512,6 @@
       {#if stage === "idle" || stage === "error"}
         {#if selectedNodes.length === 0}
           {#if language}
-            {#if pageScan}
-              <div class="text-xs text-text-secondary">
-                {formatCountLine(pageScan.total, pageScan.notConnected)}
-              </div>
-            {/if}
             <EmptyState
               icon={Download}
               title="Download strings to Figma."
