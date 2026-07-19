@@ -22,7 +22,11 @@
   import Link2 from "lucide-svelte/icons/link-2";
   import Link2Off from "lucide-svelte/icons/link-2-off";
   import Copy from "lucide-svelte/icons/copy";
+  import ClipboardCopy from "lucide-svelte/icons/clipboard-copy";
+  import ExternalLink from "lucide-svelte/icons/external-link";
   import PenOff from "lucide-svelte/icons/pen-off";
+  import { buildKeyDeepLink } from "$ui/lib/logic/deeplink";
+  import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import AlertTriangle from "lucide-svelte/icons/alert-triangle";
   import Checkbox from "$ui/lib/components/ui/checkbox.svelte";
 
@@ -156,6 +160,39 @@
 
   function openStringDetails(): void {
     appState.navigate({ name: "stringDetails", node });
+  }
+
+  // ---- Dev-Mode-only menu actions (the deleted minipanel's replacements) ---
+  // Design mode deliberately doesn't get these: a designer copies straight
+  // off the canvas or the key input; these serve a developer pasting the key
+  // or the SOURCE ICU string into code.
+  const isDev = $derived(appState.value.editorType === "dev");
+
+  /** Minipanel's key format: `ns.key` when a namespace is set, plain `key`
+   *  otherwise — `namespacedKeyLabel` with the gate forced open, because a
+   *  clipboard copy is about data fidelity (what the key IS), not display
+   *  preference (what Settings wants shown). */
+  function copyKey(): void {
+    const label = namespacedKeyLabel(node.ns, node.key, true);
+    if (!label) return;
+    void navigator.clipboard.writeText(label);
+    send({ type: "notify", text: "Key copied" });
+  }
+
+  /** Copies the FULL source ICU string (`{count, plural, ...}`), not the
+   *  rendered canvas text — the canvas only shows one rendered form, and the
+   *  source pattern is exactly what a developer needs in code and can't get
+   *  anywhere else in Dev Mode. */
+  function copyTranslation(): void {
+    if (!node.translation) return;
+    void navigator.clipboard.writeText(node.translation);
+    send({ type: "notify", text: "Translation copied" });
+  }
+
+  function openInTolgee(): void {
+    const url = buildKeyDeepLink(appState.value.config, node);
+    if (!url) return;
+    send({ type: "open-external", url });
   }
 
   // Deferred interactivity: the bits-ui tooltip/menu wrappers are the heavy
@@ -392,7 +429,7 @@
           {/snippet}
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="end">
-          {#if appState.value.editorType !== "dev"}
+          {#if !isDev}
             <!-- String details edits the string — design-only. Production's
                  dev row menu keeps just "Move to String" too; even if this
                  were missed, navigate()'s route gate refuses the route. -->
@@ -407,6 +444,24 @@
             <DropdownMenu.Item onSelect={openConnectView}>
               <Link2 size={ICON.inline} /> Connection detail
             </DropdownMenu.Item>
+          {/if}
+          {#if isDev}
+            <!-- Minipanel replacements, dev-only (see the handlers' docs). -->
+            {#if node.key}
+              <DropdownMenu.Item onSelect={copyKey}>
+                <Copy size={ICON.inline} /> Copy key
+              </DropdownMenu.Item>
+            {/if}
+            {#if node.translation}
+              <DropdownMenu.Item onSelect={copyTranslation}>
+                <ClipboardCopy size={ICON.inline} /> Copy translation
+              </DropdownMenu.Item>
+            {/if}
+            {#if node.connected}
+              <DropdownMenu.Item onSelect={openInTolgee}>
+                <ExternalLink size={ICON.inline} /> Open in Tolgee
+              </DropdownMenu.Item>
+            {/if}
           {/if}
         </DropdownMenu.Content>
       </DropdownMenu.Root>

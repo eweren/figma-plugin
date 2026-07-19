@@ -58,6 +58,16 @@ test.describe("Dev Mode", () => {
     await expect(
       ui.getByRole("menuitem", { name: "String details" }),
     ).not.toBeVisible();
+    // Task 23: the deleted minipanel's three actions live here, dev-only.
+    // This row is connected, so all three show (Open in Tolgee needs a
+    // connected key to link to).
+    await expect(ui.getByRole("menuitem", { name: "Copy key" })).toBeVisible();
+    await expect(
+      ui.getByRole("menuitem", { name: "Copy translation" }),
+    ).toBeVisible();
+    await expect(
+      ui.getByRole("menuitem", { name: "Open in Tolgee" }),
+    ).toBeVisible();
     await page.keyboard.press("Escape");
 
     // Clicking the row text (a String-details entry point in design mode)
@@ -85,5 +95,38 @@ test.describe("Dev Mode", () => {
     await expect(
       ui.getByRole("menuitem", { name: "String details" }),
     ).toBeVisible();
+    // The minipanel-replacement actions are dev-only — absent in design mode.
+    await expect(
+      ui.getByRole("menuitem", { name: "Copy key" }),
+    ).not.toBeVisible();
+    await expect(
+      ui.getByRole("menuitem", { name: "Open in Tolgee" }),
+    ).not.toBeVisible();
+  });
+
+  test("dev row menu omits Open in Tolgee for an unconnected row", async ({
+    page,
+  }) => {
+    const unconnected = createTestNode({ text: "Loose text", connected: false });
+    await page.goto(
+      hostUrl(SIGNED_IN, {
+        allNodes: [unconnected],
+        selectedNodes: [unconnected],
+        hasUserSelection: true,
+        editorType: "dev",
+      }),
+    );
+    const ui = page.frameLocator(IFRAME_SELECTOR);
+    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+
+    await ui.getByText("Loose text").hover();
+    await ui.getByRole("button", { name: "More actions" }).click();
+    await expect(
+      ui.getByRole("menuitem", { name: "Move to string" }),
+    ).toBeVisible();
+    // No connected key -> a deep link would land on an empty search.
+    await expect(
+      ui.getByRole("menuitem", { name: "Open in Tolgee" }),
+    ).not.toBeVisible();
   });
 });
