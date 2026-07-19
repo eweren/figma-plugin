@@ -4,7 +4,7 @@
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { send, on, nextCorrelationId } from "$ui/lib/bus";
   import { createIdleTimeout } from "$ui/lib/busRequest";
-  import { Card, Label, ProgressBar } from "$ui/lib/components/ui";
+  import { Card, CheckboxField, Label, Message, ProgressBar } from "$ui/lib/components/ui";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
   import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
@@ -267,15 +267,23 @@
     {#if stage === "idle"}
       <Card>
         <Label>Mode</Label>
-        <div class="mt-2 space-y-1">
-          <label class="flex items-center gap-2 text-xs">
-            <input type="radio" bind:group={mode} value="keys" />
-            Create page with key names
-          </label>
-          <label class="flex items-center gap-2 text-xs">
-            <input type="radio" bind:group={mode} value="languages" />
-            Create page per language
-          </label>
+        <div class="mt-2 space-y-1.5">
+          {#each [{ value: "keys", text: "Create page with key names" }, { value: "languages", text: "Create page per language" }] as option (option.value)}
+            <label class="flex cursor-pointer items-center gap-2 text-xs">
+              <input type="radio" bind:group={mode} value={option.value} class="sr-only" />
+              <span
+                class="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border {mode ===
+                option.value
+                  ? 'border-checkbox'
+                  : 'border-border'}"
+              >
+                {#if mode === option.value}
+                  <span class="h-1.5 w-1.5 rounded-full bg-checkbox"></span>
+                {/if}
+              </span>
+              {option.text}
+            </label>
+          {/each}
         </div>
       </Card>
 
@@ -293,17 +301,11 @@
           {:else}
             <div class="mt-2 max-h-48 overflow-auto space-y-1">
               {#each availableLanguages as lang (lang.id)}
-                <label class="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={selectedLangs.includes(lang.tag)}
-                    onchange={() => toggleLang(lang.tag)}
-                  />
-                  <span>{lang.name}</span>
-                  <span class="text-text-secondary">
-                    ({lang.tag})
-                  </span>
-                </label>
+                <CheckboxField
+                  label="{lang.name} ({lang.tag})"
+                  checked={selectedLangs.includes(lang.tag)}
+                  onChange={() => toggleLang(lang.tag)}
+                />
               {/each}
             </div>
           {/if}
@@ -315,21 +317,14 @@
       </Card>
     {:else if stage === "creating"}
       <Card>
-        <p class="text-xs">
-          Creating copy…
-          {#if progress && progress.total > 0}
-            <span class="text-text-secondary">
-              ({progress.current} / {progress.total})
-            </span>
-          {/if}
-        </p>
+        <ProgressBar
+          loaded={progress?.current ?? 0}
+          total={progress && progress.total > 0 ? progress.total : null}
+          label="Creating copy…"
+        />
       </Card>
     {:else if stage === "error"}
-      <div
-        class="rounded border border-(--figma-color-border-danger) bg-(--figma-color-bg-danger-tertiary) p-2 text-xs text-(--figma-color-text-danger)"
-      >
-        {errorMsg ?? "Something went wrong."}
-      </div>
+      <Message variant="error">{errorMsg ?? "Something went wrong."}</Message>
     {/if}
   </div>
 
