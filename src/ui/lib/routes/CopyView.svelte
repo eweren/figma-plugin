@@ -17,6 +17,7 @@
   import { computeVirtualWindow } from "$ui/lib/logic/virtualWindow";
   import Target from "lucide-svelte/icons/target";
   import Download from "lucide-svelte/icons/download";
+  import Group from "lucide-svelte/icons/group";
   import KeyRound from "lucide-svelte/icons/key-round";
   import Info from "lucide-svelte/icons/info";
 
@@ -90,6 +91,13 @@
   const downloadButtonLabel = $derived(
     appState.value.scanning ? "Scanning…" : hasUserSelection ? "Download" : "Download all",
   );
+
+  // Dev Mode: both of this view's actions (Download → apply-translations,
+  // Recreate copy → create-copy) are canvas-classed and hard-blocked by the
+  // bus guard — showing their buttons would only ever produce the error
+  // toast. The staleness BANNER stays visible (knowing the copy is outdated
+  // is useful read-only information); only the remedies are hidden.
+  const isDev = $derived(appState.value.editorType === "dev");
 
   // Persists across the "toast disappears" problem: once a download
   // finishes, this stays on screen as a dismissable success message — the
@@ -484,7 +492,7 @@
           </TooltipIconButton>
         {/if}
       </h1>
-      {#if language}
+      {#if language && !isDev}
         <Button
           size="sm"
           disabled={stage === "pulling" ||
@@ -511,15 +519,17 @@
             <Message variant="info" class="items-start">
               <div class="space-y-1.5">
                 <p>The original page changed since this copy was made.</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  class="bg-bg!"
-                  disabled={stage === "pulling" || stage === "applying"}
-                  onclick={recreateCopy}
-                >
-                  Recreate copy
-                </Button>
+                {#if !isDev}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    class="bg-bg!"
+                    disabled={stage === "pulling" || stage === "applying"}
+                    onclick={recreateCopy}
+                  >
+                    Recreate copy
+                  </Button>
+                {/if}
               </div>
             </Message>
           {/if}
@@ -580,7 +590,11 @@
       {#if stage === "idle" || stage === "error"}
         {#if selectedNodes.length === 0}
           <div class="flex flex-1 flex-col overflow-auto px-3 pb-3">
-            {#if language}
+            {#if language && isDev}
+              <!-- Download is hidden in Dev Mode — don't instruct an action
+                   that doesn't exist there; selecting still lists strings. -->
+              <EmptyState icon={Group} title="Select a string or frame" />
+            {:else if language}
               <EmptyState
                 icon={Download}
                 title="Download strings to Figma."

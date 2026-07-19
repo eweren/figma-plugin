@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { SIGNED_IN, createTestNode, hostUrl } from "../host/fixtures";
+import { PAGE_COPY, SIGNED_IN, createTestNode, hostUrl } from "../host/fixtures";
 
 const IFRAME_SELECTOR = '[data-testid="plugin-iframe"]';
 
@@ -102,6 +102,28 @@ test.describe("Dev Mode", () => {
     await expect(
       ui.getByRole("menuitem", { name: "Open in Tolgee" }),
     ).not.toBeVisible();
+  });
+
+  test("copy page in dev hides Download all and the download instruction", async ({
+    page,
+  }) => {
+    // A language copy page: in design mode this shows "Download all" + the
+    // download-instruction empty state. In dev both of its actions are
+    // canvas-classed (apply-translations / create-copy), so the buttons and
+    // the instruction are hidden -- only read-only content remains.
+    await page.goto(
+      hostUrl({ ...PAGE_COPY, language: "cs" }, { editorType: "dev" }),
+    );
+    const ui = page.frameLocator(IFRAME_SELECTOR);
+    await expect(
+      ui.getByRole("heading", { name: "Page 1 (copy)" }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    await expect(
+      ui.getByRole("button", { name: "Download all" }),
+    ).not.toBeVisible();
+    await expect(ui.getByText("Download strings to Figma.")).not.toBeVisible();
+    await expect(ui.getByText("Select a string or frame")).toBeVisible();
   });
 
   test("dev row menu omits Open in Tolgee for an unconnected row", async ({
