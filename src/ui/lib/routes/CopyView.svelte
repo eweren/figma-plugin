@@ -501,7 +501,8 @@
             <p>{stalenessText}</p>
             <Button
               size="sm"
-              variant="secondary"
+              variant="outline"
+              class="bg-bg!"
               disabled={stage === "pulling" || stage === "applying"}
               onclick={recreateCopy}
             >
