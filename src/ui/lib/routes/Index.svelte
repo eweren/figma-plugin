@@ -932,20 +932,32 @@
         />
 
         <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            {#snippet child({ props })}
-              <IconButton {...props} size="md" aria-label="Filter">
-                <span class="relative">
-                  <ListFilter size={ICON.action} />
-                  {#if filterActive}
-                    <span
-                      class="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-bg-brand"
-                    ></span>
-                  {/if}
-                </span>
-              </IconButton>
-            {/snippet}
-          </DropdownMenu.Trigger>
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props: tooltipProps })}
+                <DropdownMenu.Trigger>
+                  {#snippet child({ props: menuProps })}
+                    <IconButton
+                      {...tooltipProps}
+                      {...menuProps}
+                      size="md"
+                      aria-label="Filter"
+                    >
+                      <span class="relative">
+                        <ListFilter size={ICON.action} />
+                        {#if filterActive}
+                          <span
+                            class="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-bg-brand"
+                          ></span>
+                        {/if}
+                      </span>
+                    </IconButton>
+                  {/snippet}
+                </DropdownMenu.Trigger>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content side="bottom">Filter strings</Tooltip.Content>
+          </Tooltip.Root>
           <DropdownMenu.Content
             align="end"
             class="flex max-h-[var(--bits-dropdown-menu-content-available-height)] min-w-[13rem] flex-col overflow-hidden"
