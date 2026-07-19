@@ -1369,21 +1369,26 @@
           </div>
         </div>
       {:else}
-        <div class="grid grid-cols-2 gap-2">
+        <!-- Dev Mode: Download opens Pull (design-only route) — hidden, same
+             as production hides its Pull there. Upload STAYS: production's
+             dev keeps Push, and it's metadata/read-only per messagePolicy. -->
+        <div class="grid gap-2 {appState.value.editorType === 'dev' ? 'grid-cols-1' : 'grid-cols-2'}">
           <!-- TEMP Upload count badge hidden 2026-06 (remove later); was
                badge={pushKeyCount}. -->
           <SyncButton
             direction="upload"
             onclick={() => go({ name: "push" })}
           />
-          <SyncButton
-            direction="download"
-            onclick={() =>
-              go({
-                name: "pull",
-                lang: appState.value.config?.language ?? "",
-              })}
-          />
+          {#if appState.value.editorType !== "dev"}
+            <SyncButton
+              direction="download"
+              onclick={() =>
+                go({
+                  name: "pull",
+                  lang: appState.value.config?.language ?? "",
+                })}
+            />
+          {/if}
         </div>
       {/if}
     </div>

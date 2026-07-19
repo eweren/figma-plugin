@@ -233,6 +233,9 @@
         <CreateCopy />
       {/if}
     </main>
-    <ResizeHandle />
+    {#if appState.value.editorType !== "dev"}
+      <!-- Matches production: no resize affordance in the Dev-Mode panel. -->
+      <ResizeHandle />
+    {/if}
   </div>
 </QueryClientProvider>

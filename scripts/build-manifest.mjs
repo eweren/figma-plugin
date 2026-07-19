@@ -16,9 +16,14 @@ const manifest = {
   id: '1212381421658754793',
   name: 'Tolgee',
   main: 'main.js',
-  // Per-editor UI bundles: `figma` for design mode, `dev` for the Dev-Mode
-  // inspect panel. Figma's manifest schema specifically uses these keys.
-  ui: { figma: 'ui.html', dev: 'ui-inspect.html' },
+  // ONE shared UI bundle for both editors — matching production, which ships
+  // a single `ui` for figma and dev alike. Dev-Mode safety lives in code, not
+  // in a separate bundle: the message-impact guard ($shared/messagePolicy +
+  // $main/bus.ts) blocks canvas writes, the navigation gate + per-component
+  // hiding keep design-only affordances out of the dev UI. The per-editor map
+  // form is kept (vs a plain string) so a future dev-specific bundle would be
+  // a one-line change.
+  ui: { figma: 'ui.html', dev: 'ui.html' },
   editorType: ['figma', 'dev'],
   // Required for plugins built after 2024 — forces async page access, which is
   // what our `getNodeByIdAsync` / `page.loadAsync()` code already assumes.

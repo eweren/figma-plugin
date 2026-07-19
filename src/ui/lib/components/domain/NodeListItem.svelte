@@ -392,9 +392,14 @@
           {/snippet}
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="end">
-          <DropdownMenu.Item onSelect={openStringDetails}>
-            <FileText size={ICON.inline} /> String details
-          </DropdownMenu.Item>
+          {#if appState.value.editorType !== "dev"}
+            <!-- String details edits the string — design-only. Production's
+                 dev row menu keeps just "Move to String" too; even if this
+                 were missed, navigate()'s route gate refuses the route. -->
+            <DropdownMenu.Item onSelect={openStringDetails}>
+              <FileText size={ICON.inline} /> String details
+            </DropdownMenu.Item>
+          {/if}
           <DropdownMenu.Item onSelect={showOnCanvas}>
             <Target size={ICON.inline} /> Move to string
           </DropdownMenu.Item>

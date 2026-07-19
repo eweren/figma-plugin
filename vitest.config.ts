@@ -9,7 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  * Vitest config for the src rewrite.
  *
  * Aliases mirror `tsconfig.json#compilerOptions.paths` so unit tests can use
- * the same `$shared/...`, `$main/...`, `$ui/...`, `$inspect/...` imports as
+ * the same `$shared/...`, `$main/...`, `$ui/...` imports as
  * the production source.
  *
  * `svelte()` is here ONLY so `.svelte.ts` rune modules (the `stores/*`
@@ -29,7 +29,6 @@ export default defineConfig({
       $shared: path.resolve(here, "src/shared"),
       $main: path.resolve(here, "src/main"),
       $ui: path.resolve(here, "src/ui"),
-      $inspect: path.resolve(here, "src/ui-inspect"),
     },
   },
   test: {

@@ -60,6 +60,14 @@
       : languages,
   );
 
+  // Dev Mode hides design-changing entry points (cosmetic layer — the
+  // navigation gate in appState.navigate and the bus guard are the real
+  // defence): language select navigates to Pull, the copy button to
+  // CreateCopy. Matches production (Index.tsx hides its language select and
+  // Copy there). Branch select STAYS — set-branch is metadata-classed, and
+  // a developer reading strings off a branch is a legitimate dev-mode need.
+  const isDev = $derived(appState.value.editorType === "dev");
+
   const branchOptions = $derived<BranchOption[]>(
     branch && !branches.some((o) => o.value === branch)
       ? [{ value: branch, label: branch }, ...branches]
@@ -72,7 +80,9 @@
 
   {#if auth.value.authenticated}
     <div class="flex flex-1 items-center gap-2">
-      {#if languageOptions.length > 0}
+      {#if isDev}
+        <!-- Language select opens Pull (design-only); nothing to pick here. -->
+      {:else if languageOptions.length > 0}
         <Select
           value={language}
           options={languageOptions}
@@ -101,7 +111,7 @@
   {/if}
 
   <Tooltip.Provider delayDuration={200}>
-    {#if auth.value.authenticated}
+    {#if auth.value.authenticated && !isDev}
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
