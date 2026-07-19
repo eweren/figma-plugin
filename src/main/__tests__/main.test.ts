@@ -41,11 +41,12 @@ function makeTextNode(id: string, characters: string) {
 
 type FakeNode = ReturnType<typeof makeTextNode>;
 type FakeFigma = {
-  editorType: "figma";
+  editorType: "figma" | "dev";
   command: string;
   currentPage: { selection: unknown[] };
   skipInvisibleInstanceChildren: boolean;
   showUI: ReturnType<typeof vi.fn>;
+  notify: ReturnType<typeof vi.fn>;
   on: ReturnType<typeof vi.fn>;
   ui: { postMessage: ReturnType<typeof vi.fn>; onmessage?: (msg: unknown) => unknown };
   getNodeByIdAsync: (id: string) => Promise<FakeNode | null>;
@@ -54,14 +55,18 @@ type FakeFigma = {
 /** Installs a fresh `figma` global (+ the two build-time UI-html injected
  *  globals `main.ts` reads at module scope) and imports `main.ts` fresh, so
  *  its top-level `attachBus()` wires `figma.ui.onmessage` for this test. */
-async function loadMain(nodes: FakeNode[]): Promise<FakeFigma> {
+async function loadMain(
+  nodes: FakeNode[],
+  editorType: "figma" | "dev" = "figma",
+): Promise<FakeFigma> {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const figma: FakeFigma = {
-    editorType: "figma",
+    editorType,
     command: "",
     currentPage: { selection: [] },
     skipInvisibleInstanceChildren: false,
     showUI: vi.fn(),
+    notify: vi.fn(),
     on: vi.fn(),
     ui: { postMessage: vi.fn() },
     getNodeByIdAsync: async (id: string) => byId.get(id) ?? null,
@@ -140,5 +145,53 @@ describe('main.ts on("set-nodes-data", ...) handler', () => {
     const calls = figma.ui.postMessage.mock.calls.map((c) => c[0] as { type: string });
     expect(calls.filter((m) => m.type === "nodes-set-progress")).toHaveLength(0);
     expect(calls.filter((m) => m.type === "nodes-set-result")).toHaveLength(1);
+  });
+});
+
+describe("Dev-Mode canvas guard (attachBus + MESSAGE_IMPACT)", () => {
+  it("blocks a canvas message in dev: handler never runs, user gets a toast", async () => {
+    const figma = await loadMain([], "dev");
+    // Silence the guard's console.warn — it's the expected path here.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await figma.ui.onmessage?.({
+      type: "apply-translations",
+      correlationId: "corr-dev-1",
+      updates: [],
+    });
+
+    // Blocked BEFORE the handler: no apply-translations-result ever posted.
+    const calls = figma.ui.postMessage.mock.calls.map((c) => c[0] as { type: string });
+    expect(calls.filter((m) => m.type === "apply-translations-result")).toHaveLength(0);
+    expect(figma.notify).toHaveBeenCalledWith("Not available in Dev Mode");
+  });
+
+  it("lets a metadata message through in dev (production parity: Push works there)", async () => {
+    const node = makeTextNode("1:1", "Hello");
+    const figma = await loadMain([node], "dev");
+
+    await figma.ui.onmessage?.({
+      type: "set-nodes-data",
+      correlationId: "corr-dev-2",
+      nodes: [{ id: "1:1", info: { key: "k" } }],
+    });
+
+    const calls = figma.ui.postMessage.mock.calls.map((c) => c[0] as { type: string });
+    expect(calls.filter((m) => m.type === "nodes-set-result")).toHaveLength(1);
+    expect(figma.notify).not.toHaveBeenCalled();
+  });
+
+  it("does not interfere in the design editor: canvas messages run, no toast", async () => {
+    const figma = await loadMain([], "figma");
+
+    await figma.ui.onmessage?.({
+      type: "apply-translations",
+      correlationId: "corr-fig-1",
+      updates: [],
+    });
+
+    const calls = figma.ui.postMessage.mock.calls.map((c) => c[0] as { type: string });
+    expect(calls.filter((m) => m.type === "apply-translations-result")).toHaveLength(1);
+    expect(figma.notify).not.toHaveBeenCalled();
   });
 });

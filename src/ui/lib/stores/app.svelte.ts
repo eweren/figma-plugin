@@ -1,6 +1,35 @@
 import type { NodeInfo, Route, TolgeeConfig } from "$shared/types";
 import { flushNodeSaves } from "$ui/lib/logic/saveQueue";
 
+/**
+ * Which editor types may open each route — the navigation-side half of the
+ * Dev-Mode safety layer (the message-side half is `$shared/messagePolicy`).
+ * Exhaustive over `Route["name"]` so a NEW route can't ship unclassified:
+ * the compiler forces a decision here, mirroring `MESSAGE_IMPACT`.
+ *
+ * `design-only` routes exist to change the design (Pull rewrites canvas
+ * text, CreateCopy clones pages, StringDetails edits a string) — in Dev
+ * Mode `navigate()` refuses them as a SILENT no-op. Silent on purpose:
+ * clicking a row is a frequent reflex action in Dev Mode and a toast on
+ * every click would nag; the toast belongs to the message guard in
+ * `$main/bus.ts`, where being reached at all signals a real anomaly.
+ *
+ * `copyView` stays "all": it's the read-only viewer for copy pages, and
+ * both of its write actions (Download, Recreate) go through canvas-classed
+ * messages the bus guard already blocks.
+ */
+export const ROUTE_AVAILABILITY: Record<Route["name"], "all" | "design-only"> = {
+  index: "all",
+  pageSetup: "all",
+  copyView: "all",
+  settings: "all",
+  push: "all",
+  connect: "all",
+  pull: "design-only",
+  stringDetails: "design-only",
+  createCopy: "design-only",
+};
+
 type AppState = {
   config: Partial<TolgeeConfig> | null;
   selectedNodes: NodeInfo[];
@@ -193,6 +222,13 @@ function createAppState() {
       }, SCAN_SPINNER_DELAY_MS);
     },
     navigate(route: Route) {
+      // Dev-Mode gate — covers EVERY entry point to a design-only route
+      // (row click, menus, future callers) in one place instead of chasing
+      // each button. Silent no-op by design; see ROUTE_AVAILABILITY's doc.
+      if (state.editorType === "dev" && ROUTE_AVAILABILITY[route.name] === "design-only") {
+        console.warn("[tolgee:ui] blocked design-only route in Dev Mode:", route.name);
+        return;
+      }
       // Persist any debounced inline edits BEFORE the destination flow reads
       // node state — Push must diff the key the user just typed, not the one
       // still sitting in the queue.
