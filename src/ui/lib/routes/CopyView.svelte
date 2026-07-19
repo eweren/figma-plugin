@@ -57,23 +57,18 @@
   let applyWatchdog: RequestWatchdog | null = null;
   const APPLY_TRANSLATIONS_TIMEOUT_MS = 5 * 60_000;
 
-  // Structural drift between this copy and its SOURCE page: strings the
-  // source gained (`added`) or lost (`removed`) since the copy was made.
-  // Download can't fix either — it only refreshes text on strings the copy
-  // already tracks. `null` until checked, or when there's nothing recorded
-  // to compare against (older copy, or one made by production).
-  let staleness = $state<{ added: number; removed: number } | null>(null);
+  // Structural drift between this copy and its SOURCE page: the source
+  // gained or lost connected strings since the copy was made. Download can't
+  // fix either — it only refreshes text on strings the copy already tracks.
+  // `false` until checked, or when there's nothing recorded to compare
+  // against (older copy, or one made by production). Exact counts aren't
+  // worth surfacing — the user can't act on "3 added" any differently than
+  // on "something changed", and computing them costs nothing extra on the
+  // main-thread side (same two full-page scans either way), so this is a
+  // pure UI-side simplification, not a performance change.
+  let staleness = $state(false);
   let stalenessCorrelationId: string | null = null;
 
-  const stalenessText = $derived.by(() => {
-    if (!staleness) return "";
-    const parts: string[] = [];
-    if (staleness.added > 0) {
-      parts.push(`${staleness.added} ${staleness.added === 1 ? "string" : "strings"} added`);
-    }
-    if (staleness.removed > 0) parts.push(`${staleness.removed} removed`);
-    return `The original page changed since this copy was made (${parts.join(", ")}). Download only refreshes existing strings.`;
-  });
   let recreateProgress = $state<{ current: number; total: number } | null>(null);
   let recreateCorrelationId = $state<string | null>(null);
   let recreateWatchdog: RequestWatchdog | null = null;
@@ -133,19 +128,20 @@
     lastSelectionSignature = signature;
   });
 
-  /** "N strings" (+ "(M not connected)" when there are any) — the raw count
-   *  of whatever's being looked at, plus how many of those are NOT actually
-   *  connected (a prefilled-but-never-pushed key still shows up in a
-   *  selection/page scan, but Download silently skips it). */
-  function formatCountLine(total: number, notConnected: number): string {
+  /** "N strings" (+ "(M connected)" when not all of them are) — the raw
+   *  count of whatever's being looked at, plus how many of those are
+   *  actually connected (a prefilled-but-never-pushed key still shows up in
+   *  a selection/page scan, but Download silently skips it — the connected
+   *  count is what Download will actually act on). */
+  function formatCountLine(total: number, connected: number): string {
     const base = `${total} ${total === 1 ? "string" : "strings"}`;
-    return notConnected > 0 ? `${base} (${notConnected} not connected)` : base;
+    return connected < total ? `${base} (${connected} connected)` : base;
   }
 
   const countRowText = $derived(
     formatCountLine(
       selectedNodes.length,
-      selectedNodes.filter((n) => !n.connected).length,
+      selectedNodes.filter((n) => n.connected).length,
     ),
   );
 
@@ -274,7 +270,7 @@
     void appState.value.pageName;
     const correlationId = nextCorrelationId();
     stalenessCorrelationId = correlationId;
-    staleness = null;
+    staleness = false;
     send({ type: "request-copy-staleness", correlationId });
   });
 
@@ -289,7 +285,7 @@
       }
       const added = msg.missingCount ?? 0;
       const removed = msg.removedCount ?? 0;
-      staleness = msg.ok && added + removed > 0 ? { added, removed } : null;
+      staleness = msg.ok && added + removed > 0;
     });
     return off;
   });
@@ -402,7 +398,7 @@
           }
         }
         stage = "idle";
-        staleness = null;
+        staleness = false;
         send({ type: "notify", text: "Copy recreated." });
         // The main thread may have switched `figma.currentPage` to the fresh
         // replacement (this page can't delete itself while active) —
@@ -452,7 +448,7 @@
              for keys the copy already tracks), so recreating is the only fix. -->
         <Message variant="info" class="items-start">
           <div class="space-y-1.5">
-            <p>{stalenessText}</p>
+            <p>The original page changed since this copy was made.</p>
             <Button
               size="sm"
               variant="outline"
