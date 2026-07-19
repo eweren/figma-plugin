@@ -14,7 +14,6 @@
   import { applyCopyPages, type CopyTranslations } from "$ui/lib/logic/copyApply";
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import { hasRichFormat } from "$ui/lib/logic/icuParams";
-  import Group from "lucide-svelte/icons/group";
   import Target from "lucide-svelte/icons/target";
   import Download from "lucide-svelte/icons/download";
   import KeyRound from "lucide-svelte/icons/key-round";
@@ -518,7 +517,11 @@
               description="Download all, or select frames to update specific strings."
             />
           {:else}
-            <EmptyState icon={Group} title="Select a string or frame" />
+            <EmptyState
+              icon={KeyRound}
+              title="Select a string or frame"
+              description="See its Tolgee key."
+            />
           {/if}
         {:else}
           <!-- Count row mirrors Index's (no select-all checkbox — nothing here
