@@ -1256,12 +1256,12 @@
             <DropdownMenu.Content align="start" class="min-w-[12rem]">
               {#if connectableSameText}
                 <DropdownMenu.Item onSelect={bulkConnect}>
-                  <Link2 size={ICON.inline} /> Connect to key
+                  <Link2 size={ICON.inline} /> Connect to key ({generatableCount})
                 </DropdownMenu.Item>
               {/if}
               {#if generatableCount > 0}
                 <DropdownMenu.Item onSelect={startConnectExact}>
-                  <Link2 size={ICON.inline} /> Auto-connect by exact match
+                  <Link2 size={ICON.inline} /> Auto-connect by exact match ({generatableCount})
                 </DropdownMenu.Item>
               {/if}
               {#if connectedSelectedCount === 0 && connectableSameText}
