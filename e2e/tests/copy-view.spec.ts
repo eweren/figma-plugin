@@ -17,7 +17,7 @@ test.describe("CopyView", () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test("shows the keys message and no Download button when no language is configured", async ({
+  test("shows the keys info tooltip and no Download button when no language is configured", async ({
     page,
   }) => {
     await page.goto(hostUrl(PAGE_COPY));
@@ -27,8 +27,10 @@ test.describe("CopyView", () => {
       ui.getByRole("heading", { name: "Page 1 (copy)" }),
     ).toBeVisible({ timeout: 10_000 });
 
+    // The "Shows Tolgee keys. Doesn't sync back." explanation now lives in
+    // this (i) tooltip in the header instead of a static line in the body.
     await expect(
-      ui.getByText("Shows Tolgee keys. Doesn't sync back."),
+      ui.getByRole("button", { name: "About this page" }),
     ).toBeVisible();
     await expect(
       ui.getByRole("button", { name: "Download all" }),

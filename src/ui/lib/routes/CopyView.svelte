@@ -17,6 +17,7 @@
   import Target from "lucide-svelte/icons/target";
   import Download from "lucide-svelte/icons/download";
   import KeyRound from "lucide-svelte/icons/key-round";
+  import Info from "lucide-svelte/icons/info";
 
   /**
    * Read-only view for a page the plugin itself generated as a copy (via
@@ -103,12 +104,6 @@
   // Count of nodes an in-flight apply is updating — captured at send time so
   // the result handler can report it once `applyProgress` is cleared.
   let pendingApplyCount = 0;
-
-  // Static description for "keys" copies — unrelated to `lastResult`, always
-  // shown when there's no download button at all.
-  const languageDescriptionText = $derived(
-    !language ? "Shows Tolgee keys. Doesn't sync back." : null,
-  );
 
   const lastResultText = $derived.by(() => {
     if (!lastResult) return null;
@@ -420,27 +415,36 @@
 </script>
 
 <div class="flex h-full flex-col">
-  <header
-    class="flex items-center justify-between gap-2 bg-linear-to-b from-bg to-header-gradient-end border-b border-border px-3 py-2"
-  >
-    <h1 class="flex h-7 min-w-0 flex-1 items-center truncate text-sm font-semibold">
-      {appState.value.pageName} (copy)
-    </h1>
-    {#if language}
-      <Button
-        size="sm"
-        disabled={stage === "pulling" ||
-          stage === "applying" ||
-          stage === "recreating" ||
-          appState.value.scanning}
-        onclick={pull}
-      >
-        {downloadButtonLabel}
-      </Button>
-    {/if}
-  </header>
-
   <Tooltip.Provider delayDuration={200}>
+    <header
+      class="flex items-center justify-between gap-2 bg-linear-to-b from-bg to-header-gradient-end border-b border-border px-3 py-2"
+    >
+      <h1 class="flex h-7 min-w-0 flex-1 items-center gap-1.5 truncate text-sm font-semibold">
+        <span class="truncate">{appState.value.pageName} (copy)</span>
+        {#if !language}
+          <TooltipIconButton
+            label="About this page"
+            tooltip="Shows Tolgee keys. Doesn't sync back."
+            class="text-text-secondary"
+          >
+            <Info size={ICON.inline} />
+          </TooltipIconButton>
+        {/if}
+      </h1>
+      {#if language}
+        <Button
+          size="sm"
+          disabled={stage === "pulling" ||
+            stage === "applying" ||
+            stage === "recreating" ||
+            appState.value.scanning}
+          onclick={pull}
+        >
+          {downloadButtonLabel}
+        </Button>
+      {/if}
+    </header>
+
     <div class="flex flex-1 flex-col overflow-auto p-3 space-y-3">
       {#if staleness && stage !== "recreating"}
         <!-- The source page gained connections since this copy was made —
@@ -504,8 +508,6 @@
         </Button>
       {:else if lastResult}
         <Message variant="success" onDismiss={() => (lastResult = null)}>{lastResultText}</Message>
-      {:else if languageDescriptionText}
-        <p class="text-xs text-text-secondary">{languageDescriptionText}</p>
       {/if}
 
       {#if stage === "idle" || stage === "error"}
