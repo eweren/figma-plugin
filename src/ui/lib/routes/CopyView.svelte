@@ -515,14 +515,14 @@
           {#if language}
             <EmptyState
               icon={Download}
-              title="Download strings to Figma."
-              description="Download all, or select frames to update specific strings."
+              title="Select strings for download"
+              description="Pick frames or texts."
             />
           {:else}
             <EmptyState
               icon={KeyRound}
-              title="Select a string or frame"
-              description="See its Tolgee key."
+              title="Select strings for their key"
+              description="Pick frames or texts."
             />
           {/if}
         {:else}

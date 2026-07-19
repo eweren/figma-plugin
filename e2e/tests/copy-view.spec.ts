@@ -50,13 +50,9 @@ test.describe("CopyView", () => {
     // Nothing selected + never downloaded this session -> the big
     // instructional EmptyState carries the message, no separate top line.
     await expect(
-      ui.getByText("Download strings to Figma."),
+      ui.getByText("Select strings for download"),
     ).toBeVisible();
-    await expect(
-      ui.getByText(
-        "Download all, or select frames to update specific strings.",
-      ),
-    ).toBeVisible();
+    await expect(ui.getByText("Pick frames or texts.")).toBeVisible();
     // Nothing selected in this fixture -> "Download all" (vs "Download" for a selection).
     await expect(
       ui.getByRole("button", { name: "Download all" }),
