@@ -496,17 +496,19 @@
         <!-- The source page gained connections since this copy was made —
              Download can't discover those on its own (it only refreshes text
              for keys the copy already tracks), so recreating is the only fix. -->
-        <div class="space-y-1.5">
-          <Message variant="info">{stalenessText}</Message>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={stage === "pulling" || stage === "applying"}
-            onclick={recreateCopy}
-          >
-            Recreate copy
-          </Button>
-        </div>
+        <Message variant="info" class="items-start">
+          <div class="space-y-1.5">
+            <p>{stalenessText}</p>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={stage === "pulling" || stage === "applying"}
+              onclick={recreateCopy}
+            >
+              Recreate copy
+            </Button>
+          </div>
+        </Message>
       {/if}
 
       {#if stage === "pulling"}
