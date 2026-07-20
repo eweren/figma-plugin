@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TolgeeConfig } from "$shared/types";
   import { appState } from "$ui/lib/stores/app.svelte";
+  import { auth } from "$ui/lib/stores/auth.svelte";
   import { send } from "$ui/lib/bus";
   import * as Tabs from "$ui/lib/components/ui/tabs";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
@@ -71,7 +72,12 @@
       <Tabs.Content value="project">
         <div class="space-y-6">
           <SettingsSectionConnection bind:form />
-          <SettingsSectionProject bind:form />
+          {#if auth.value.authenticated}
+            <!-- Language + Advanced only mean something once connected — before
+                 that the pickers are empty and the feature notes are unknown.
+                 Reveal them progressively, like the onboarding + the original. -->
+            <SettingsSectionProject bind:form />
+          {/if}
         </div>
       </Tabs.Content>
       <Tabs.Content value="strings">

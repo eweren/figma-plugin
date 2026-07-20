@@ -8,6 +8,7 @@
   import Tolgee from "$ui/lib/components/icons/Tolgee.svelte";
   import ArrowRight from "lucide-svelte/icons/arrow-right";
   import ArrowLeft from "lucide-svelte/icons/arrow-left";
+  import Check from "lucide-svelte/icons/check";
   import SettingsSectionConnection from "$ui/lib/components/domain/SettingsSectionConnection.svelte";
   import SettingsSectionProject from "$ui/lib/components/domain/SettingsSectionProject.svelte";
   import SettingsSectionKeys from "$ui/lib/components/domain/SettingsSectionKeys.svelte";
@@ -20,6 +21,9 @@
   // one step at a time — no duplicated fields, so a settings change lands here
   // too. Matches the original plugin's stepped setup (Project → Strings → Push).
   const TITLES = ["Connect", "Strings and keys", "Upload to Tolgee"] as const;
+  // Short labels for the compact stepper (the step body carries the full
+  // section headings anyway).
+  const STEP_LABELS = ["Connect", "Strings & keys", "Upload"] as const;
   let step = $state(0);
 
   // Same form snapshot + defaults as Settings, so the sections behave
@@ -60,20 +64,55 @@
   <header
     class="shrink-0 border-b border-border bg-linear-to-b from-bg to-header-gradient-end px-3 py-2.5"
   >
-    <div class="flex items-center gap-2">
+    <div class="mb-3 flex items-center gap-2">
       <Tolgee size={ICON.action} class="text-primary" />
       <span class="text-sm font-semibold">Set up Tolgee</span>
-      <span class="ml-auto text-[11px] text-text-secondary">
-        {TITLES[step]} · {step + 1}/{TITLES.length}
-      </span>
     </div>
-    <div class="mt-2 flex gap-1">
-      {#each TITLES as _, i (i)}
-        <div
-          class="h-1 flex-1 rounded-full transition-colors"
-          class:bg-bg-brand={i <= step}
-          class:bg-border={i > step}
-        ></div>
+
+    <!-- Simple stepper: numbered circles joined by connectors, titles below. -->
+    <div class="flex">
+      {#each STEP_LABELS as label, i (i)}
+        <div class="flex flex-1 flex-col items-center">
+          <div class="relative flex h-5 w-full items-center justify-center">
+            {#if i > 0}
+              <div
+                class="absolute left-0 top-1/2 h-0.5 w-1/2 -translate-y-1/2 transition-colors"
+                class:bg-bg-brand={i <= step}
+                class:bg-border={i > step}
+              ></div>
+            {/if}
+            {#if i < STEP_LABELS.length - 1}
+              <div
+                class="absolute right-0 top-1/2 h-0.5 w-1/2 -translate-y-1/2 transition-colors"
+                class:bg-bg-brand={i < step}
+                class:bg-border={i >= step}
+              ></div>
+            {/if}
+            <div
+              class="relative z-10 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors"
+              class:border-transparent={i <= step}
+              class:bg-bg-brand={i <= step}
+              class:text-text-onbrand={i <= step}
+              class:border-border={i > step}
+              class:bg-bg={i > step}
+              class:text-text-secondary={i > step}
+            >
+              {#if i < step}
+                <Check size={12} />
+              {:else}
+                {i + 1}
+              {/if}
+            </div>
+          </div>
+          <span
+            class="mt-1 text-center text-[10px] leading-tight"
+            class:font-medium={i <= step}
+            class:text-text={i <= step}
+            class:text-text-secondary={i > step}
+          >
+            {label}
+          </span>
+        </div>
       {/each}
     </div>
   </header>
