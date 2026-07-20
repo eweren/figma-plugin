@@ -75,31 +75,50 @@
     staleTime: 5 * 1000,
   }));
 
-  // Query 2: remote translations. Cached per (language, branch).
-  // The signal propagates to fetch — switching language mid-load cancels the
-  // in-flight request via openapi-fetch.
+  // The page's connected key names — query 2 filters the server fetch down to
+  // exactly these instead of paginating the whole project. Sorted + joined
+  // into a stable string so svelte-query's cache key doesn't churn on every
+  // re-render (same trick as Push.svelte's `keyFilterCacheKey`).
+  const connectedKeyNames = $derived(
+    Array.from(
+      new Set(
+        (pageNodesQuery.data ?? [])
+          .map((n) => n.key)
+          .filter((k): k is string => Boolean(k)),
+      ),
+    ).sort(),
+  );
+  const keyFilterCacheKey = $derived(connectedKeyNames.join(","));
+
+  // Query 2: remote translations, filtered to the page's connected keys.
+  // Cached per (language, branch, key set). The signal propagates to fetch —
+  // switching language mid-load cancels the in-flight request via
+  // openapi-fetch. Depends on query 1's result (`pageNodesQuery.data`) being
+  // ready — trading the old "both queries run in parallel" for "only fetch
+  // the keys we actually need", which matters far more on large projects
+  // (was: full project pagination regardless of how few keys the page uses).
   //
-  // Fetch ALL namespaces (not a single configured one): each node is matched to
-  // its remote key by its OWN `ns` in `pullDiff`, so a page that mixes
-  // namespaces pulls every node correctly. `config.namespace` is only the
-  // DEFAULT for NEW keys, not a pull filter.
+  // No `namespaces`/`filterNamespace` needed: each node is matched to its
+  // remote key by its OWN `ns` in `pullDiff`, and the key-name filter already
+  // scopes the fetch tightly.
   const translationsQuery = createQuery(() => ({
-    queryKey: ["translations", language, branch],
+    queryKey: ["translations", language, branch, keyFilterCacheKey],
     queryFn: async ({ signal }) => {
       progress = { loaded: 0, total: null };
       const client = auth.value.client;
       if (!client) throw new Error("Not connected to Tolgee.");
       return fetchAllTranslations(client, {
         languages: [language],
-        namespaces: undefined,
         branch: branch || undefined,
+        keyNames: connectedKeyNames,
         signal,
         onProgress: (loaded, total) => {
           progress = { loaded, total };
         },
       });
     },
-    enabled: Boolean(language) && auth.value.authenticated,
+    enabled:
+      Boolean(language) && auth.value.authenticated && pageNodesQuery.data !== undefined,
     // Translations rarely change during a session and are expensive to fetch;
     // keep them fresh for 30s so toggling Pull off and back on is instant.
     staleTime: 30 * 1000,

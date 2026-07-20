@@ -345,3 +345,41 @@ describe("formatNodeText", () => {
     expect(out.error).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 59: a `keyNames`-filtered remote payload must diff identically to the
+// unfiltered (full-project) one, for the exact same local nodes. `pullDiff`
+// itself doesn't know or care how `remoteKeys` was fetched — this pins that
+// invariant so the filtering change in `pull.ts` can never silently alter
+// what counts as changed/unchanged/missing.
+// ---------------------------------------------------------------------------
+
+describe("pullDiff — filtered vs. full remote payload equivalence", () => {
+  it("produces the identical diff whether remoteKeys is the full project or filtered to just the local nodes' keys", () => {
+    const changed = makeNode({ id: "a", key: "greeting", translation: "Hello" });
+    const unchanged = makeNode({ id: "b", key: "farewell", translation: "Bye" });
+    const missing = makeNode({ id: "c", key: "deleted-key", translation: "Gone" });
+    const localNodes = [changed, unchanged, missing];
+
+    // The "full project" payload includes keys belonging to OTHER nodes not
+    // in this selection at all (simulating everything else in the project).
+    const fullRemote: PulledKey[] = [
+      makeRemoteKey({ keyName: "greeting", translations: { en: { text: "Hi" } } }),
+      makeRemoteKey({ keyName: "farewell", translations: { en: { text: "Bye" } } }),
+      makeRemoteKey({ keyName: "unrelated-key", translations: { en: { text: "Noise" } } }),
+    ];
+    // The filtered payload contains only what `keyNames` (built from
+    // localNodes) would have asked the server for — i.e. never
+    // "unrelated-key", and (like the real API) never a payload entry for the
+    // deleted key either.
+    const filteredRemote: PulledKey[] = fullRemote.filter((k) => k.keyName !== "unrelated-key");
+
+    const fullDiff = pullDiff(localNodes, fullRemote, "en");
+    const filteredDiff = pullDiff(localNodes, filteredRemote, "en");
+
+    expect(filteredDiff).toEqual(fullDiff);
+    expect(filteredDiff.missingKeys.map((n) => n.id)).toEqual(["c"]);
+    expect(filteredDiff.changedNodes.map((c) => c.node.id)).toEqual(["a"]);
+    expect(filteredDiff.unchangedNodes.map((n) => n.id)).toEqual(["b"]);
+  });
+});

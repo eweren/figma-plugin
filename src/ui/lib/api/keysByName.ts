@@ -34,15 +34,18 @@ const PAGE_SIZE = 1000;
 // on the same request for `filterNamespace`, `languages`, `branch`, and for
 // URL-encoding overhead (non-ASCII characters can expand to several bytes
 // once percent-encoded).
-const MAX_BATCH_CHARS = 3000;
+export const MAX_BATCH_CHARS = 3000;
 
 /**
  * Split `names` into batches so that the summed character length of each
  * batch stays at or under `maxChars` where possible. A single name that is
  * itself longer than `maxChars` still gets sent — alone, in its own batch —
  * rather than being dropped or crashing the whole call.
+ *
+ * Exported so `pull.ts`'s key-filtered fetch can reuse the exact same
+ * URL-length-safe batching instead of duplicating the reasoning.
  */
-function chunkByLength(names: string[], maxChars: number): string[][] {
+export function chunkByLength(names: string[], maxChars: number): string[][] {
   const out: string[][] = [];
   let current: string[] = [];
   let currentLen = 0;

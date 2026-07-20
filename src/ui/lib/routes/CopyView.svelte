@@ -188,13 +188,17 @@
             pageScanProgress = { done, total };
           });
 
-      // Fetch ALL namespaces (not just the configured default) — each node
-      // is matched to its remote key by its OWN `ns`, same reasoning as the
-      // main Pull view.
+      // Filtered to exactly `targetNodes`' connected keys (no `namespaces` —
+      // each node is matched to its remote key by its OWN `ns`, same
+      // reasoning as the main Pull view) instead of paginating the whole
+      // project, same fix as Pull.svelte.
+      const keyNames = Array.from(
+        new Set(targetNodes.map((n) => n.key).filter((k): k is string => Boolean(k))),
+      );
       const remoteKeys = await fetchAllTranslations(client, {
         languages: [lang],
-        namespaces: undefined,
         branch: branch || undefined,
+        keyNames,
         onProgress: (loaded, total) => {
           fetchProgress = { loaded, total };
         },
