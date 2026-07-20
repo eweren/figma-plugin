@@ -17,13 +17,17 @@ export async function hydratePickers(client: TolgeeClient): Promise<void> {
       params: { query: { size: 1000 } },
     });
     const raw = data as {
-      _embedded?: { languages?: Array<{ tag?: string; name?: string }> };
+      _embedded?: {
+        languages?: Array<{ tag?: string; name?: string; base?: boolean }>;
+      };
     };
     const list = raw._embedded?.languages ?? [];
+    const base = list.find((l) => l.base)?.tag ?? "";
     auth.setLanguages(
       list
         .filter((l): l is { tag: string; name?: string } => Boolean(l.tag))
         .map((l) => ({ tag: l.tag, name: l.name ?? l.tag })),
+      base,
     );
   } catch {
     auth.setLanguages([]);

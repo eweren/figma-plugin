@@ -28,6 +28,24 @@
   };
   let { form = $bindable(), hideDisabledNotes = false }: Props = $props();
 
+  // Pre-fill "Current language" with the project's base language on first
+  // setup (matches the original plugin), so the user isn't forced to pick it
+  // manually. Runs once: only when no language is set yet and the base tag has
+  // loaded; never overrides an existing choice.
+  let languagePrefilled = false;
+  $effect(() => {
+    if (languagePrefilled) return;
+    if (form.language) {
+      languagePrefilled = true;
+      return;
+    }
+    const base = auth.value.baseLanguage;
+    if (base) {
+      form.language = base;
+      languagePrefilled = true;
+    }
+  });
+
   // Advanced section is worth showing when there's a real control in it (the
   // namespace input) or, in Settings, when a "disabled" note explains why
   // there isn't. Onboarding hides the notes, so it only appears with namespaces.

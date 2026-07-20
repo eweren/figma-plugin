@@ -14,6 +14,9 @@ type AuthState = {
   branchingEnabled: boolean;
   namespacesEnabled: boolean;
   languages: LanguageInfo[];
+  /** The project's base (main) language tag, used to pre-fill "Current
+   *  language" on first setup — matches the original plugin. "" when unknown. */
+  baseLanguage: string;
   namespaces: NamespaceInfo[];
 };
 
@@ -29,6 +32,7 @@ function createAuth() {
     branchingEnabled: false,
     namespacesEnabled: false,
     languages: [],
+    baseLanguage: "",
     namespaces: [],
   });
 
@@ -61,8 +65,9 @@ function createAuth() {
         state.projectName = features.projectName;
       }
     },
-    setLanguages(langs: LanguageInfo[]): void {
+    setLanguages(langs: LanguageInfo[], baseLanguage = ""): void {
       state.languages = langs;
+      state.baseLanguage = baseLanguage;
     },
     setNamespaces(nss: NamespaceInfo[]): void {
       state.namespaces = nss;
@@ -78,6 +83,7 @@ function createAuth() {
       state.branchingEnabled = false;
       state.namespacesEnabled = false;
       state.languages = [];
+      state.baseLanguage = "";
       state.namespaces = [];
     },
     hasScope(scope: string): boolean {
