@@ -1,15 +1,14 @@
 <script lang="ts">
   import { Message } from "$ui/lib/components/ui";
   import Info from "lucide-svelte/icons/info";
-  import AlertTriangle from "lucide-svelte/icons/alert-triangle";
 
   // Reference catalogue of all user-facing COPY (messages, tooltips, empty
   // states, hints, placeholders, notable buttons) with WHERE each is shown.
   // Hand-maintained from a sweep of `src/ui` — keep in sync when copy changes.
   // `variant` (Messages group) renders the row as the REAL Message component so
-  // its icon + colour show. "warning" is the amber Push banner, which has no
-  // Message variant — it's drawn as that custom box. `icon: "info"` overrides a
-  // secondary message's default check with the Info glyph (the teal notice).
+  // its icon + colour show (incl. theme-aware light/dark tinting). `icon:
+  // "info"` overrides a secondary message's default check with the Info glyph
+  // (the teal notice).
   type MsgVariant = "error" | "success" | "info" | "secondary" | "warning";
   type Entry = {
     text: string;
@@ -27,7 +26,7 @@
   const groups: Group[] = [
     {
       title: "Messages & banners",
-      note: "Inline status blocks shown in their real colour + icon. (warning = the amber Push banner.)",
+      note: "Inline status blocks shown in their real colour + icon.",
       render: "message",
       items: [
         {
@@ -330,23 +329,14 @@
 </script>
 
 <!-- Renders a catalogue entry as the REAL inline status block so its colour +
-     icon are visible. The amber "warning" has no Message variant → custom box. -->
+     icon are visible (incl. correct light/dark theming). -->
 {#snippet messagePreview(item: Entry)}
-  {#if item.variant === "warning"}
-    <div
-      class="flex items-center gap-2 rounded-md border border-yellow-400/40 bg-yellow-100 p-2 text-xs text-yellow-900"
-    >
-      <AlertTriangle size={16} class="shrink-0" />
-      <span class="leading-snug">{item.text}</span>
-    </div>
-  {:else}
-    <Message
-      variant={item.variant ?? "info"}
-      icon={item.icon === "info" ? Info : undefined}
-    >
-      {item.text}
-    </Message>
-  {/if}
+  <Message
+    variant={item.variant ?? "info"}
+    icon={item.icon === "info" ? Info : undefined}
+  >
+    {item.text}
+  </Message>
 {/snippet}
 
 <div class="space-y-5">
