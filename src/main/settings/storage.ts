@@ -51,7 +51,12 @@ export async function writeGlobalSettings(settings: Partial<GlobalSettings>): Pr
     await figma.clientStorage.deleteAsync(TOLGEE_PLUGIN_CONFIG_NAME);
     return;
   }
-  await figma.clientStorage.setAsync(TOLGEE_PLUGIN_CONFIG_NAME, settings);
+  // MUST be a JSON string, not the raw object: the published plugin's reader
+  // is an unguarded `JSON.parse(value)` at startup (settingsTools.ts), so a
+  // plain object persisted here would make a ROLLBACK to that version throw
+  // on launch — on every document, with no way out short of clearing plugin
+  // storage. Our own reader accepts both shapes; production's does not.
+  await figma.clientStorage.setAsync(TOLGEE_PLUGIN_CONFIG_NAME, JSON.stringify(settings));
 }
 
 export async function deleteGlobalSettings(): Promise<void> {
