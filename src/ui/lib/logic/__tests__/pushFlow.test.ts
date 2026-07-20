@@ -2,6 +2,7 @@ import type { FrameScreenshot, NodeInfo } from "$shared/types";
 import type { TolgeeClient } from "$ui/lib/api/client";
 import type { SimpleImportConflictResult } from "$ui/lib/api/push";
 import {
+  buildConnectBackUpdates,
   buildPayload,
   buildRelatedKeys,
   canonicalKey,
@@ -9,6 +10,7 @@ import {
   resolutionKey,
 } from "$ui/lib/logic/pushFlow";
 import type { PushContext } from "$ui/lib/logic/pushFlow";
+import type { PushDiff } from "$ui/lib/logic/pushDiff";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -349,5 +351,100 @@ describe("buildRelatedKeys", () => {
   it("caps at 100 keys", () => {
     const s = makeScreenshot(Array.from({ length: 150 }, (_, i) => ({ key: `k${i}` })));
     expect(buildRelatedKeys(ctx, s)).toHaveLength(100);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildConnectBackUpdates
+// ---------------------------------------------------------------------------
+
+function makeDiff(overrides: Partial<PushDiff> = {}): PushDiff {
+  return {
+    newKeys: [],
+    changedKeys: [],
+    unchangedKeys: [],
+    missingKeys: [],
+    conflictingNodes: [],
+    ...overrides,
+  };
+}
+
+describe("buildConnectBackUpdates", () => {
+  it("connects every snapshot node, preferring the canonical translation", () => {
+    const a = makeNode({ id: "a", key: "title", characters: "Hi" });
+    const b = makeNode({ id: "b", key: "title", characters: "Hi" });
+    const canonical = new Map([
+      ["|title", { translation: "Hi canonical", isPlural: true }],
+    ]);
+
+    const updates = buildConnectBackUpdates(
+      makeDiff({ newKeys: [a] }),
+      [a, b],
+      canonical,
+    );
+
+    // Both nodes sharing the pushed key get connected (bulk-assign case).
+    expect(updates).toEqual([
+      { id: "a", info: { connected: true, translation: "Hi canonical", isPlural: true } },
+      { id: "b", info: { connected: true, translation: "Hi canonical", isPlural: true } },
+    ]);
+  });
+
+  it("falls back to the node's own translation, then characters", () => {
+    const withTranslation = makeNode({ id: "a", key: "x", translation: "Saved" });
+    const withoutAny = makeNode({ id: "b", key: "y", translation: "", characters: "Typed" });
+
+    const updates = buildConnectBackUpdates(
+      makeDiff(),
+      [withTranslation, withoutAny],
+      null,
+    );
+
+    expect(updates[0]?.info.translation).toBe("Saved");
+    // `??` semantics: an empty-string translation is kept as-is (matches the
+    // pre-extraction inline code — characters is only for nullish).
+    expect(updates[1]?.info.translation).toBe("");
+  });
+
+  it("excludes dropped conflict-group members and missing keys", () => {
+    const kept = makeNode({ id: "kept", key: "dup" });
+    const dropped = makeNode({ id: "dropped", key: "dup" });
+    const missing = makeNode({ id: "missing", key: "gone" });
+    const ok = makeNode({ id: "ok", key: "fine" });
+
+    const updates = buildConnectBackUpdates(
+      makeDiff({
+        conflictingNodes: [{ key: "dup", nodes: [kept, dropped] }],
+        missingKeys: [missing],
+      }),
+      [kept, dropped, missing, ok],
+      null,
+    );
+
+    expect(updates.map((u) => u.id)).toEqual(["kept", "ok"]);
+  });
+
+  it("REGRESSION: reads only the snapshot, never the current selection", () => {
+    // The push started over snapshot A…
+    const pushedNode = makeNode({ id: "pushed", key: "title", translation: "Hello" });
+    const snapshotDiff = makeDiff({ newKeys: [pushedNode] });
+    const snapshotSelection = [pushedNode];
+
+    // …but by the time the awaits resolved, the user selected something else
+    // entirely (this is what the reactive `diff`/`connectedNodes` would show).
+    const strayNode = makeNode({
+      id: "stray",
+      key: "other",
+      connected: false,
+      characters: "Never pushed",
+    });
+    const currentSelection = [strayNode];
+
+    const updates = buildConnectBackUpdates(snapshotDiff, snapshotSelection, null);
+
+    // Only the pushed node gets connected — the stray selection must not
+    // appear (previously it got `connected: true` with a bogus baseline).
+    expect(updates.map((u) => u.id)).toEqual(["pushed"]);
+    expect(currentSelection.every((n) => !updates.some((u) => u.id === n.id))).toBe(true);
   });
 });

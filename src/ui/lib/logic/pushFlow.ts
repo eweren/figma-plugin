@@ -12,7 +12,7 @@ import {
 import type { components } from "$ui/lib/api/schema.generated";
 import { uploadScreenshot } from "$ui/lib/api/screenshots";
 import { applyTags } from "$ui/lib/api/tags";
-import { textOfNode } from "./pushDiff";
+import { type PushDiff, textOfNode } from "./pushDiff";
 
 /**
  * How the user resolved a translation conflict. Lives here (not in the
@@ -79,6 +79,52 @@ export async function fetchCanonicalAfterPush(
     });
   }
   return result;
+}
+
+export type ConnectBackUpdate = {
+  id: string;
+  info: { connected: boolean; translation: string; isPlural: boolean };
+};
+
+/**
+ * The `set-nodes-data` payload written after a successful push. Pure and fed
+ * ONLY from the snapshot captured when the user clicked Upload — never from
+ * live reactive state: the canvas selection can change while screenshots
+ * upload, and computing this from the then-current selection would mark
+ * never-pushed nodes as connected with a bogus translation baseline.
+ *
+ * Connects EVERY selected node that shares a pushed key — not just the
+ * per-key representative `pushDiff` kept. Without this, bulk-assigning one
+ * key to several identical strings would upload the key but leave all but
+ * the first node unconnected ("not all my keys uploaded"). Excluded:
+ * - dropped members of CONFLICTING groups (same key, different text) — only
+ *   their first node was actually pushed;
+ * - missing keys (deleted on the platform) — intentionally NOT pushed, they
+ *   need reconnecting/removing, so they must not be re-marked connected.
+ */
+export function buildConnectBackUpdates(
+  diff: PushDiff,
+  connectedNodes: NodeInfo[],
+  canonical: Map<string, CanonicalKeyState> | null,
+): ConnectBackUpdate[] {
+  const droppedConflictIds = new Set(
+    diff.conflictingNodes.flatMap((g) => g.nodes.slice(1).map((n) => n.id)),
+  );
+  const missingIds = new Set(diff.missingKeys.map((n) => n.id));
+
+  return connectedNodes
+    .filter((n) => !droppedConflictIds.has(n.id) && !missingIds.has(n.id))
+    .map((n) => {
+      const remote = canonical?.get(canonicalKey(n));
+      return {
+        id: n.id,
+        info: {
+          connected: true,
+          translation: remote?.translation ?? n.translation ?? n.characters,
+          isPlural: remote?.isPlural ?? n.isPlural,
+        },
+      };
+    });
 }
 
 /**

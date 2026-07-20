@@ -19,7 +19,7 @@
   import { fetchRemoteKeys } from "$ui/lib/api/keysByName";
   import {
     applyConfiguredTags,
-    canonicalKey,
+    buildConnectBackUpdates,
     defaultResolutions,
     fetchCanonicalAfterPush,
     resolutionKey,
@@ -51,6 +51,16 @@
   // stage (see the `$effect` below).
   let diffProgress = $state<{ done: number; total: number } | null>(null);
   let conflicts = $state<SimpleImportConflictResult[]>([]);
+  // Snapshot of the reactive inputs, captured the moment the user clicks
+  // Upload. Everything past the first await — including the conflict dialog
+  // and its re-submit — MUST read from this, never from the live `diff` /
+  // `connectedNodes`: App's global selection listener keeps updating them
+  // while screenshots upload, and a mid-push selection change would swap the
+  // diff under us and corrupt the final connect-back write (marking
+  // never-pushed nodes as connected). No clearing needed: every reader is
+  // only reachable inside a push `startPush` began, and `startPush` always
+  // re-captures first.
+  let pushInputs: { diff: PushDiff; connectedNodes: NodeInfo[] } | null = null;
   let resolutions = $state<Record<string, PushConflictResolution>>({});
   let errorMessage = $state<string | null>(null);
   let pushedKeyCount = $state(0);
@@ -266,14 +276,16 @@
 
     errorMessage = null;
     pushedKeyCount = 0;
-    const nodesToPush = nodesToPushFrom(diff);
+    const snapshot = { diff, connectedNodes };
+    pushInputs = snapshot;
+    const nodesToPush = nodesToPushFrom(snapshot.diff);
     // Screenshots cover EVERY layer of each pushed key (all frames it appears
     // on), not just the deduped representative — so a key reused across frames
     // keeps full screenshot coverage, like the original plugin. Scoped to the
     // pushed keys so we never export a frame that only holds keys we're not
     // pushing (no wasted exports). `mapScreenshotsForNode` attaches them by key.
     const pushedKeys = new Set(nodesToPush.map((n) => resolutionKey(n.key, n.ns)));
-    const screenshotNodes = connectedNodes.filter((n) =>
+    const screenshotNodes = snapshot.connectedNodes.filter((n) =>
       pushedKeys.has(resolutionKey(n.key, n.ns)),
     );
 
@@ -309,7 +321,7 @@
         resolutionMode: "RECOMMENDED",
         // Unchanged keys ride along only to carry screenshots — never re-push
         // (override) their untouched translation. Matches the original plugin.
-        unchangedNodeIds: new Set(diff.unchangedKeys.map((n) => n.id)),
+        unchangedNodeIds: new Set(snapshot.diff.unchangedKeys.map((n) => n.id)),
       });
 
       if (result.unresolvedConflicts.length > 0) {
@@ -325,7 +337,7 @@
         await submitBigMeta(ctx, screenshots);
       }
 
-      await finishPush(ctx, nodesToPush);
+      await finishPush(ctx, nodesToPush, snapshot);
     } catch (err) {
       handlePushError(err);
     }
@@ -333,11 +345,15 @@
 
   async function applyResolutions(): Promise<void> {
     const ctx = buildContext();
-    if (!ctx || !diff) return;
+    // The conflict dialog belongs to the push that opened it — resolve
+    // against THAT push's snapshot (the live diff may have moved on, or be
+    // null, if the selection changed while the dialog was open).
+    const snapshot = pushInputs;
+    if (!ctx || !snapshot) return;
     errorMessage = null;
 
     const nodesByKey = new Map<string, NodeInfo>();
-    for (const n of nodesToPushFrom(diff)) {
+    for (const n of nodesToPushFrom(snapshot.diff)) {
       nodesByKey.set(resolutionKey(n.key, n.ns), n);
     }
 
@@ -371,7 +387,7 @@
         return;
       }
 
-      await finishPush(ctx, nodesToPushFrom(diff));
+      await finishPush(ctx, nodesToPushFrom(snapshot.diff), snapshot);
     } catch (err) {
       handlePushError(err);
     }
@@ -389,9 +405,10 @@
   async function finishPush(
     ctx: PushContext,
     allNodes: NodeInfo[],
+    snapshot: { diff: PushDiff; connectedNodes: NodeInfo[] },
   ): Promise<void> {
     pushedKeyCount =
-      (diff?.newKeys.length ?? 0) + (diff?.changedKeys.length ?? 0);
+      snapshot.diff.newKeys.length + snapshot.diff.changedKeys.length;
 
     // Best-effort: tag failures must not undo the push.
     if (addTags && configuredTags.length > 0) {
@@ -415,39 +432,14 @@
       () => null,
     );
 
-    // Connect EVERY selected node that shares a pushed key — not just the
-    // per-key representative `pushDiff` kept. Without this, bulk-assigning one
-    // key to several identical strings would upload the key but leave all but
-    // the first node unconnected ("not all my keys uploaded"). Nodes share a
-    // `(key, ns)` so they all resolve to the same canonical entry. We exclude
-    // the dropped members of CONFLICTING groups (same key, different text):
-    // only their first node was actually pushed.
-    const droppedConflictIds = new Set(
-      (diff?.conflictingNodes ?? []).flatMap((g) =>
-        g.nodes.slice(1).map((n) => n.id),
-      ),
-    );
-    // Missing keys (deleted on the platform) were intentionally NOT pushed —
-    // don't re-mark them connected, they need reconnecting/removing.
-    const missingIds = new Set((diff?.missingKeys ?? []).map((n) => n.id));
-    const nodesToConnect = connectedNodes.filter(
-      (n) => !droppedConflictIds.has(n.id) && !missingIds.has(n.id),
-    );
-
     send({
       type: "set-nodes-data",
       correlationId: nextCorrelationId(),
-      nodes: nodesToConnect.map((n) => {
-        const remote = canonical?.get(canonicalKey(n));
-        return {
-          id: n.id,
-          info: {
-            connected: true,
-            translation: remote?.translation ?? n.translation ?? n.characters,
-            isPlural: remote?.isPlural ?? n.isPlural,
-          },
-        };
-      }),
+      nodes: buildConnectBackUpdates(
+        snapshot.diff,
+        snapshot.connectedNodes,
+        canonical,
+      ),
     });
 
     send({
@@ -472,9 +464,12 @@
   }
 
   // Lookup helpers used by the conflict UI to show both sides side-by-side.
+  // The conflicts belong to the in-flight push, so they read its snapshot —
+  // the live `diff` may already describe a different selection (or be null).
   function figmaTextFor(c: SimpleImportConflictResult): string {
-    const target = diff
-      ? nodesToPushFrom(diff).find(
+    const d = pushInputs?.diff ?? diff;
+    const target = d
+      ? nodesToPushFrom(d).find(
           (n) => n.key === c.keyName && (n.ns ?? "") === (c.keyNamespace ?? ""),
         )
       : undefined;
@@ -482,7 +477,8 @@
   }
 
   function remoteTextFor(c: SimpleImportConflictResult): string {
-    const changed = diff?.changedKeys.find(
+    const d = pushInputs?.diff ?? diff;
+    const changed = d?.changedKeys.find(
       (x) =>
         x.node.key === c.keyName &&
         (x.node.ns ?? "") === (c.keyNamespace ?? ""),
