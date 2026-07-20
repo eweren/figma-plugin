@@ -33,6 +33,7 @@
   import Tolgee from "$ui/lib/components/icons/Tolgee.svelte";
   import Screens from "./Screens.svelte";
   import CopyDoc from "./Copy.svelte";
+  import Onboarding from "./Onboarding.svelte";
   import { ICON } from "$shared/iconSizes";
   import { seedMockData, sampleNodes, makeNode } from "./mock";
 
@@ -181,7 +182,7 @@
   seedMockData();
 
   // ---- Top-level view + theme --------------------------------------------
-  let view = $state<"screens" | "components" | "copy">("screens");
+  let view = $state<"screens" | "components" | "copy" | "onboarding">("screens");
   let dark = $state(false);
   $effect(() => {
     document.documentElement.classList.toggle("figma-dark", dark);
@@ -336,6 +337,16 @@
         >
           Copy
         </button>
+        <button
+          type="button"
+          onclick={() => (view = "onboarding")}
+          class="h-6 rounded px-2 text-xs transition-colors"
+          class:bg-bg-secondary={view === "onboarding"}
+          class:text-text={view === "onboarding"}
+          class:text-text-secondary={view !== "onboarding"}
+        >
+          Onboarding
+        </button>
       </div>
     </div>
     <label class="flex items-center gap-2 text-xs text-text-secondary">
@@ -349,6 +360,8 @@
       <Screens />
     {:else if view === "copy"}
       <CopyDoc />
+    {:else if view === "onboarding"}
+      <Onboarding />
     {:else}
       <!-- ============ COMPONENTS ============ -->
 
