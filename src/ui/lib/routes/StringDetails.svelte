@@ -5,6 +5,7 @@
   import { ICON } from "$shared/iconSizes";
   import { Button, Input, Label, Message } from "$ui/lib/components/ui";
   import CheckboxField from "$ui/lib/components/ui/checkboxField.svelte";
+  import * as Dialog from "$ui/lib/components/ui/dialog";
   import * as Tooltip from "$ui/lib/components/ui/tooltip";
   import Info from "lucide-svelte/icons/info";
   import { hasManualChange } from "$ui/lib/logic/manualChange";
@@ -62,6 +63,18 @@
   let prefilledForId = $state<string | null>(null);
   let prefilledNode: NodeInfo | null = null;
   let baseline = { translation: "", keyName: "", params: "{}" };
+  // A selection switch detected mid-edit, awaiting the user's Save/Discard
+  // choice (see the dialog below). Holding this instead of prefilling
+  // immediately is what lets us ask BEFORE overwriting the unsaved edit —
+  // `confirm()` used to do this synchronously, but Figma's plugin iframe is
+  // sandboxed without `allow-modals`, so `confirm()` is a silent no-op there
+  // (always returns `false`) and unsaved edits were discarded without ever
+  // asking. E2E ran unsandboxed and never caught it.
+  let pendingSwitch = $state<{
+    nextNode: NodeInfo;
+    previousNode: NodeInfo;
+    label: string;
+  } | null>(null);
 
   function isDirty(): boolean {
     return (
@@ -71,24 +84,10 @@
     );
   }
 
-  $effect(() => {
-    const n = node;
-    if (!n) {
-      prefilledForId = null;
-      prefilledNode = null;
-      return;
-    }
-    if (prefilledForId === n.id) return;
-
-    // Selection switched to a different node — offer to save unsaved edits to
-    // the previous one before loading the new one (matches the original).
-    if (prefilledNode && isDirty()) {
-      const label = baseline.keyName || prefilledNode.key || "this string";
-      if (confirm(`You have unsaved changes for "${label}". Save them?`)) {
-        sendSave(prefilledNode);
-      }
-    }
-
+  // Loads `n`'s values into the editable fields and resets the dirty
+  // baseline. Split out from the effect so both the normal selection-follow
+  // path and the post-dialog resume path (`resolvePendingSwitch`) share it.
+  function prefillFrom(n: NodeInfo): void {
     translation = n.translation || n.characters;
     keyName = n.key ?? "";
     isPlural = n.isPlural ?? false;
@@ -111,6 +110,46 @@
     baseline = { translation, keyName, params: JSON.stringify(paramsValues) };
     prefilledForId = n.id;
     prefilledNode = n;
+  }
+
+  // Resolves the pending Save/Discard prompt, then loads the node that
+  // triggered it. Called from the dialog's buttons AND from Esc/overlay
+  // (routed here as `save: true` — see the dialog's `onOpenChange` below).
+  function resolvePendingSwitch(save: boolean): void {
+    const pending = pendingSwitch;
+    if (!pending) return;
+    if (save) sendSave(pending.previousNode);
+    pendingSwitch = null;
+    prefillFrom(pending.nextNode);
+  }
+
+  $effect(() => {
+    const n = node;
+    if (!n) {
+      prefilledForId = null;
+      prefilledNode = null;
+      // Deselecting entirely (not switching to another node) drops any
+      // pending prompt too — matches the pre-existing behavior here (this
+      // branch never asked before either; out of scope for this fix, which
+      // only replaces the node-to-node `confirm()`).
+      pendingSwitch = null;
+      return;
+    }
+    if (prefilledForId === n.id) return;
+
+    // Selection switched to a different node — offer to save unsaved edits to
+    // the previous one before loading the new one (matches the original).
+    // Defer the prefill (don't run it below) until the user answers; if the
+    // selection keeps moving while the dialog is up, this just re-targets
+    // `nextNode` to the newest one — `previousNode` (the actually-dirty node)
+    // stays put since `prefilledNode`/`baseline` haven't changed yet.
+    if (prefilledNode && isDirty()) {
+      const label = baseline.keyName || prefilledNode.key || "this string";
+      pendingSwitch = { nextNode: n, previousNode: prefilledNode, label };
+      return;
+    }
+
+    prefillFrom(n);
   });
 
   // Default value for the plural variable so the Preview renders a real form
@@ -453,3 +492,35 @@
     <ViewFooter onCancel={cancel} confirmLabel="Save" onConfirm={save} />
   </div>
 {/if}
+
+<!-- Save/Discard prompt for a selection switch mid-edit (replaces the
+     `confirm()` that Figma's sandboxed iframe silently no-ops). Esc/overlay
+     is routed to Save, not Discard — a dismiss gesture must never be the
+     thing that silently throws away an edit. -->
+<Dialog.Root
+  open={pendingSwitch !== null}
+  onOpenChange={(open) => {
+    if (!open) resolvePendingSwitch(true);
+  }}
+>
+  <Dialog.Content class="max-w-sm">
+    <Dialog.Title class="text-sm font-semibold text-text">
+      Unsaved changes
+    </Dialog.Title>
+    <p class="mt-2 text-xs text-text-secondary">
+      You have unsaved changes for "{pendingSwitch?.label}". Save them?
+    </p>
+    <div class="mt-4 flex justify-end gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onclick={() => resolvePendingSwitch(false)}
+      >
+        Discard
+      </Button>
+      <Button size="sm" onclick={() => resolvePendingSwitch(true)}>
+        Save
+      </Button>
+    </div>
+  </Dialog.Content>
+</Dialog.Root>

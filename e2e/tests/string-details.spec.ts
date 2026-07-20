@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { SIGNED_IN, createTestNode, hostUrl } from "../host/fixtures";
+import type { NodeInfo } from "../../src/shared/types";
 
 const IFRAME_SELECTOR = '[data-testid="plugin-iframe"]';
 
@@ -103,5 +104,114 @@ test.describe("StringDetails view", () => {
     await expect(ui.getByText("No node selected.")).toBeVisible({
       timeout: 10_000,
     });
+  });
+
+  /**
+   * Task 60: `confirm()` is a silent no-op in Figma's sandboxed plugin
+   * iframe (no `allow-modals`), so the "save unsaved changes before the
+   * selection switches to another node" prompt never actually asked in
+   * production — replaced with an in-app Dialog. `window.__e2e.selectNodes`
+   * (exposed on the HOST window, not the plugin iframe) simulates the canvas
+   * selection changing out from under a dirty edit, the same trigger the old
+   * `confirm()` branch handled.
+   */
+  function selectOnHost(page: Page, nodes: NodeInfo[]) {
+    return page.evaluate((n) => {
+      (window as unknown as { __e2e: { selectNodes: (nodes: unknown[]) => void } }).__e2e.selectNodes(n);
+    }, nodes);
+  }
+
+  test("prompts to save unsaved changes when the selection switches to another node; Save persists the edit", async ({
+    page,
+  }) => {
+    const nodeA = createTestNode({
+      text: "On the road",
+      key: "on-the-road-title",
+      connected: true,
+    });
+    const nodeB = createTestNode({
+      text: "Second string",
+      key: "second-key",
+      connected: true,
+    });
+
+    await page.goto(
+      hostUrl(SIGNED_IN, {
+        allNodes: [nodeA, nodeB],
+        selectedNodes: [nodeA],
+        hasUserSelection: true,
+      }),
+    );
+
+    const ui = page.frameLocator(IFRAME_SELECTOR);
+    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await ui.getByTitle("On the road").click();
+    await expect(ui.getByText("String details")).toBeVisible({ timeout: 5_000 });
+
+    const textarea = ui.locator("#string-details-translation");
+    await textarea.fill("Dirty edit, not saved yet");
+
+    // The canvas selection switches to a different connected node while the
+    // field above is still dirty.
+    await selectOnHost(page, [nodeB]);
+
+    await expect(ui.getByText("Unsaved changes")).toBeVisible({ timeout: 5_000 });
+    await ui.getByRole("button", { name: "Save" }).click();
+
+    // Dialog closes; StringDetails follows the live selection to nodeB.
+    await expect(ui.getByText("Unsaved changes")).not.toBeVisible();
+    await expect(textarea).toHaveValue("Second string");
+
+    // The edit to nodeA was actually persisted (not silently dropped).
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as unknown as { __e2e: { state: { allNodes: NodeInfo[] } } }).__e2e.state
+              .allNodes.find((n) => n.key === "on-the-road-title")?.characters,
+        ),
+      )
+      .toBe("Dirty edit, not saved yet");
+  });
+
+  test("Discard drops the edit instead of saving it", async ({ page }) => {
+    const nodeA = createTestNode({
+      text: "On the road",
+      key: "on-the-road-title",
+      connected: true,
+    });
+    const nodeB = createTestNode({
+      text: "Second string",
+      key: "second-key",
+      connected: true,
+    });
+
+    await page.goto(
+      hostUrl(SIGNED_IN, {
+        allNodes: [nodeA, nodeB],
+        selectedNodes: [nodeA],
+        hasUserSelection: true,
+      }),
+    );
+
+    const ui = page.frameLocator(IFRAME_SELECTOR);
+    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await ui.getByTitle("On the road").click();
+    await expect(ui.getByText("String details")).toBeVisible({ timeout: 5_000 });
+
+    await ui.locator("#string-details-translation").fill("Never saved");
+    await selectOnHost(page, [nodeB]);
+    await expect(ui.getByText("Unsaved changes")).toBeVisible({ timeout: 5_000 });
+
+    await ui.getByRole("button", { name: "Discard" }).click();
+
+    await expect(ui.getByText("Unsaved changes")).not.toBeVisible();
+    const characters = await page.evaluate(
+      () =>
+        (window as unknown as { __e2e: { state: { allNodes: NodeInfo[] } } }).__e2e.state.allNodes.find(
+          (n) => n.key === "on-the-road-title",
+        )?.characters,
+    );
+    expect(characters).toBe("On the road");
   });
 });
