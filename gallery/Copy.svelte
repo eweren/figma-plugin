@@ -107,8 +107,13 @@
         },
         {
           variant: "info",
-          text: "This page is a generated copy and won't be synchronised with Tolgee.",
-          where: "CopyView.svelte · generated copy pages",
+          text: "The original page changed since this copy was made.",
+          where: "CopyView.svelte · staleness banner (+ \"Recreate copy\" button, hidden in Dev Mode)",
+        },
+        {
+          variant: "error",
+          text: "Something went wrong.",
+          where: "CopyView.svelte, CreateCopy.svelte, Pull.svelte · fallback error text with no specific message",
         },
       ],
     },
@@ -170,8 +175,16 @@
       title: "Empty / idle states",
       items: [
         {
-          text: "Select strings for translation — (texts, frames...)",
+          text: "Select strings for translation — Pick frames or texts. Fewer runs smoother.",
           where: "Index.svelte · nothing selected",
+        },
+        {
+          text: "Not connected",
+          where: "Header.svelte · header subtitle when unauthenticated",
+        },
+        {
+          text: "Connect to Tolgee for languages…",
+          where: "Header.svelte · in place of the language select, authenticated but languages not loaded yet",
         },
         {
           text: "Nothing to translate here",
@@ -285,15 +298,78 @@
       items: [
         { text: "Upload → Tolgee / Download → Figma", where: "SyncButton.svelte · Index footer" },
         {
-          text: "Choose operation… / Connect to key / Connect by exact match / Edit key name / Generate key names ({n}) / Disconnect connected keys ({n}) / Clear key name ({n})",
+          text: "Choose operation… / Connect to key / Connect by exact match / Edit key name / Generate key names ({n}) / Set namespace ({n}) / Disconnect connected keys ({n}) / Clear key name ({n})",
           where: "Index.svelte · bulk action bar",
         },
-        { text: "String details / Move to string / Connection detail", where: "NodeListItem.svelte · ⋮ menu" },
+        {
+          text: "String details / Move to string / Connection detail / Copy key / Copy translation / Open in Tolgee",
+          where: "NodeListItem.svelte · ⋮ menu (last three are Dev Mode-only, the deleted minipanel's replacements)",
+        },
         { text: "Revert string in design", where: "StringDetails.svelte · advanced-format warning" },
         { text: "Upload to Tolgee / Apply resolutions / Try again", where: "Push.svelte" },
         { text: "Apply ({n}) / Try again", where: "Pull.svelte" },
         { text: "Open Settings", where: "Index.svelte · unauthenticated CTA" },
         { text: "Connect / Disconnect", where: "Connect.svelte, SettingsSectionConnection.svelte" },
+      ],
+    },
+    {
+      title: "Toasts (figma.notify)",
+      note: "send({ type: \"notify\" }) — a native Figma toast on the CANVAS, not inside the plugin panel. Distinct from the Messages & banners group above, which are in-panel components.",
+      items: [
+        { text: "Key copied", where: "NodeListItem.svelte · Dev Mode ⋮ menu, Copy key (+ trigger icon flashes to a checkmark in-panel)" },
+        { text: "Translation copied", where: "NodeListItem.svelte · Dev Mode ⋮ menu, Copy translation (+ trigger icon flashes to a checkmark in-panel)" },
+        { text: "Some strings failed to update.", where: "App.svelte · a bulk pluginData write partially failed (nodes-set-result ok:false)" },
+        { text: "Not available in Dev Mode", where: "bus.ts · a canvas-mutating action (apply-translations, create-copy) was attempted in Dev Mode and blocked" },
+        { text: "No changes found.", where: "CopyView.svelte · Download, nothing changed (keys-mode toast; language-mode shows the same text as a persisted banner instead — see \"Copy page\" below)" },
+        { text: "Downloaded {n} string(s) to Figma.", where: "CopyView.svelte · language-mode Download success" },
+        { text: "Copy recreated.", where: "CopyView.svelte · after \"Recreate copy\" succeeds (keys-mode)" },
+        { text: "Downloaded {n} translation(s) for {language}.", where: "Pull.svelte · apply success" },
+        { text: "Uploaded {n} key(s) to Tolgee", where: "Push.svelte · done stage (also shown as a persisted Message — see Messages & banners)" },
+        { text: "Created keys page.", where: "CreateCopy.svelte · keys-mode submit success" },
+        { text: "Created {n} language page(s).", where: "CreateCopy.svelte · languages-mode submit success" },
+      ],
+    },
+    {
+      title: "Dialogs & confirmations",
+      items: [
+        {
+          text: "Unsaved changes — You have unsaved changes for \"{label}\". Save them? (Save / Discard)",
+          where: "StringDetails.svelte · selection switches to another node mid-edit (replaces a confirm() that's a silent no-op in Figma's sandboxed iframe — Esc/overlay resolves as Save, never a silent Discard)",
+        },
+      ],
+    },
+    {
+      title: "Copy page (CopyView.svelte)",
+      note: "The page a language- or keys-mode copy renders to. Same file for both modes — differs by whether `language` is set.",
+      items: [
+        { text: "{pageName} (copy)", where: "header title" },
+        { text: "Shows Tolgee keys. Doesn't sync back.", where: "\"About this page\" (i), keys-mode only" },
+        { text: "Download / Download all / Scanning…", where: "header action button — label depends on hasUserSelection / a page-wide scan in flight; hidden entirely in Dev Mode" },
+        { text: "Recreate copy", where: "staleness banner button, hidden in Dev Mode (banner text itself is in Messages & banners)" },
+        { text: "Loading translations from Tolgee / Scanning page for connected keys… / Applying translations / Recreating copy…", where: "ProgressBar labels for the four in-flight stages" },
+        { text: "Downloaded {n} strings.", where: "persisted success Message after a language-mode Download (distinct from the toast of the same shape — see Toasts)" },
+        { text: "Timed out waiting for the translations to apply. / Timed out waiting for the copy to be recreated.", where: "idle-timeout errors (apply-translations / create-copy watchdogs)" },
+        { text: "Failed to apply translations to one or more nodes. / Failed to recreate the copy.", where: "fallback errors with no specific server message" },
+        { text: "Select a string or frame", where: "EmptyState, Dev Mode + language-mode, nothing selected (no download instruction — the action doesn't exist there)" },
+        { text: "Download strings to Figma. — All, or just the selected frames.", where: "EmptyState, language-mode (non-Dev), nothing selected" },
+        { text: "Select a string or frame — Shows its key below.", where: "EmptyState, keys-mode, nothing selected" },
+        { text: "(empty)", where: "list row fallback when a node's characters is blank" },
+        { text: "Not connected", where: "list row, unconnected node shown in place of its key" },
+      ],
+    },
+    {
+      title: "Create copy (CreateCopy.svelte)",
+      items: [
+        { text: "Create copy", where: "ViewHeader title" },
+        { text: "Mode — Create page with key names / Create page per language", where: "mode radio group" },
+        { text: "Languages", where: "Card label, languages-mode only" },
+        { text: "Loading languages… / No languages available.", where: "languages list, while fetching / fetched empty" },
+        { text: "{lang.name} ({lang.tag})", where: "per-language CheckboxField label" },
+        { text: "Loading translations from Tolgee…", where: "ProgressBar label, fetching stage" },
+        { text: "Creating copy…", where: "ProgressBar label, creating stage" },
+        { text: "Timed out waiting for the copy to be created.", where: "idle-timeout error inside dispatchCreate()" },
+        { text: "Unknown error", where: "fallback when create-copy-result fails without a specific error string" },
+        { text: "Create", where: "ViewFooter primary confirm button, disabled until a valid mode/selection is set" },
       ],
     },
   ];
