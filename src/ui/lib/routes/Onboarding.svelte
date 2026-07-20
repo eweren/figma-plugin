@@ -5,7 +5,6 @@
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { send } from "$ui/lib/bus";
   import { Button } from "$ui/lib/components/ui";
-  import Tolgee from "$ui/lib/components/icons/Tolgee.svelte";
   import ArrowRight from "lucide-svelte/icons/arrow-right";
   import ArrowLeft from "lucide-svelte/icons/arrow-left";
   import Check from "lucide-svelte/icons/check";
@@ -64,11 +63,8 @@
   <header
     class="shrink-0 border-b border-border bg-linear-to-b from-bg to-header-gradient-end px-3 py-2.5"
   >
-    <div class="mb-3 flex items-center gap-2">
-      <Tolgee size={ICON.action} class="text-primary" />
-      <span class="text-sm font-semibold">Set up Tolgee</span>
-    </div>
-
+    <!-- No title/logo here — Figma's own plugin chrome already shows the
+         Tolgee logo + name above this iframe. Just the stepper. -->
     <!-- Simple stepper: numbered circles joined by connectors, titles below. -->
     <div class="flex">
       {#each STEP_LABELS as label, i (i)}
