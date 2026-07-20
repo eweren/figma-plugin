@@ -8,54 +8,71 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** A fake `document` whose `execCommand` returns `execOk` (or throws). */
-function installDocument(execOk: boolean | "throw") {
-  const appended: unknown[] = [];
+/**
+ * A fake `document` modelling the copy-event flow. When `fireCopyEvent` is
+ * true, `execCommand("copy")` synchronously dispatches a `copy` event carrying
+ * a fake `clipboardData` to the registered capture listener — so we can assert
+ * the helper writes the payload itself instead of trusting the selection.
+ */
+function installDocument(opts: {
+  fireCopyEvent: boolean;
+  execThrows?: boolean;
+}) {
+  const listeners: Array<(e: unknown) => void> = [];
+  const clipboardData = { data: null as string | null, setData(_t: string, v: string) { this.data = v; } };
   const textarea = {
     value: "",
-    setAttribute: () => {},
     style: {} as Record<string, string>,
     focus: () => {},
     select: () => {},
   };
-  const exec = vi.fn(() => {
-    if (execOk === "throw") throw new Error("execCommand blocked");
-    return execOk;
-  });
   vi.stubGlobal("document", {
     createElement: () => textarea,
-    body: {
-      appendChild: (n: unknown) => appended.push(n),
-      removeChild: () => {},
-    },
+    body: { appendChild: () => {}, removeChild: () => {} },
     getSelection: () => null,
-    execCommand: exec,
+    addEventListener: (_type: string, fn: (e: unknown) => void) => listeners.push(fn),
+    removeEventListener: () => {},
+    execCommand: vi.fn(() => {
+      if (opts.execThrows) throw new Error("execCommand blocked");
+      if (opts.fireCopyEvent) {
+        const evt = { clipboardData, preventDefault: () => {} };
+        for (const fn of listeners) fn(evt);
+      }
+      return true;
+    }),
   });
-  return { textarea, appended, exec };
+  return { clipboardData, textarea };
 }
 
 describe("copyToClipboard", () => {
-  it("copies via execCommand and returns true when it succeeds", () => {
-    const { textarea, exec } = installDocument(true);
+  it("writes the text into the copy event's clipboardData and returns true", () => {
+    const { clipboardData, textarea } = installDocument({ fireCopyEvent: true });
+    vi.stubGlobal("navigator", {}); // no async clipboard — event path must carry it
 
     expect(copyToClipboard("home.title")).toBe(true);
+    // The payload came from OUR copy handler, not execCommand's return value.
+    expect(clipboardData.data).toBe("home.title");
     expect(textarea.value).toBe("home.title");
-    expect(exec).toHaveBeenCalledWith("copy");
   });
 
-  it("does NOT throw when navigator.clipboard is undefined (the Figma sandbox case)", () => {
-    // execCommand fails AND there's no async clipboard — must return false,
-    // never throw (the bug: accessing navigator.clipboard.writeText threw
-    // synchronously and aborted the whole copy handler).
-    installDocument(false);
-    vi.stubGlobal("navigator", {}); // no `clipboard` property at all
+  it("does NOT trust execCommand's `true` when the copy event never fires", () => {
+    // The Figma-desktop case: execCommand returns true but writes nothing, and
+    // there's no async clipboard to fall back to → honest failure, no throw.
+    installDocument({ fireCopyEvent: false });
+    vi.stubGlobal("navigator", {});
 
     expect(() => copyToClipboard("x")).not.toThrow();
     expect(copyToClipboard("x")).toBe(false);
   });
 
+  it("does NOT throw when navigator.clipboard is undefined (the sandbox case)", () => {
+    installDocument({ fireCopyEvent: false });
+    vi.stubGlobal("navigator", {}); // no `clipboard` property at all
+    expect(() => copyToClipboard("x")).not.toThrow();
+  });
+
   it("falls back to the async Clipboard API when execCommand throws", () => {
-    installDocument("throw");
+    installDocument({ fireCopyEvent: false, execThrows: true });
     const writeText = vi.fn(() => Promise.resolve());
     vi.stubGlobal("navigator", { clipboard: { writeText } });
 
@@ -63,10 +80,9 @@ describe("copyToClipboard", () => {
     expect(writeText).toHaveBeenCalledWith("greeting");
   });
 
-  it("returns false when execCommand returns false and clipboard.writeText is missing", () => {
-    installDocument(false);
+  it("returns false when nothing can copy (no event, no writeText)", () => {
+    installDocument({ fireCopyEvent: false });
     vi.stubGlobal("navigator", { clipboard: {} }); // clipboard, but no writeText
-
     expect(copyToClipboard("x")).toBe(false);
   });
 });
