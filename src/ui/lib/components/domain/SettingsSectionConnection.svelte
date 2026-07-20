@@ -10,7 +10,7 @@
   } from "$ui/lib/api/auth";
   import { createTolgeeClient } from "$ui/lib/api/client";
   import { getProjectMeta } from "$ui/lib/api/projectMeta";
-  import { hydratePickers } from "$ui/lib/api/pickers";
+  import { hydratePickers, hydrateBranches } from "$ui/lib/api/pickers";
   import Button from "$ui/lib/components/ui/button.svelte";
   import IconButton from "$ui/lib/components/ui/iconButton.svelte";
   import Input from "$ui/lib/components/ui/input.svelte";
@@ -92,6 +92,9 @@
           namespacesEnabled: meta.namespacesFeaturesEnabled,
           projectName: meta.name,
         });
+        // Load branches only when the project uses branching, so the setup can
+        // pre-fill the default branch (main) instead of leaving it empty.
+        if (meta.branchingEnabled) void hydrateBranches(client);
       } catch {
         auth.setProjectFeatures({
           branchingEnabled: false,

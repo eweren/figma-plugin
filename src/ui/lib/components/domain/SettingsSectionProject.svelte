@@ -14,6 +14,10 @@
     auth.value.languages.map((l) => ({ value: l.tag, label: l.name })),
   );
 
+  const branchOptions = $derived(
+    auth.value.branches.map((b) => ({ value: b.name, label: b.name })),
+  );
+
   // Server namespaces + any used locally (incl. just-created, not-yet-pushed).
   const namespaceNames = $derived(
     collectNamespaceNames(auth.value.namespaces, appState.value.selectedNodes),
@@ -46,11 +50,31 @@
     }
   });
 
+  // Pre-fill the branch with the project's default (main) on a branching-enabled
+  // project, so it never sits on an empty branch. Same once-only, never-override
+  // rule as the language prefill.
+  let branchPrefilled = false;
+  $effect(() => {
+    if (branchPrefilled || !auth.value.branchingEnabled) return;
+    if (form.branch) {
+      branchPrefilled = true;
+      return;
+    }
+    const def = auth.value.defaultBranch;
+    if (def) {
+      form.branch = def;
+      branchPrefilled = true;
+    }
+  });
+
   // Advanced section is worth showing when there's a real control in it (the
-  // namespace input) or, in Settings, when a "disabled" note explains why
-  // there isn't. Onboarding hides the notes, so it only appears with namespaces.
+  // namespace input or the branch select) or, in Settings, when a "disabled"
+  // note explains why there isn't. Onboarding hides the notes, so it only
+  // appears when a feature is actually enabled.
   const showAdvanced = $derived(
-    auth.value.namespacesEnabled || !hideDisabledNotes,
+    auth.value.namespacesEnabled ||
+      auth.value.branchingEnabled ||
+      !hideDisabledNotes,
   );
 </script>
 
@@ -121,7 +145,46 @@
     </p>
   {/if}
 
-  {#if !auth.value.branchingEnabled && !hideDisabledNotes}
+  {#if auth.value.branchingEnabled}
+    <div class="space-y-1">
+      <div class="flex items-center gap-1.5">
+        <Label for="settings-branch">Branch</Label>
+        <Tooltip.Provider delayDuration={200}>
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+                <span
+                  {...props}
+                  class="text-text-secondary transition-colors hover:text-text-brand"
+                  role="button"
+                  tabindex={-1}
+                  aria-label="What branch does"
+                >
+                  <Info size={ICON.inline} />
+                </span>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content
+              side="left"
+              align="center"
+              class="max-w-[16rem] leading-snug"
+            >
+              Uploads and downloads target this branch. Defaults to the main
+              branch.
+            </Tooltip.Content>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      </div>
+      <Select
+        id="settings-branch"
+        value={form.branch ?? ""}
+        options={branchOptions}
+        placeholder="Select branch…"
+        onChange={(v) => (form.branch = v)}
+        class="w-full"
+      />
+    </div>
+  {:else if !hideDisabledNotes}
     <p class="flex items-center gap-1.5 text-[11px] text-text-secondary">
       <Info size={ICON.inline} class="text-icon-secondary" />
       Branching is disabled for this project

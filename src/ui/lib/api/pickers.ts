@@ -1,4 +1,5 @@
 import type { TolgeeClient } from "$ui/lib/api/client";
+import { fetchBranches, pickDefaultBranch } from "$ui/lib/api/branches";
 import { auth } from "$ui/lib/stores/auth.svelte";
 
 /**
@@ -45,5 +46,20 @@ export async function hydratePickers(client: TolgeeClient): Promise<void> {
     );
   } catch {
     auth.setNamespaces([]);
+  }
+}
+
+/**
+ * Fetch the project's branches into the auth store and remember the default
+ * (active → "main" → first). Call only when branching is enabled — so a
+ * branching-enabled project can pre-fill "main" instead of an empty branch.
+ * Best-effort; on failure the store is left with an empty list.
+ */
+export async function hydrateBranches(client: TolgeeClient): Promise<void> {
+  try {
+    const branches = await fetchBranches(client);
+    auth.setBranches(branches, pickDefaultBranch(branches));
+  } catch {
+    auth.setBranches([]);
   }
 }

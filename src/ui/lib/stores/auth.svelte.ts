@@ -1,4 +1,5 @@
 import type { TolgeeClient } from "$ui/lib/api/client";
+import type { BranchInfo } from "$ui/lib/api/branches";
 
 type LanguageInfo = { tag: string; name: string };
 type NamespaceInfo = { name: string };
@@ -18,6 +19,9 @@ type AuthState = {
    *  language" on first setup — matches the original plugin. "" when unknown. */
   baseLanguage: string;
   namespaces: NamespaceInfo[];
+  branches: BranchInfo[];
+  /** Branch to pre-select when none is chosen (active → "main" → first). */
+  defaultBranch: string;
 };
 
 function createAuth() {
@@ -34,6 +38,8 @@ function createAuth() {
     languages: [],
     baseLanguage: "",
     namespaces: [],
+    branches: [],
+    defaultBranch: "",
   });
 
   return {
@@ -72,6 +78,10 @@ function createAuth() {
     setNamespaces(nss: NamespaceInfo[]): void {
       state.namespaces = nss;
     },
+    setBranches(branches: BranchInfo[], defaultBranch = ""): void {
+      state.branches = branches;
+      state.defaultBranch = defaultBranch;
+    },
     clear() {
       state.client = null;
       state.apiUrl = "";
@@ -85,6 +95,8 @@ function createAuth() {
       state.languages = [];
       state.baseLanguage = "";
       state.namespaces = [];
+      state.branches = [];
+      state.defaultBranch = "";
     },
     hasScope(scope: string): boolean {
       return state.scopes.includes(scope);

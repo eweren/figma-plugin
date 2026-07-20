@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchBranches } from "../branches";
+import { fetchBranches, pickDefaultBranch } from "../branches";
 import { createTolgeeClient } from "../client";
 
 type FetchMock = ReturnType<typeof vi.fn>;
@@ -44,7 +44,10 @@ describe("fetchBranches", () => {
 
     const result = await fetchBranches(client);
 
-    expect(result).toEqual([{ name: "main" }, { name: "feature/x" }]);
+    expect(result).toEqual([
+      { name: "main", active: true },
+      { name: "feature/x", active: false },
+    ]);
   });
 
   it("returns [] when _embedded is missing", async () => {
@@ -72,7 +75,7 @@ describe("fetchBranches", () => {
 
     const result = await fetchBranches(client);
 
-    expect(result).toEqual([{ name: "main" }]);
+    expect(result).toEqual([{ name: "main", active: true }]);
   });
 
   it("returns [] when the branches array is empty", async () => {
@@ -82,5 +85,30 @@ describe("fetchBranches", () => {
     const result = await fetchBranches(client);
 
     expect(result).toEqual([]);
+  });
+});
+
+describe("pickDefaultBranch", () => {
+  it("prefers the active branch", () => {
+    expect(
+      pickDefaultBranch([
+        { name: "main", active: false },
+        { name: "feature/x", active: true },
+      ]),
+    ).toBe("feature/x");
+  });
+
+  it('falls back to "main" when none is active', () => {
+    expect(
+      pickDefaultBranch([{ name: "dev" }, { name: "main" }]),
+    ).toBe("main");
+  });
+
+  it('falls back to the first branch when no active and no "main"', () => {
+    expect(pickDefaultBranch([{ name: "dev" }, { name: "staging" }])).toBe("dev");
+  });
+
+  it("returns an empty string when there are no branches", () => {
+    expect(pickDefaultBranch([])).toBe("");
   });
 });

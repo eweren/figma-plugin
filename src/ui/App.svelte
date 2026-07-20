@@ -9,7 +9,7 @@
   import { validateApiKey } from "./lib/api/auth";
   import { createTolgeeClient } from "./lib/api/client";
   import { getProjectMeta } from "./lib/api/projectMeta";
-  import { hydratePickers } from "./lib/api/pickers";
+  import { hydratePickers, hydrateBranches } from "./lib/api/pickers";
   import { decideAuthBootstrap } from "./lib/logic/authBootstrap";
   import IndexView from "./lib/routes/Index.svelte";
   import PageSetup from "./lib/routes/PageSetup.svelte";
@@ -75,6 +75,7 @@
         namespacesEnabled: meta.namespacesFeaturesEnabled,
         projectName: meta.name,
       });
+      if (meta.branchingEnabled) void hydrateBranches(client);
     } catch {
       auth.setProjectFeatures({
         branchingEnabled: false,
