@@ -36,15 +36,12 @@ export function copyToClipboard(text: string): boolean {
 
     const textarea = document.createElement("textarea");
     textarea.value = text;
-    // Off-screen but still selectable — NOT display:none / visibility:hidden
-    // and NOT readonly, both of which can suppress the copy event.
+    // Off-screen but still SELECTABLE — the proven Figma-forum positioning.
+    // NOT display:none / visibility:hidden / readonly, all of which can stop
+    // the textarea being selected and suppress the copy event.
     textarea.style.position = "fixed";
-    textarea.style.top = "0";
-    textarea.style.left = "0";
-    textarea.style.width = "1px";
-    textarea.style.height = "1px";
-    textarea.style.padding = "0";
-    textarea.style.border = "none";
+    textarea.style.top = "-9999px";
+    textarea.style.left = "-9999px";
     textarea.style.opacity = "0";
     document.body.appendChild(textarea);
 

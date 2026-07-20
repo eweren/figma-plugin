@@ -205,15 +205,24 @@
 
   /** Copy via the sandbox-safe helper, then confirm — flash the ⋮ trigger and
    *  toast on success, an error toast if even the fallback couldn't copy.
-   *  (`navigator.clipboard` is undefined in Figma's iframe, so the naive call
-   *  used to throw synchronously and abort before ANY feedback ran.) */
+   *
+   *  Deferred a tick with setTimeout: this runs from the dropdown item's
+   *  `onSelect`, and bits-ui returns focus to the trigger SYNCHRONOUSLY as the
+   *  menu closes — that focus yank races with the copy and Figma's iframe
+   *  silently drops the write (execCommand reports success, clipboard keeps its
+   *  old contents). One tick later the menu has torn down and focus has settled
+   *  back into the iframe, so the trusted copy event actually lands. The click
+   *  keeps transient activation alive well past a 0ms timeout, so execCommand
+   *  is still permitted. (Ref: radix-ui/primitives#2676.) */
   function runCopy(text: string, okText: string): void {
-    if (copyToClipboard(text)) {
-      send({ type: "notify", text: okText });
-      justCopied = true;
-    } else {
-      send({ type: "notify", text: "Couldn't copy to clipboard.", error: true });
-    }
+    setTimeout(() => {
+      if (copyToClipboard(text)) {
+        send({ type: "notify", text: okText });
+        justCopied = true;
+      } else {
+        send({ type: "notify", text: "Couldn't copy to clipboard.", error: true });
+      }
+    }, 0);
   }
 
   function openInTolgee(): void {
