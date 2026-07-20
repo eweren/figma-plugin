@@ -206,7 +206,7 @@
   const sampleNamespaces = ["common", "home", "legal"];
   let dropdownLastAction = $state("(none yet)");
   // Copy-feedback demo (mirrors NodeListItem's dev-mode ⋮ trigger flash):
-  // clicking Copy key / Copy translation flashes the trigger to a checkmark
+  // clicking Copy key / Copy string flashes the trigger to a checkmark
   // for 1.2s, then it reverts. Same `justCopied` + $effect logic as the real
   // component so the gallery shows the ACTION, not just the static icon.
   let copyDemoFlash = $state(false);
@@ -1525,7 +1525,7 @@
       {#snippet copyFeedbackBody()}
         <p class="mb-3 text-[11px] text-text-secondary">
           Dev Mode's <code>NodeListItem</code> ⋮ menu adds <code>Copy key</code>
-          and <code>Copy translation</code>. Because the <code>notify()</code>
+          and <code>Copy string</code>. Because the <code>notify()</code>
           toast lands on the Figma canvas (not the panel), the row's ⋮ trigger
           also flashes to a green checkmark for 1.2s as an in-panel
           confirmation, then reverts. Open the menu and pick an item to see it.
@@ -1546,8 +1546,8 @@
             <DropdownMenu.Item onSelect={() => copyDemo("Key copied")}>
               <Copy size={ICON.inline} /> Copy key
             </DropdownMenu.Item>
-            <DropdownMenu.Item onSelect={() => copyDemo("Translation copied")}>
-              <Copy size={ICON.inline} /> Copy translation
+            <DropdownMenu.Item onSelect={() => copyDemo("String copied")}>
+              <Copy size={ICON.inline} /> Copy string
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Root>

@@ -302,7 +302,7 @@
           where: "Index.svelte · bulk action bar",
         },
         {
-          text: "String details / Move to string / Connection detail / Copy key / Copy translation / Open in Tolgee",
+          text: "String details / Move to string / Connection detail / Copy key / Copy string / Open in Tolgee",
           where: "NodeListItem.svelte · ⋮ menu (last three are Dev Mode-only, the deleted minipanel's replacements)",
         },
         { text: "Revert string in design", where: "StringDetails.svelte · advanced-format warning" },
@@ -317,7 +317,7 @@
       note: "send({ type: \"notify\" }) — a native Figma toast on the CANVAS, not inside the plugin panel. Distinct from the Messages & banners group above, which are in-panel components.",
       items: [
         { text: "Key copied", where: "NodeListItem.svelte · Dev Mode ⋮ menu, Copy key (+ trigger icon flashes to a checkmark in-panel)" },
-        { text: "Translation copied", where: "NodeListItem.svelte · Dev Mode ⋮ menu, Copy translation (+ trigger icon flashes to a checkmark in-panel)" },
+        { text: "String copied", where: "NodeListItem.svelte · Dev Mode ⋮ menu, Copy string (+ trigger icon flashes to a checkmark in-panel)" },
         { text: "Some strings failed to update.", where: "App.svelte · a bulk pluginData write partially failed (nodes-set-result ok:false)" },
         { text: "Not available in Dev Mode", where: "bus.ts · a canvas-mutating action (apply-translations, create-copy) was attempted in Dev Mode and blocked" },
         { text: "No changes found.", where: "CopyView.svelte · Download, nothing changed (keys-mode toast; language-mode shows the same text as a persisted banner instead — see \"Copy page\" below)" },

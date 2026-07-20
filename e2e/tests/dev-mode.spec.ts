@@ -63,7 +63,7 @@ test.describe("Dev Mode", () => {
     // connected key to link to).
     await expect(ui.getByRole("menuitem", { name: "Copy key" })).toBeVisible();
     await expect(
-      ui.getByRole("menuitem", { name: "Copy translation" }),
+      ui.getByRole("menuitem", { name: "Copy string" }),
     ).toBeVisible();
     await expect(
       ui.getByRole("menuitem", { name: "Open in Tolgee" }),

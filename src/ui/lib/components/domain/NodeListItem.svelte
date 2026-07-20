@@ -197,10 +197,11 @@
   /** Copies the FULL source ICU string (`{count, plural, ...}`), not the
    *  rendered canvas text — the canvas only shows one rendered form, and the
    *  source pattern is exactly what a developer needs in code and can't get
-   *  anywhere else in Dev Mode. */
-  function copyTranslation(): void {
+   *  anywhere else in Dev Mode. Labelled "Copy string" (not "translation") to
+   *  match the plugin's "strings" vocabulary and read naturally for devs. */
+  function copyString(): void {
     if (!node.translation) return;
-    runCopy(node.translation, "Translation copied");
+    runCopy(node.translation, "String copied");
   }
 
   /** Copy via the sandbox-safe helper, then confirm — flash the ⋮ trigger and
@@ -493,8 +494,8 @@
               </DropdownMenu.Item>
             {/if}
             {#if node.translation}
-              <DropdownMenu.Item onSelect={copyTranslation}>
-                <Copy size={ICON.inline} /> Copy translation
+              <DropdownMenu.Item onSelect={copyString}>
+                <Copy size={ICON.inline} /> Copy string
               </DropdownMenu.Item>
             {/if}
             {#if node.connected}
