@@ -26,6 +26,7 @@
   import ExternalLink from "lucide-svelte/icons/external-link";
   import PenOff from "lucide-svelte/icons/pen-off";
   import { buildKeyDeepLink } from "$ui/lib/logic/deeplink";
+  import { copyToClipboard } from "$ui/lib/clipboard";
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import AlertTriangle from "lucide-svelte/icons/alert-triangle";
   import Checkbox from "$ui/lib/components/ui/checkbox.svelte";
@@ -190,9 +191,7 @@
   function copyKey(): void {
     const label = namespacedKeyLabel(node.ns, node.key, true);
     if (!label) return;
-    void navigator.clipboard.writeText(label);
-    send({ type: "notify", text: "Key copied" });
-    justCopied = true;
+    runCopy(label, "Key copied");
   }
 
   /** Copies the FULL source ICU string (`{count, plural, ...}`), not the
@@ -201,9 +200,20 @@
    *  anywhere else in Dev Mode. */
   function copyTranslation(): void {
     if (!node.translation) return;
-    void navigator.clipboard.writeText(node.translation);
-    send({ type: "notify", text: "Translation copied" });
-    justCopied = true;
+    runCopy(node.translation, "Translation copied");
+  }
+
+  /** Copy via the sandbox-safe helper, then confirm — flash the ⋮ trigger and
+   *  toast on success, an error toast if even the fallback couldn't copy.
+   *  (`navigator.clipboard` is undefined in Figma's iframe, so the naive call
+   *  used to throw synchronously and abort before ANY feedback ran.) */
+  function runCopy(text: string, okText: string): void {
+    if (copyToClipboard(text)) {
+      send({ type: "notify", text: okText });
+      justCopied = true;
+    } else {
+      send({ type: "notify", text: "Couldn't copy to clipboard.", error: true });
+    }
   }
 
   function openInTolgee(): void {
