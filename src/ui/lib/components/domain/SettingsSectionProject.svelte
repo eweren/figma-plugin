@@ -19,8 +19,21 @@
     collectNamespaceNames(auth.value.namespaces, appState.value.selectedNodes),
   );
 
-  type Props = { form: Partial<TolgeeConfig> };
-  let { form = $bindable() }: Props = $props();
+  type Props = {
+    form: Partial<TolgeeConfig>;
+    /** When true, drop the "… is disabled for this project" notes (and the
+     *  whole Advanced section if it would then be empty). Used by the
+     *  onboarding wizard to stay uncluttered; Settings keeps the notes. */
+    hideDisabledNotes?: boolean;
+  };
+  let { form = $bindable(), hideDisabledNotes = false }: Props = $props();
+
+  // Advanced section is worth showing when there's a real control in it (the
+  // namespace input) or, in Settings, when a "disabled" note explains why
+  // there isn't. Onboarding hides the notes, so it only appears with namespaces.
+  const showAdvanced = $derived(
+    auth.value.namespacesEnabled || !hideDisabledNotes,
+  );
 </script>
 
 <section class="space-y-2.5">
@@ -39,6 +52,7 @@
   </div>
 </section>
 
+{#if showAdvanced}
 <section class="space-y-2.5">
   <h2 class="text-xs font-semibold uppercase tracking-wide text-primary">
     Advanced
@@ -82,17 +96,18 @@
         class="w-full"
       />
     </div>
-  {:else}
+  {:else if !hideDisabledNotes}
     <p class="flex items-center gap-1.5 text-[11px] text-text-secondary">
       <Info size={ICON.inline} class="text-icon-secondary" />
       Namespaces are disabled for this project
     </p>
   {/if}
 
-  {#if !auth.value.branchingEnabled}
+  {#if !auth.value.branchingEnabled && !hideDisabledNotes}
     <p class="flex items-center gap-1.5 text-[11px] text-text-secondary">
       <Info size={ICON.inline} class="text-icon-secondary" />
       Branching is disabled for this project
     </p>
   {/if}
 </section>
+{/if}

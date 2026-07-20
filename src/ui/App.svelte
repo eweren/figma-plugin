@@ -16,6 +16,7 @@
   import Settings from "./lib/routes/Settings.svelte";
   import Push from "./lib/routes/Push.svelte";
   import Pull from "./lib/routes/Pull.svelte";
+  import Onboarding from "./lib/routes/Onboarding.svelte";
   import Connect from "./lib/routes/Connect.svelte";
   import StringDetails from "./lib/routes/StringDetails.svelte";
   import CreateCopy from "./lib/routes/CreateCopy.svelte";
@@ -33,8 +34,13 @@
     const apiUrl = config?.apiUrl;
     const apiKey = config?.apiKey;
     if (!apiUrl || !apiKey) {
-      if (auth.value.authenticated) auth.clear();
-      lastValidated = null;
+      // Config carries no credentials. Do NOT tear down an active session:
+      // during onboarding (and Settings before Save) the user connects
+      // manually, but the apiKey isn't persisted to the document config yet —
+      // and `persist-project-id` echoes a config-changed WITHOUT it, which
+      // used to clear the just-established auth. Disconnect and invalid-key
+      // paths clear auth on their own, so nothing leaks by keeping it here.
+      if (!auth.value.authenticated) lastValidated = null;
       return;
     }
     const fingerprint = `${apiUrl}::${apiKey}`;
@@ -222,6 +228,13 @@
       {:else if appState.value.config?.pageCopy}
         <!-- Copy pages bypass the PageSetup gate — they are always ready. -->
         <CopyView />
+      {:else if appState.value.config != null && !appState.value.config.documentInfo}
+        <!-- First-run gate: a document that hasn't been set up yet gets the
+             guided onboarding wizard instead of the Index "Sign in" state.
+             Gated on config != null so a configured (returning) document never
+             flashes onboarding before `init` arrives. Save stamps documentInfo,
+             so this won't fire again. Mirrors production's forceSettings. -->
+        <Onboarding />
       {:else if !appState.value.config?.pageInfo && appState.value.config?.documentInfo}
         <!-- PageSetup gate: document is configured but page is not. -->
         <PageSetup />

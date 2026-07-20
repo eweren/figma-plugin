@@ -110,7 +110,15 @@ window.addEventListener("message", (event) => {
       return;
     }
     case "save-config": {
-      state.config = { ...(state.config ?? {}), ...msg.config };
+      // Mirror the real main thread: every save stamps documentInfo/pageInfo
+      // (see main.ts). Without this the first-run onboarding gate would never
+      // clear after Save in tests.
+      state.config = {
+        ...(state.config ?? {}),
+        ...msg.config,
+        documentInfo: true,
+        pageInfo: true,
+      };
       send({ type: "config-changed", config: state.config });
       return;
     }
