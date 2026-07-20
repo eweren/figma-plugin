@@ -104,15 +104,12 @@
   /* Dedicated end-stop for the header gradient (Header/ViewHeader/Index/
    * Settings) — deliberately NOT the same token as --color-bg-secondary
    * below, which is also used elsewhere (e.g. progressBar.svelte's track)
-   * and must stay untouched. The plain bg-secondary value here
-   * (rgb(56,56,56), delta 12 from bg's rgb(44,44,44)) read as visibly
-   * stronger than the light-mode gradient, because contrast perception is
-   * roughly relative to the base shade: a 12/255 delta against a dark base
-   * reads ~27% stronger, vs ~4% against a light base. This is a plain
-   * hand-picked hex value (not a computed/derived formula) — about half
-   * that delta, chosen by eye to look gentler while still reading as a
-   * gradient. */
-  --color-header-gradient-end: #323232;
+   * and must stay untouched. Darker than --color-bg (rgb(44,44,44)), not
+   * lighter: an earlier lighter end-stop read like a highlight/glow at the
+   * header's bottom edge in dark mode, which looked out of place next to a
+   * border-b. Darker reads as a natural shadow instead. Plain hand-picked
+   * hex value (not computed), same 6/255 delta as before, just flipped. */
+  --color-header-gradient-end: #262626;
 }
 
 @theme {
