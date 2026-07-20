@@ -205,6 +205,21 @@
   let namespaceValue = $state("common");
   const sampleNamespaces = ["common", "home", "legal"];
   let dropdownLastAction = $state("(none yet)");
+  // Copy-feedback demo (mirrors NodeListItem's dev-mode ⋮ trigger flash):
+  // clicking Copy key / Copy translation flashes the trigger to a checkmark
+  // for 1.2s, then it reverts. Same `justCopied` + $effect logic as the real
+  // component so the gallery shows the ACTION, not just the static icon.
+  let copyDemoFlash = $state(false);
+  let copyDemoLast = $state("(nothing copied yet)");
+  $effect(() => {
+    if (!copyDemoFlash) return;
+    const t = setTimeout(() => (copyDemoFlash = false), 1200);
+    return () => clearTimeout(t);
+  });
+  function copyDemo(what: string): void {
+    copyDemoLast = what;
+    copyDemoFlash = true;
+  }
   let tagsValue = $state(["mobile"]);
   const sampleProjectTags = [
     "mobile",
@@ -1505,6 +1520,42 @@
         </p>
       {/snippet}
       {@render section("Dropdown menu", dropdownMenuBody)}
+
+      <!-- Copy feedback (Dev Mode) -->
+      {#snippet copyFeedbackBody()}
+        <p class="mb-3 text-[11px] text-text-secondary">
+          Dev Mode's <code>NodeListItem</code> ⋮ menu adds <code>Copy key</code>
+          and <code>Copy translation</code>. Because the <code>notify()</code>
+          toast lands on the Figma canvas (not the panel), the row's ⋮ trigger
+          also flashes to a green checkmark for 1.2s as an in-panel
+          confirmation, then reverts. Open the menu and pick an item to see it.
+        </p>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            {#snippet child({ props })}
+              <IconButton {...props} aria-label="More actions">
+                {#if copyDemoFlash}
+                  <Check size={ICON.inline} class="text-success" />
+                {:else}
+                  <EllipsisVertical size={ICON.inline} />
+                {/if}
+              </IconButton>
+            {/snippet}
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content align="start">
+            <DropdownMenu.Item onSelect={() => copyDemo("Key copied")}>
+              <Copy size={ICON.inline} /> Copy key
+            </DropdownMenu.Item>
+            <DropdownMenu.Item onSelect={() => copyDemo("Translation copied")}>
+              <Copy size={ICON.inline} /> Copy translation
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+        <p class="mt-3 text-[11px] text-text-secondary">
+          Last toast: <code>{copyDemoLast}</code>
+        </p>
+      {/snippet}
+      {@render section("Copy feedback (Dev Mode)", copyFeedbackBody)}
     {/if}
   </main>
 </div>
