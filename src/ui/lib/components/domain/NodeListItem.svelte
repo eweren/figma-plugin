@@ -22,7 +22,6 @@
   import Link2 from "lucide-svelte/icons/link-2";
   import Link2Off from "lucide-svelte/icons/link-2-off";
   import Copy from "lucide-svelte/icons/copy";
-  import ClipboardCopy from "lucide-svelte/icons/clipboard-copy";
   import ExternalLink from "lucide-svelte/icons/external-link";
   import PenOff from "lucide-svelte/icons/pen-off";
   import { buildKeyDeepLink } from "$ui/lib/logic/deeplink";
@@ -454,7 +453,7 @@
             {/if}
             {#if node.translation}
               <DropdownMenu.Item onSelect={copyTranslation}>
-                <ClipboardCopy size={ICON.inline} /> Copy translation
+                <Copy size={ICON.inline} /> Copy translation
               </DropdownMenu.Item>
             {/if}
             {#if node.connected}
