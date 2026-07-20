@@ -209,11 +209,6 @@ export type ProgressEvent = {
   message: string;
 };
 
-export type UploadScreenshotsResult = {
-  screenshots: FrameScreenshot[];
-  uploadedById: Map<FrameScreenshot, number>;
-};
-
 /**
  * Upload a batch of frame screenshots sequentially. Sequential is the right
  * choice here: each request is large (multipart PNG) and Tolgee throttles

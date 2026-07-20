@@ -330,9 +330,11 @@
     // Keep showing the previous result while the re-keyed query loads, so the
     // stale-link markers don't blink out on every connect.
     placeholderData: (prev: ReadonlySet<string> | undefined) => prev,
-    // Short warm window so a key deleted in Tolgee shows up quickly, but repeated
-    // renders of the same selection within a few seconds don't re-hit the API.
-    staleTime: 10 * 1000,
+    // Warm window so a key deleted in Tolgee still shows up reasonably quickly,
+    // but window-focus flapping (switching to the Tolgee tab and back) doesn't
+    // re-hit the API every time. `refetchOnWindowFocus` below still exists for
+    // the "actually came back after a while" case — don't remove it.
+    staleTime: 45 * 1000,
     // Re-check when the user returns to the plugin (e.g. after deleting a key in
     // the Tolgee web app) or reopens it — otherwise a stale "all present" result
     // would hide a fresh deletion.
@@ -541,7 +543,7 @@
   let matchProgress = $state({ done: 0, total: 0 });
   let matchResult = $state<{
     willConnect: number;
-    notConnected: { text: string; hint: string }[];
+    notConnected: { text: string; ns: string; hint: string }[];
   } | null>(null);
   // Matches awaiting the user's confirm (applied by `applyMatches`).
   let pendingMatches: { node: NodeInfo; r: KeySearchResult }[] = [];
@@ -553,6 +555,16 @@
     matchOpen = false;
     matchResult = null;
     pendingMatches = [];
+  }
+
+  // Closing via Esc/overlay bypasses the Cancel button — route it through the
+  // same teardown so the search loop actually stops instead of running on
+  // with a closed dialog. `open` is passed explicitly (not `bind:open`) so
+  // this only fires on the dialog's OWN interactions, never when our code
+  // sets `matchOpen` directly (e.g. the Cancel/Connect handlers above).
+  function handleMatchOpenChange(open: boolean): void {
+    matchOpen = open;
+    if (!open) cancelMatch();
   }
 
   // Confirm — apply the previewed matches in one batched message, then close.
@@ -626,7 +638,7 @@
     matchOpen = true;
 
     const matches: { node: NodeInfo; r: KeySearchResult }[] = [];
-    const notConnected: { text: string; hint: string }[] = [];
+    const notConnected: { text: string; ns: string; hint: string }[] = [];
     const groupList = Array.from(groups.values());
 
     // Up to 5 searches in flight at once instead of one at a time — a
@@ -661,11 +673,13 @@
       } else if (exact.length === 0) {
         notConnected.push({
           text,
+          ns,
           hint: "No exact match in Tolgee — create the key or connect it manually.",
         });
       } else {
         notConnected.push({
           text,
+          ns,
           hint: "Several keys match this text exactly — open Connect to pick one.",
         });
       }
@@ -1396,7 +1410,7 @@
 </div>
 
 <!-- "Connect by exact match" progress + result. -->
-<Dialog.Root bind:open={matchOpen}>
+<Dialog.Root open={matchOpen} onOpenChange={handleMatchOpenChange}>
   <Dialog.Content class="max-w-sm">
     <Dialog.Title class="text-sm font-semibold text-text">
       Auto-connect by exact match
@@ -1438,7 +1452,7 @@
           </p>
           <!-- pr-2 so the scrollbar doesn't overlap the trailing (i) icons. -->
           <ul class="max-h-44 space-y-1 overflow-auto pr-2 text-xs">
-            {#each matchResult.notConnected as item (item.text)}
+            {#each matchResult.notConnected as item (item.ns + "|" + item.text)}
             <li class="flex items-center gap-1.5">
               <span
                 class="min-w-0 flex-1 truncate text-text-secondary"

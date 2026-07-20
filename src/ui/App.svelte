@@ -162,6 +162,12 @@
     const unsubNodesSet = on("nodes-set-result", (msg) => {
       appState.patchNodes(msg.nodes);
       appState.clearWriteProgress();
+      // `nodes` only ever holds the writes that succeeded — a bulk action
+      // over a large selection can partially fail (e.g. a node removed
+      // mid-write) with no other signal to the user.
+      if (!msg.ok) {
+        send({ type: "notify", text: "Some strings failed to update.", error: true });
+      }
     });
     const unsubApplied = on("apply-translations-result", (msg) => appState.patchNodes(msg.nodes));
     // Figma can tear the iframe down at any moment — persist any debounced

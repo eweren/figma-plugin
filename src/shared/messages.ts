@@ -277,12 +277,3 @@ export type UiToMain =
       namespacesEnabled?: boolean;
     }
   | { type: "request-copy-staleness"; correlationId: string };
-
-/**
- * Helper type to extract the message variant that carries a `correlationId`.
- * Useful for building request/response pairing in the message bus.
- */
-export type WithCorrelationId<T> = T extends { correlationId: string } ? T : never;
-
-export type MainToUiResponse = WithCorrelationId<MainToUi>;
-export type UiToMainRequest = WithCorrelationId<UiToMain>;
