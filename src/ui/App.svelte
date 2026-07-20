@@ -9,6 +9,7 @@
   import { validateApiKey } from "./lib/api/auth";
   import { createTolgeeClient } from "./lib/api/client";
   import { getProjectMeta } from "./lib/api/projectMeta";
+  import { decideAuthBootstrap } from "./lib/logic/authBootstrap";
   import IndexView from "./lib/routes/Index.svelte";
   import PageSetup from "./lib/routes/PageSetup.svelte";
   import CopyView from "./lib/routes/CopyView.svelte";
@@ -38,12 +39,15 @@
     }
     const fingerprint = `${apiUrl}::${apiKey}`;
     if (fingerprint === lastValidated) return;
-    lastValidated = fingerprint;
     const result = await validateApiKey(apiUrl, apiKey);
-    if (!result.ok) {
-      if (auth.value.authenticated) auth.clear();
-      return;
-    }
+    const decision = decideAuthBootstrap(result, auth.value.authenticated);
+    if (decision.clearAuth) auth.clear();
+    // Only remembered on a definitive outcome (success or a genuinely bad
+    // key) — a soft failure (network blip, 5xx) leaves this `null` so the
+    // next config-changed/page-changed event for the same credentials
+    // retries instead of getting stuck.
+    lastValidated = decision.rememberFingerprint ? fingerprint : null;
+    if (!result.ok) return;
     const client = createTolgeeClient(apiUrl, apiKey);
     auth.setAuth({
       client,
