@@ -9,6 +9,7 @@
   import { validateApiKey } from "./lib/api/auth";
   import { createTolgeeClient } from "./lib/api/client";
   import { getProjectMeta } from "./lib/api/projectMeta";
+  import { hydratePickers } from "./lib/api/pickers";
   import { decideAuthBootstrap } from "./lib/logic/authBootstrap";
   import IndexView from "./lib/routes/Index.svelte";
   import PageSetup from "./lib/routes/PageSetup.svelte";
@@ -84,41 +85,6 @@
     // populated for every route without each one re-fetching. Errors are
     // swallowed — the UI gracefully falls back to "current value only".
     void hydratePickers(client);
-  }
-
-  async function hydratePickers(
-    client: ReturnType<typeof createTolgeeClient>,
-  ): Promise<void> {
-    try {
-      const { data } = await client.GET("/v2/projects/languages", {
-        params: { query: { size: 1000 } },
-      });
-      const raw = data as {
-        _embedded?: { languages?: Array<{ tag?: string; name?: string }> };
-      };
-      const list = raw._embedded?.languages ?? [];
-      auth.setLanguages(
-        list
-          .filter((l): l is { tag: string; name?: string } => Boolean(l.tag))
-          .map((l) => ({ tag: l.tag, name: l.name ?? l.tag })),
-      );
-    } catch {
-      auth.setLanguages([]);
-    }
-    try {
-      const { data } = await client.GET("/v2/projects/used-namespaces", {});
-      const raw = data as {
-        _embedded?: { namespaces?: Array<{ name?: string }> };
-      };
-      const list = raw._embedded?.namespaces ?? [];
-      auth.setNamespaces(
-        list
-          .filter((n): n is { name: string } => Boolean(n.name))
-          .map((n) => ({ name: n.name })),
-      );
-    } catch {
-      auth.setNamespaces([]);
-    }
   }
 
   onMount(() => {

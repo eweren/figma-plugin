@@ -10,6 +10,7 @@
   } from "$ui/lib/api/auth";
   import { createTolgeeClient } from "$ui/lib/api/client";
   import { getProjectMeta } from "$ui/lib/api/projectMeta";
+  import { hydratePickers } from "$ui/lib/api/pickers";
   import Button from "$ui/lib/components/ui/button.svelte";
   import IconButton from "$ui/lib/components/ui/iconButton.svelte";
   import Input from "$ui/lib/components/ui/input.svelte";
@@ -64,14 +65,20 @@
         errorMsg = errorToHuman(result.error);
         return;
       }
+      const client = createTolgeeClient(form.apiUrl, form.apiKey);
       auth.setAuth({
-        client: createTolgeeClient(form.apiUrl, form.apiKey),
+        client,
         apiUrl: form.apiUrl,
         apiKey: form.apiKey,
         projectId: result.projectId,
         scopes: result.scopes,
       });
       send({ type: "persist-project-id", projectId: result.projectId });
+      // Populate the language + namespace pickers now — a manual connect
+      // (onboarding, or Settings on a fresh document) otherwise leaves the
+      // "Current language" / namespace selects empty, since the startup
+      // bootstrap is the only other place that hydrates them. Best-effort.
+      void hydratePickers(client);
       // Fetch the project name (and feature flags) so we can show a friendly
       // "<project> was successfully connected" with a link to it.
       try {
