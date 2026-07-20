@@ -22,6 +22,7 @@
   import Link2 from "lucide-svelte/icons/link-2";
   import Link2Off from "lucide-svelte/icons/link-2-off";
   import Copy from "lucide-svelte/icons/copy";
+  import Check from "lucide-svelte/icons/check";
   import ExternalLink from "lucide-svelte/icons/external-link";
   import PenOff from "lucide-svelte/icons/pen-off";
   import { buildKeyDeepLink } from "$ui/lib/logic/deeplink";
@@ -167,6 +168,21 @@
   // or the SOURCE ICU string into code.
   const isDev = $derived(appState.value.editorType === "dev");
 
+  /** Flashes the row's ⋮ trigger to a checkmark for a moment after a copy —
+   *  in-panel confirmation alongside the `notify` toast below, which renders
+   *  on the CANVAS (figma.notify), easy to miss while looking at the plugin
+   *  panel instead. The effect re-arms its own timeout on every re-trigger
+   *  and clears the previous one, so copying twice in quick succession just
+   *  restarts the flash instead of stacking timers. */
+  let justCopied = $state(false);
+  $effect(() => {
+    if (!justCopied) return;
+    const timer = setTimeout(() => {
+      justCopied = false;
+    }, 1200);
+    return () => clearTimeout(timer);
+  });
+
   /** Minipanel's key format: `ns.key` when a namespace is set, plain `key`
    *  otherwise — `namespacedKeyLabel` with the gate forced open, because a
    *  clipboard copy is about data fidelity (what the key IS), not display
@@ -176,6 +192,7 @@
     if (!label) return;
     void navigator.clipboard.writeText(label);
     send({ type: "notify", text: "Key copied" });
+    justCopied = true;
   }
 
   /** Copies the FULL source ICU string (`{count, plural, ...}`), not the
@@ -186,6 +203,7 @@
     if (!node.translation) return;
     void navigator.clipboard.writeText(node.translation);
     send({ type: "notify", text: "Translation copied" });
+    justCopied = true;
   }
 
   function openInTolgee(): void {
@@ -423,7 +441,11 @@
         <DropdownMenu.Trigger>
           {#snippet child({ props })}
             <IconButton {...props} aria-label="More actions">
-              <EllipsisVertical size={ICON.inline} />
+              {#if justCopied}
+                <Check size={ICON.inline} class="text-success" />
+              {:else}
+                <EllipsisVertical size={ICON.inline} />
+              {/if}
             </IconButton>
           {/snippet}
         </DropdownMenu.Trigger>

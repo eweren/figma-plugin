@@ -79,6 +79,27 @@ test.describe("Dev Mode", () => {
     await expect(ui.getByText("1 selected")).toBeVisible();
   });
 
+  test("Copy key flashes the row's ⋮ trigger to a checkmark, then reverts", async ({
+    page,
+  }) => {
+    // `notify` (figma.notify) renders on the CANVAS, easy to miss while
+    // looking at the plugin panel — this in-panel flash is the second,
+    // always-visible confirmation channel.
+    await page.goto(bootUrl("dev"));
+    const ui = page.frameLocator(IFRAME_SELECTOR);
+    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+
+    await ui.getByText("On the road").hover();
+    const trigger = ui.getByRole("button", { name: "More actions" });
+    await trigger.click();
+    await ui.getByRole("menuitem", { name: "Copy key" }).click();
+
+    await expect(trigger.locator("svg.lucide-check")).toBeVisible();
+    await expect(trigger.locator("svg.lucide-ellipsis-vertical")).toBeVisible({
+      timeout: 2_000,
+    });
+  });
+
   test("design editor keeps everything (regression guard)", async ({ page }) => {
     await page.goto(bootUrl("figma"));
     const ui = page.frameLocator(IFRAME_SELECTOR);
