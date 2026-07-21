@@ -11,7 +11,11 @@
     connectInfoFromKey,
     type KeySearchResult,
   } from "$ui/lib/api/keys";
-  import { fetchMissingKeys, connectedKeySig } from "$ui/lib/api/keyExistence";
+  import {
+    fetchMissingKeys,
+    connectedKeySig,
+    effectiveNs,
+  } from "$ui/lib/api/keyExistence";
   import { hasManualChange } from "$ui/lib/logic/manualChange";
   import { conflictText } from "$ui/lib/logic/pushDiff";
   import { hasRichFormat } from "$ui/lib/logic/icuParams";
@@ -318,13 +322,21 @@
     return () => clearTimeout(timer);
   });
   const missingKeysQuery = createQuery(() => ({
-    queryKey: ["connected-keys-existence", checkedKeys.signature, branch],
+    // The namespaces flag is part of the key: it changes how the check
+    // normalises `ns` (see `effectiveNs`), so a flip must refetch.
+    queryKey: [
+      "connected-keys-existence",
+      checkedKeys.signature,
+      branch,
+      auth.value.namespacesEnabled,
+    ],
     queryFn: () =>
       fetchMissingKeys(
         auth.value.client!,
         checkedKeys.keys,
         branch,
         appState.value.config?.language,
+        auth.value.namespacesEnabled,
       ),
     enabled: auth.value.authenticated && checkedKeys.keys.length > 0,
     // Keep showing the previous result while the re-keyed query loads, so the
@@ -344,8 +356,13 @@
   const EMPTY_MISSING: ReadonlySet<string> = new Set();
   const missingKeys = $derived(missingKeysQuery.data ?? EMPTY_MISSING);
   // Connected, but the linked key no longer exists in Tolgee (stale link).
+  // Lookup sig must use the same ns normalisation the fetch used.
   const isKeyMissing = (n: NodeInfo): boolean =>
-    n.connected && !!n.key && missingKeys.has(connectedKeySig(n.ns, n.key));
+    n.connected &&
+    !!n.key &&
+    missingKeys.has(
+      connectedKeySig(effectiveNs(n.ns, auth.value.namespacesEnabled), n.key),
+    );
   const missingKeyCount = $derived(nodesToShow.filter(isKeyMissing).length);
 
   const filteredNodes = $derived.by(() => {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { NodeInfo } from "$shared/types";
-  import { connectedKeySig } from "$ui/lib/api/keyExistence";
+  import { connectedKeySig, effectiveNs } from "$ui/lib/api/keyExistence";
+  import { auth } from "$ui/lib/stores/auth.svelte";
   import * as Tooltip from "$ui/lib/components/ui/tooltip";
   import NodeListItem from "./NodeListItem.svelte";
 
@@ -129,7 +130,12 @@
               : 0}
             manualChange={getManualChange?.(node) ?? false}
             keyMissing={node.connected && node.key
-              ? (missingKeys?.has(connectedKeySig(node.ns, node.key)) ?? false)
+              ? (missingKeys?.has(
+                  connectedKeySig(
+                    effectiveNs(node.ns, auth.value.namespacesEnabled),
+                    node.key,
+                  ),
+                ) ?? false)
               : false}
             onFilterText={() => onFilterText?.(node)}
             onFilterKey={() => onFilterKey?.(node)}

@@ -14,8 +14,24 @@ export function connectedKeySig(ns: string | undefined, name: string): string {
 }
 
 /**
+ * The namespace a node's key EFFECTIVELY lives under. When the project has
+ * namespaces disabled, the whole write pipeline ignores the node's stored `ns`
+ * (pushFlow/pushDiff strip it), so keys land in the default namespace — a node
+ * can still carry a stale invisible `ns` (the ns badge is hidden with the
+ * feature off). Every existence lookup must apply the same rule, or such a
+ * node gets false-flagged as "key deleted in Tolgee".
+ */
+export function effectiveNs(
+  ns: string | undefined,
+  namespacesEnabled: boolean,
+): string | undefined {
+  return namespacesEnabled ? ns || undefined : undefined;
+}
+
+/**
  * Returns the connected keys that NO LONGER EXIST in the Tolgee project, as
- * `connectedKeySig` signatures.
+ * `connectedKeySig` signatures (computed over the EFFECTIVE namespace — see
+ * `effectiveNs`; lookups against the returned set must use it too).
  *
  * One `POST /keys/info` with explicit {name, namespace} pairs — the endpoint
  * omits keys it can't find, so anything we asked for that isn't in the response
@@ -30,7 +46,8 @@ export async function fetchMissingKeys(
   client: TolgeeClient,
   keys: ConnectedKey[],
   branch: string,
-  languageTag?: string,
+  languageTag: string | undefined,
+  namespacesEnabled: boolean,
 ): Promise<Set<string>> {
   const missing = new Set<string>();
   if (keys.length === 0) return missing;
@@ -38,7 +55,10 @@ export async function fetchMissingKeys(
   const { data, error } = await client.POST("/v2/projects/keys/info", {
     params: { query: { branch: branch || undefined } },
     body: {
-      keys: keys.map((k) => ({ name: k.name, namespace: k.ns || undefined })),
+      keys: keys.map((k) => ({
+        name: k.name,
+        namespace: effectiveNs(k.ns, namespacesEnabled),
+      })),
       // Existence doesn't depend on a language, but the endpoint requires the
       // field; send one when we have it, else an empty list.
       languageTags: languageTag ? [languageTag] : [],
@@ -50,7 +70,7 @@ export async function fetchMissingKeys(
     (data._embedded?.keys ?? []).map((k) => connectedKeySig(k.namespace, k.name)),
   );
   for (const k of keys) {
-    const sig = connectedKeySig(k.ns, k.name);
+    const sig = connectedKeySig(effectiveNs(k.ns, namespacesEnabled), k.name);
     if (!present.has(sig)) missing.add(sig);
   }
   return missing;
