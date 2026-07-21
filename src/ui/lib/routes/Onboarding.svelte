@@ -19,10 +19,11 @@
   // First-run guided setup. Deliberately the SAME sections Settings uses,
   // one step at a time — no duplicated fields, so a settings change lands here
   // too. Matches the original plugin's stepped setup (Project → Strings → Push).
-  const TITLES = ["Connect", "Strings and keys", "Upload to Tolgee"] as const;
-  // Short labels for the compact stepper (the step body carries the full
-  // section headings anyway).
-  const STEP_LABELS = ["Connect", "Strings & keys", "Upload"] as const;
+  // Titles mirror the Settings tabs exactly — onboarding walks the same three
+  // sections, so it reads as "you're filling in Settings", not a separate flow.
+  const TITLES = ["Project", "Strings and Keys", "Upload to Tolgee"] as const;
+  // Compact stepper labels: Settings-aligned but shortened to fit one line.
+  const STEP_LABELS = ["Project", "Strings & Keys", "Upload"] as const;
   let step = $state(0);
 
   // Same form snapshot + defaults as Settings, so the sections behave
