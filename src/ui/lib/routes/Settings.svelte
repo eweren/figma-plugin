@@ -64,7 +64,7 @@
       <Tabs.List class="border-b border-border px-1">
         <Tabs.Trigger value="project">Project</Tabs.Trigger>
         <Tabs.Trigger value="strings">Strings and Keys</Tabs.Trigger>
-        <Tabs.Trigger value="upload">Upload to Tolgee</Tabs.Trigger>
+        <Tabs.Trigger value="upload">Upload options</Tabs.Trigger>
       </Tabs.List>
     </div>
 

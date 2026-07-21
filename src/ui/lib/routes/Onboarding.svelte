@@ -21,9 +21,11 @@
   // too. Matches the original plugin's stepped setup (Project → Strings → Push).
   // Titles mirror the Settings tabs exactly — onboarding walks the same three
   // sections, so it reads as "you're filling in Settings", not a separate flow.
-  const TITLES = ["Project", "Strings and Keys", "Upload to Tolgee"] as const;
+  const TITLES = ["Project", "Strings and Keys", "Upload options"] as const;
   // Compact stepper labels: Settings-aligned but shortened to fit one line.
-  const STEP_LABELS = ["Project", "Strings & Keys", "Upload"] as const;
+  // "Upload options" (not "Upload") so the step reads as settings, not an action
+  // — the actual upload lives on its own screen (Push.svelte, "Upload to Tolgee").
+  const STEP_LABELS = ["Project", "Strings & Keys", "Upload options"] as const;
   let step = $state(0);
 
   // Same form snapshot + defaults as Settings, so the sections behave
