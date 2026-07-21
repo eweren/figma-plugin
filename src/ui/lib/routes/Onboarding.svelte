@@ -65,27 +65,29 @@
   >
     <!-- No title/logo here — Figma's own plugin chrome already shows the
          Tolgee logo + name above this iframe. Just the stepper. -->
-    <!-- Simple stepper: numbered circles joined by connectors, titles below. -->
-    <div class="flex">
+    <!-- Simple stepper: numbered circles joined by rounded, inset connectors,
+         UPPERCASE titles below. -->
+    <div class="flex py-1">
       {#each STEP_LABELS as label, i (i)}
         <div class="flex flex-1 flex-col items-center">
-          <div class="relative flex h-5 w-full items-center justify-center">
+          <div class="relative flex h-7 w-full items-center justify-center">
             {#if i > 0}
+              <!-- left connector: inset from the circle (gap) + rounded ends. -->
               <div
-                class="absolute left-0 top-1/2 h-0.5 w-1/2 -translate-y-1/2 transition-colors"
+                class="absolute left-0 top-1/2 h-[3px] w-[calc(50%-1.375rem)] -translate-y-1/2 rounded-full transition-colors"
                 class:bg-bg-brand={i <= step}
                 class:bg-border={i > step}
               ></div>
             {/if}
             {#if i < STEP_LABELS.length - 1}
               <div
-                class="absolute right-0 top-1/2 h-0.5 w-1/2 -translate-y-1/2 transition-colors"
+                class="absolute right-0 top-1/2 h-[3px] w-[calc(50%-1.375rem)] -translate-y-1/2 rounded-full transition-colors"
                 class:bg-bg-brand={i < step}
                 class:bg-border={i >= step}
               ></div>
             {/if}
             <div
-              class="relative z-10 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors"
+              class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold transition-colors"
               class:border-transparent={i <= step}
               class:bg-bg-brand={i <= step}
               class:text-text-onbrand={i <= step}
@@ -94,15 +96,15 @@
               class:text-text-secondary={i > step}
             >
               {#if i < step}
-                <Check size={12} />
+                <Check size={14} />
               {:else}
                 {i + 1}
               {/if}
             </div>
           </div>
           <span
-            class="mt-1 text-center text-[10px] leading-tight"
-            class:font-medium={i <= step}
+            class="mt-1.5 text-center text-[11px] uppercase leading-tight tracking-wide"
+            class:font-semibold={i <= step}
             class:text-text={i <= step}
             class:text-text-secondary={i > step}
           >
