@@ -5,7 +5,7 @@
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { nextCorrelationId, on, send } from "$ui/lib/bus";
   import { createIdleTimeout, type RequestWatchdog } from "$ui/lib/busRequest";
-  import { Badge, Button, EmptyState, Message, ProgressBar } from "$ui/lib/components/ui";
+  import { Badge, Button, EmptyState, Message, ProgressBar, Select } from "$ui/lib/components/ui";
   import * as Tooltip from "$ui/lib/components/ui/tooltip";
   import TooltipIconButton from "$ui/lib/components/ui/tooltipIconButton.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
@@ -501,6 +501,30 @@
           </TooltipIconButton>
         {/if}
       </h1>
+      {#if branch}
+        <!-- Read-only branch indicator (branching projects only). Copies always
+             follow the document's configured branch; changing it per copy would
+             desync the copy from the main page, so the picker is disabled here
+             and the tooltip points to where it IS changed. -->
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <span {...props} class="shrink-0">
+                <Select
+                  value={branch}
+                  options={[{ value: branch, label: branch }]}
+                  disabled
+                  aria-label="Branch this copy downloads from"
+                  class="min-w-[80px]"
+                />
+              </span>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content side="bottom" align="end" class="max-w-[16rem] leading-snug">
+            Copies follow the branch set in Settings.
+          </Tooltip.Content>
+        </Tooltip.Root>
+      {/if}
       {#if language && !isDev}
         <Button
           size="sm"
