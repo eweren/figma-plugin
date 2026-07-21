@@ -61,49 +61,44 @@
 
 <div class="flex h-full flex-col">
   <header
-    class="shrink-0 border-b border-border bg-linear-to-b from-bg to-header-gradient-end px-3 py-2.5"
+    class="shrink-0 border-b border-border bg-linear-to-b from-bg to-header-gradient-end px-3 pb-3 pt-4"
   >
     <!-- No title/logo here — Figma's own plugin chrome already shows the
          Tolgee logo + name above this iframe. Just the stepper. -->
-    <!-- Simple stepper: numbered circles joined by rounded, inset connectors,
-         UPPERCASE titles below. -->
-    <div class="flex py-1">
+    <!-- Simple stepper: numbered circles joined by ONE rounded connector each,
+         UPPERCASE titles below. Each column owns the connector reaching back to
+         the previous circle (a single line, not two half-lines meeting mid-gap),
+         positioned to align with the 24px circle's vertical centre. -->
+    <div class="flex px-2 py-1.5">
       {#each STEP_LABELS as label, i (i)}
-        <div class="flex flex-1 flex-col items-center">
-          <div class="relative flex h-7 w-full items-center justify-center">
-            {#if i > 0}
-              <!-- left connector: inset from the circle (gap) + rounded ends. -->
-              <div
-                class="absolute left-0 top-1/2 h-[3px] w-[calc(50%-1.375rem)] -translate-y-1/2 rounded-full transition-colors"
-                class:bg-bg-brand={i <= step}
-                class:bg-border={i > step}
-              ></div>
-            {/if}
-            {#if i < STEP_LABELS.length - 1}
-              <div
-                class="absolute right-0 top-1/2 h-[3px] w-[calc(50%-1.375rem)] -translate-y-1/2 rounded-full transition-colors"
-                class:bg-bg-brand={i < step}
-                class:bg-border={i >= step}
-              ></div>
-            {/if}
+        <div class="relative flex flex-1 flex-col items-center">
+          {#if i > 0}
+            <!-- Single connector from the previous circle to this one, inset a
+                 few px from both so it never touches the circles. Its left edge
+                 reaches half a column back (-50%) to the previous centre. -->
             <div
-              class="relative z-10 flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold transition-colors"
-              class:border-transparent={i <= step}
+              class="absolute left-[calc(-50%+16px)] top-3 h-0.5 w-[calc(100%-32px)] -translate-y-1/2 rounded-full transition-colors"
               class:bg-bg-brand={i <= step}
-              class:text-text-onbrand={i <= step}
-              class:border-border={i > step}
-              class:bg-bg={i > step}
-              class:text-text-secondary={i > step}
-            >
-              {#if i < step}
-                <Check size={14} />
-              {:else}
-                {i + 1}
-              {/if}
-            </div>
+              class:bg-border={i > step}
+            ></div>
+          {/if}
+          <div
+            class="relative z-10 flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-semibold transition-colors"
+            class:border-transparent={i <= step}
+            class:bg-bg-brand={i <= step}
+            class:text-text-onbrand={i <= step}
+            class:border-border={i > step}
+            class:bg-bg={i > step}
+            class:text-text-secondary={i > step}
+          >
+            {#if i < step}
+              <Check size={13} />
+            {:else}
+              {i + 1}
+            {/if}
           </div>
           <span
-            class="mt-1.5 text-center text-[11px] uppercase leading-tight tracking-wide"
+            class="mt-2 text-center text-[11px] uppercase leading-tight tracking-wide"
             class:font-semibold={i <= step}
             class:text-text={i <= step}
             class:text-text-secondary={i > step}
