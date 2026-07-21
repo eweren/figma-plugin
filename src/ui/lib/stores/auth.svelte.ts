@@ -22,6 +22,13 @@ type AuthState = {
   branches: BranchInfo[];
   /** Branch to pre-select when none is chosen (isDefault → "main" → first). */
   defaultBranch: string;
+  /**
+   * True only after `branches` reflects a SUCCESSFUL fetch. Distinguishes
+   * "list is empty because it hasn't loaded / the fetch failed" from "list
+   * really is what the server has" — the missing-branch warning must only
+   * trust the latter.
+   */
+  branchesLoaded: boolean;
 };
 
 function createAuth() {
@@ -40,6 +47,7 @@ function createAuth() {
     namespaces: [],
     branches: [],
     defaultBranch: "",
+    branchesLoaded: false,
   });
 
   return {
@@ -78,9 +86,10 @@ function createAuth() {
     setNamespaces(nss: NamespaceInfo[]): void {
       state.namespaces = nss;
     },
-    setBranches(branches: BranchInfo[], defaultBranch = ""): void {
+    setBranches(branches: BranchInfo[], defaultBranch = "", loaded = true): void {
       state.branches = branches;
       state.defaultBranch = defaultBranch;
+      state.branchesLoaded = loaded;
     },
     clear() {
       state.client = null;
@@ -97,6 +106,7 @@ function createAuth() {
       state.namespaces = [];
       state.branches = [];
       state.defaultBranch = "";
+      state.branchesLoaded = false;
     },
     hasScope(scope: string): boolean {
       return state.scopes.includes(scope);

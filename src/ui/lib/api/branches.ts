@@ -13,6 +13,25 @@ export async function fetchBranches(client: TolgeeClient): Promise<BranchInfo[]>
 }
 
 /**
+ * Whether the CONFIGURED branch was deleted in Tolgee: it is set, the fetched
+ * branch list is trustworthy (`branchesLoaded` — a successful fetch, not a
+ * pending/failed one), and the list doesn't contain it. Mirrors the original
+ * plugin's `isBranchMissing` warning on the Index view — without it every API
+ * call would silently target a nonexistent branch.
+ */
+export function isConfiguredBranchMissing(
+  configuredBranch: string,
+  branches: BranchInfo[],
+  branchesLoaded: boolean,
+): boolean {
+  return (
+    branchesLoaded &&
+    configuredBranch !== "" &&
+    !branches.some((b) => b.name === configuredBranch)
+  );
+}
+
+/**
  * The branch to pre-select when none is chosen yet: the project's default
  * branch (`isDefault`, same rule as the original plugin), else the
  * conventional "main", else the first — so a branching-enabled project never

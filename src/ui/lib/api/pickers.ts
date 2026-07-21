@@ -60,6 +60,8 @@ export async function hydrateBranches(client: TolgeeClient): Promise<void> {
     const branches = await fetchBranches(client);
     auth.setBranches(branches, pickDefaultBranch(branches));
   } catch {
-    auth.setBranches([]);
+    // `loaded: false` — a failed fetch says nothing about which branches
+    // exist, so the missing-branch warning must not fire off this state.
+    auth.setBranches([], "", false);
   }
 }

@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchBranches, pickDefaultBranch } from "../branches";
+import {
+  fetchBranches,
+  isConfiguredBranchMissing,
+  pickDefaultBranch,
+} from "../branches";
 import { createTolgeeClient } from "../client";
 
 type FetchMock = ReturnType<typeof vi.fn>;
@@ -110,5 +114,31 @@ describe("pickDefaultBranch", () => {
 
   it("returns an empty string when there are no branches", () => {
     expect(pickDefaultBranch([])).toBe("");
+  });
+});
+
+describe("isConfiguredBranchMissing", () => {
+  const BRANCHES = [{ name: "main", isDefault: true }, { name: "feature/x" }];
+
+  it("flags a configured branch absent from the loaded list", () => {
+    expect(isConfiguredBranchMissing("deleted", BRANCHES, true)).toBe(true);
+  });
+
+  it("does not flag a branch present in the loaded list", () => {
+    expect(isConfiguredBranchMissing("feature/x", BRANCHES, true)).toBe(false);
+  });
+
+  it("does not flag when no branch is configured", () => {
+    expect(isConfiguredBranchMissing("", BRANCHES, true)).toBe(false);
+  });
+
+  it("does not flag while branches have not loaded yet (or the fetch failed)", () => {
+    // The empty list here means "nothing fetched", not "no branches exist" —
+    // trusting it would warn on every startup before hydration finishes.
+    expect(isConfiguredBranchMissing("main", [], false)).toBe(false);
+  });
+
+  it("flags when the fetch succeeded with an empty branch list", () => {
+    expect(isConfiguredBranchMissing("main", [], true)).toBe(true);
   });
 });

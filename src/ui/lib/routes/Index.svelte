@@ -5,7 +5,8 @@
   import { ICON } from "$shared/iconSizes";
   import { appState } from "$ui/lib/stores/app.svelte";
   import { auth } from "$ui/lib/stores/auth.svelte";
-  import { fetchBranches } from "$ui/lib/api/branches";
+  import { fetchBranches, isConfiguredBranchMissing } from "$ui/lib/api/branches";
+  import { hydrateBranches } from "$ui/lib/api/pickers";
   import {
     searchKeys,
     connectInfoFromKey,
@@ -66,6 +67,7 @@
   import Wand from "lucide-svelte/icons/wand";
   import Tag from "lucide-svelte/icons/tag";
   import LoaderCircle from "lucide-svelte/icons/loader-circle";
+  import RefreshCw from "lucide-svelte/icons/refresh-cw";
   import X from "lucide-svelte/icons/x";
 
   const selectedNodes = $derived(appState.value.selectedNodes);
@@ -883,6 +885,49 @@
     (branchesQuery.data ?? []).map((b) => ({ value: b.name, label: b.name })),
   );
 
+  // ---- Missing-branch warning ----------------------------------------------
+  // The configured branch was deleted in Tolgee (same warning the original
+  // plugin shows on Index) — without a re-pick, every API call silently
+  // targets a nonexistent branch. Gated on `branchesLoaded` so a pending or
+  // failed branch fetch never fires a false positive.
+  const configuredBranch = $derived(
+    auth.value.branchingEnabled ? (appState.value.config?.branch ?? "") : "",
+  );
+  const branchMissing = $derived(
+    auth.value.authenticated &&
+      isConfiguredBranchMissing(
+        configuredBranch,
+        auth.value.branches,
+        auth.value.branchesLoaded,
+      ),
+  );
+  // Existing branches to re-pick from (from the hydrated store, the same list
+  // the missing check trusts). The deleted branch is by definition not in it.
+  const repickBranchOptions = $derived(
+    auth.value.branches.map((b) => ({ value: b.name, label: b.name })),
+  );
+  // Persist the newly picked branch the same way the Header picker does —
+  // `set-branch` writes the config and echoes `config-changed` back, which
+  // clears the warning.
+  function handleBranchRepick(v: string): void {
+    if (!v) return;
+    send({ type: "set-branch", branch: v });
+  }
+  let refreshingBranches = $state(false);
+  // Re-fetch the branch list (the branch may have been restored / renamed in
+  // Tolgee) — refreshes both the hydrated store (drives this warning) and the
+  // header's query-backed picker.
+  async function refreshBranches(): Promise<void> {
+    const client = auth.value.client;
+    if (!client || refreshingBranches) return;
+    refreshingBranches = true;
+    try {
+      await Promise.all([hydrateBranches(client), branchesQuery.refetch()]);
+    } finally {
+      refreshingBranches = false;
+    }
+  }
+
   function go(route: Route): void {
     appState.navigate(route);
   }
@@ -950,6 +995,38 @@
            is always cleared by `nodes-set-result`, so it never lingers. -->
       <div class="px-3 pt-1.5">
         <ProgressBar loaded={writeProgress.done} total={writeProgress.total} />
+      </div>
+    {/if}
+
+    {#if branchMissing}
+      <!-- The configured branch was deleted in Tolgee — same warning + inline
+           re-pick the original plugin shows on Index. Lives outside the
+           hasSelection gate: the broken branch matters even with nothing
+           selected (Pull/Push/Copy all target it). -->
+      <div class="flex flex-col gap-1.5 px-3 pt-1.5 pb-0.5">
+        <Message variant="warning">
+          Branch "{configuredBranch}" no longer exists. Please select a
+          different branch.
+        </Message>
+        <div class="flex items-center gap-2">
+          <Select
+            value=""
+            options={repickBranchOptions}
+            placeholder="Select branch"
+            onChange={handleBranchRepick}
+            class="flex-1"
+          />
+          <TooltipIconButton
+            label="Refresh branches"
+            disabled={refreshingBranches}
+            onclick={refreshBranches}
+          >
+            <RefreshCw
+              size={ICON.inline}
+              class={refreshingBranches ? "animate-spin" : ""}
+            />
+          </TooltipIconButton>
+        </div>
       </div>
     {/if}
 
