@@ -115,7 +115,7 @@
 
   <div class="min-h-0 flex-1 space-y-6 overflow-auto p-3">
     {#if step === 0}
-      <SettingsSectionConnection bind:form />
+      <SettingsSectionConnection bind:form persistDisconnect={false} />
       {#if auth.value.authenticated}
         <!-- Language + namespace appear once connected, like the original. -->
         <SettingsSectionProject bind:form hideDisabledNotes />

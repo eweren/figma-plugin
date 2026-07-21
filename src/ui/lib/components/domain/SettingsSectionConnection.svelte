@@ -20,8 +20,16 @@
   import Eye from "lucide-svelte/icons/eye";
   import EyeOff from "lucide-svelte/icons/eye-off";
 
-  type Props = { form: Partial<TolgeeConfig> };
-  let { form = $bindable() }: Props = $props();
+  type Props = {
+    form: Partial<TolgeeConfig>;
+    /** Settings persists the cleared key on disconnect so it sticks without a
+     *  Save. The onboarding wizard persists nothing until its final Save — and
+     *  a `save-config` here would stamp `documentInfo`, closing the onboarding
+     *  gate and dumping the user onto the Index "Sign in" screen — so there
+     *  disconnect only resets the in-memory auth and stays on step 1. */
+    persistDisconnect?: boolean;
+  };
+  let { form = $bindable(), persistDisconnect = true }: Props = $props();
 
   let showKey = $state(false);
   let connecting = $state(false);
@@ -113,7 +121,7 @@
     auth.clear();
     form.apiKey = "";
     errorMsg = null;
-    send({ type: "save-config", config: { apiKey: "" } });
+    if (persistDisconnect) send({ type: "save-config", config: { apiKey: "" } });
   }
 
   function openProject(): void {
