@@ -86,6 +86,9 @@
           q,
           appState.value.config?.language,
           20,
+          auth.value.branchingEnabled
+            ? (appState.value.config?.branch ?? "")
+            : "",
         );
       } catch {
         results = [];

@@ -31,6 +31,7 @@ export async function searchKeys(
   query: string,
   languageTag: string | undefined,
   size = 20,
+  branch?: string,
 ): Promise<KeySearchResult[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
@@ -41,6 +42,10 @@ export async function searchKeys(
         search: trimmed,
         size,
         languageTag,
+        // Scope the search to the configured branch (branching projects only) —
+        // otherwise a key that lives on the working branch wouldn't be found,
+        // and a default-branch key would wrongly match. Omitted when empty.
+        branch: branch || undefined,
       },
     },
   });

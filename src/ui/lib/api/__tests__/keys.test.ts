@@ -116,6 +116,34 @@ describe("searchKeys", () => {
     expect(calledUrl).toContain("size=10");
   });
 
+  it("passes the branch as a query param when set", async () => {
+    const mock = installFetchMock(async () => okResponse({ _embedded: { keys: [] } }));
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+
+    await searchKeys(client, "term", "en", 20, "feature-x");
+
+    const calledUrl: string =
+      mock.mock.calls[0]?.[0] instanceof Request
+        ? mock.mock.calls[0][0].url
+        : String(mock.mock.calls[0]?.[0] ?? "");
+
+    expect(calledUrl).toContain("branch=feature-x");
+  });
+
+  it("omits the branch param when empty (no-branching projects)", async () => {
+    const mock = installFetchMock(async () => okResponse({ _embedded: { keys: [] } }));
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+
+    await searchKeys(client, "term", "en", 20, "");
+
+    const calledUrl: string =
+      mock.mock.calls[0]?.[0] instanceof Request
+        ? mock.mock.calls[0][0].url
+        : String(mock.mock.calls[0]?.[0] ?? "");
+
+    expect(calledUrl).not.toContain("branch=");
+  });
+
   it("handles missing optional fields (namespace, description, translation)", async () => {
     const keys = [
       {
