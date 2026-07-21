@@ -15,7 +15,7 @@ const FORMATTER_CACHE_MAX = 500;
 const formatterCache = new Map<string, IntlMessageFormat>();
 
 function getFormatter(message: string, locale: string): IntlMessageFormat {
-  const key = `${locale}\u0000${message}`;
+  const key = `${locale}\0${message}`;
   const cached = formatterCache.get(key);
   if (cached) return cached;
   // `ignoreTag: true` keeps inline markup (`<b>`, `<i>`, …) as LITERAL text

@@ -104,7 +104,7 @@ function loadAvailableFontsOnce(): Promise<Font[]> {
 const loadedFonts = new Set<string>();
 
 export async function loadFontCached(font: FontName): Promise<void> {
-  const key = `${font.family}\u0000${font.style}`;
+  const key = `${font.family}\0${font.style}`;
   if (loadedFonts.has(key)) return;
   await figma.loadFontAsync(font);
   loadedFonts.add(key);

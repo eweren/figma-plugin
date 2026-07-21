@@ -643,7 +643,7 @@
       const t = (n.characters ?? "").trim();
       if (!t) continue;
       const ns = n.ns ?? "";
-      const gk = scope === "namespace" ? `${ns}\u0000${t}` : t;
+      const gk = scope === "namespace" ? `${ns}\0${t}` : t;
       const g = groups.get(gk);
       if (g) g.nodes.push(n);
       else groups.set(gk, { text: t, ns, nodes: [n] });
