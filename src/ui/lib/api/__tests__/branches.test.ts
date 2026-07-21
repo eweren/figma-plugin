@@ -34,8 +34,8 @@ describe("fetchBranches", () => {
       okResponse({
         _embedded: {
           branches: [
-            { name: "main", active: true },
-            { name: "feature/x", active: false },
+            { name: "main", isDefault: true },
+            { name: "feature/x", isDefault: false },
           ],
         },
       }),
@@ -45,8 +45,8 @@ describe("fetchBranches", () => {
     const result = await fetchBranches(client);
 
     expect(result).toEqual([
-      { name: "main", active: true },
-      { name: "feature/x", active: false },
+      { name: "main", isDefault: true },
+      { name: "feature/x", isDefault: false },
     ]);
   });
 
@@ -64,9 +64,9 @@ describe("fetchBranches", () => {
       okResponse({
         _embedded: {
           branches: [
-            { name: "main", active: true },
-            { active: false }, // name undefined
-            { name: "", active: false }, // name empty string (falsy)
+            { name: "main", isDefault: true },
+            { isDefault: false }, // name undefined
+            { name: "", isDefault: false }, // name empty string (falsy)
           ],
         },
       }),
@@ -75,7 +75,7 @@ describe("fetchBranches", () => {
 
     const result = await fetchBranches(client);
 
-    expect(result).toEqual([{ name: "main", active: true }]);
+    expect(result).toEqual([{ name: "main", isDefault: true }]);
   });
 
   it("returns [] when the branches array is empty", async () => {
@@ -89,22 +89,22 @@ describe("fetchBranches", () => {
 });
 
 describe("pickDefaultBranch", () => {
-  it("prefers the active branch", () => {
+  it("prefers the default branch (isDefault, like the original plugin)", () => {
     expect(
       pickDefaultBranch([
-        { name: "main", active: false },
-        { name: "feature/x", active: true },
+        { name: "main", isDefault: false },
+        { name: "feature/x", isDefault: true },
       ]),
     ).toBe("feature/x");
   });
 
-  it('falls back to "main" when none is active', () => {
+  it('falls back to "main" when none is marked default', () => {
     expect(
       pickDefaultBranch([{ name: "dev" }, { name: "main" }]),
     ).toBe("main");
   });
 
-  it('falls back to the first branch when no active and no "main"', () => {
+  it('falls back to the first branch when no default and no "main"', () => {
     expect(pickDefaultBranch([{ name: "dev" }, { name: "staging" }])).toBe("dev");
   });
 

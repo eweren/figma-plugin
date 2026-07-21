@@ -20,7 +20,7 @@ type AuthState = {
   baseLanguage: string;
   namespaces: NamespaceInfo[];
   branches: BranchInfo[];
-  /** Branch to pre-select when none is chosen (active → "main" → first). */
+  /** Branch to pre-select when none is chosen (isDefault → "main" → first). */
   defaultBranch: string;
 };
 

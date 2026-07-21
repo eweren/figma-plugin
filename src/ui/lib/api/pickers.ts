@@ -51,7 +51,7 @@ export async function hydratePickers(client: TolgeeClient): Promise<void> {
 
 /**
  * Fetch the project's branches into the auth store and remember the default
- * (active → "main" → first). Call only when branching is enabled — so a
+ * (isDefault → "main" → first). Call only when branching is enabled — so a
  * branching-enabled project can pre-fill "main" instead of an empty branch.
  * Best-effort; on failure the store is left with an empty list.
  */
