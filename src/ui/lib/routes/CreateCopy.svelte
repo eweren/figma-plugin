@@ -6,10 +6,8 @@
   import { createIdleTimeout } from "$ui/lib/busRequest";
   import { Card, CheckboxField, Label, Message, ProgressBar, Select } from "$ui/lib/components/ui";
   import * as Tooltip from "$ui/lib/components/ui/tooltip";
-  import { ICON } from "$shared/iconSizes";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
   import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
-  import Info from "lucide-svelte/icons/info";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
   import { applyCopyPages, type CopyTranslations } from "$ui/lib/logic/copyApply";
   import type { MainToUi } from "$shared/messages";
@@ -264,53 +262,43 @@
 </script>
 
 <div class="flex h-full flex-col">
-  <ViewHeader title="Create copy" onBack={cancel} />
+  <ViewHeader title="Create copy" onBack={cancel}>
+    {#snippet actions()}
+      {#if branch}
+        <!-- Read-only branch indicator (branching projects only): the copy is
+             built from the document's configured branch. Informative, not a
+             choice, so it lives in the header (disabled) instead of taking a
+             body row; the tooltip points to where the branch IS changed. -->
+        <Tooltip.Provider delayDuration={200}>
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+                <span {...props} class="shrink-0">
+                  <Select
+                    value={branch}
+                    options={[{ value: branch, label: branch }]}
+                    disabled
+                    aria-label="Branch this copy is created from"
+                    class="min-w-[80px]"
+                  />
+                </span>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content
+              side="bottom"
+              align="end"
+              class="max-w-[16rem] leading-snug"
+            >
+              Copies follow the branch set in Settings.
+            </Tooltip.Content>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      {/if}
+    {/snippet}
+  </ViewHeader>
 
   <div class="flex-1 overflow-auto p-3 space-y-3">
     {#if stage === "idle"}
-      {#if branch}
-        <!-- Read-only branch indicator (branching projects only): the copy is
-             built from the document's configured branch. Disabled because
-             changing it per copy would desync the copy from the main page —
-             the tooltip points to where it IS changed. -->
-        <Card>
-          <div class="flex items-center gap-1.5">
-            <Label>Branch</Label>
-            <Tooltip.Provider delayDuration={200}>
-              <Tooltip.Root>
-                <Tooltip.Trigger>
-                  {#snippet child({ props })}
-                    <span
-                      {...props}
-                      class="text-text-secondary transition-colors hover:text-text-brand"
-                      role="button"
-                      tabindex={-1}
-                      aria-label="Which branch this copy uses"
-                    >
-                      <Info size={ICON.inline} />
-                    </span>
-                  {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Content
-                  side="bottom"
-                  align="start"
-                  class="max-w-[16rem] leading-snug"
-                >
-                  Copies follow the branch set in Settings.
-                </Tooltip.Content>
-              </Tooltip.Root>
-            </Tooltip.Provider>
-          </div>
-          <Select
-            value={branch}
-            options={[{ value: branch, label: branch }]}
-            disabled
-            aria-label="Branch this copy is created from"
-            class="mt-2 w-full"
-          />
-        </Card>
-      {/if}
-
       <Card>
         <Label>Mode</Label>
         <div class="mt-2 space-y-1.5">
