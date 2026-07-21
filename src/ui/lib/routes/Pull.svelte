@@ -128,7 +128,12 @@
   // to imperatively recompute or worry about double-evaluation.
   const diff = $derived<Diff | null>(
     pageNodesQuery.data && translationsQuery.data
-      ? pullDiff(pageNodesQuery.data, translationsQuery.data, language)
+      ? pullDiff(
+          pageNodesQuery.data,
+          translationsQuery.data,
+          language,
+          auth.value.namespacesEnabled,
+        )
       : null,
   );
 

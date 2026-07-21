@@ -204,7 +204,12 @@
         },
       });
 
-      const diff = pullDiff(targetNodes, remoteKeys, lang);
+      const diff = pullDiff(
+        targetNodes,
+        remoteKeys,
+        lang,
+        auth.value.namespacesEnabled,
+      );
       if (diff.changedNodes.length === 0) {
         stage = "idle";
         // Just describes THIS check's result — Tolgee can change again a

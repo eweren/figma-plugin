@@ -62,6 +62,7 @@ export function pullDiff(
   localNodes: NodeInfo[],
   remoteKeys: PulledKey[],
   language: string,
+  namespacesEnabled = true,
 ): PullDiffResult {
   const remote = indexRemote(remoteKeys);
 
@@ -72,7 +73,12 @@ export function pullDiff(
   for (const node of localNodes) {
     if (!node.connected || !node.key) continue;
 
-    const ns = node.ns ?? "";
+    // With namespaces disabled on the project the write pipeline ignores the
+    // node's stored `ns` (keys live in the default namespace), so the lookup
+    // must too — a stale invisible ns would otherwise land the node in
+    // `missingKeys` and silently skip its update. Mirrors push + the
+    // stale-link check (`effectiveNs`).
+    const ns = namespacesEnabled ? (node.ns ?? "") : "";
     const remoteKey = remote.get(`${ns}|${node.key}`);
 
     if (!remoteKey) {

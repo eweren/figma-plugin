@@ -254,6 +254,46 @@ describe("pullDiff", () => {
     expect(diff.changedNodes[0]?.node).toBe(nodeB);
     expect(diff.changedNodes[0]?.newText).toBe("Hello (mkt)");
   });
+
+  it("ignores a stale node ns when namespaces are disabled (matches push)", () => {
+    // The write pipeline drops the stored ns on ns-disabled projects, so the
+    // key lives in the default namespace — the diff lookup must follow, or
+    // the node lands in missingKeys and its update is silently skipped.
+    const node = makeNode({
+      key: "greeting",
+      ns: "stale-ns",
+      translation: "Hello",
+      connected: true,
+    });
+    const remote = makeRemoteKey({
+      keyName: "greeting",
+      translations: { en: { text: "Hi" } },
+    });
+    const diff = pullDiff([node], [remote], "en", false);
+
+    expect(diff.missingKeys).toEqual([]);
+    expect(diff.changedNodes).toHaveLength(1);
+    expect(diff.changedNodes[0]?.newText).toBe("Hi");
+  });
+
+  it("still matches by exact ns when namespaces are enabled", () => {
+    const node = makeNode({
+      key: "greeting",
+      ns: "web",
+      translation: "Hello",
+      connected: true,
+    });
+    // Remote key sits in the default namespace — with namespaces ON this must
+    // NOT match the node's "web" ns.
+    const remote = makeRemoteKey({
+      keyName: "greeting",
+      translations: { en: { text: "Hi" } },
+    });
+    const diff = pullDiff([node], [remote], "en", true);
+
+    expect(diff.missingKeys).toEqual([node]);
+    expect(diff.changedNodes).toEqual([]);
+  });
 });
 
 describe("formatNodeText", () => {
