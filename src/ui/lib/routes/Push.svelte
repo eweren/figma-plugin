@@ -28,6 +28,7 @@
     uploadScreenshots,
     type PushContext,
   } from "$ui/lib/logic/pushFlow";
+  import { settleQuery, type QueryOutcome } from "$ui/lib/logic/queryResult";
   import PushConflictItem from "$ui/lib/components/domain/PushConflictItem.svelte";
   import type { PushConflictResolution } from "$ui/lib/logic/pushFlow";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
@@ -133,41 +134,57 @@
       Boolean(language) &&
       connectedNodes.length > 0,
     staleTime: 5 * 1000,
-    queryFn: async ({ signal }): Promise<PushDiff> => {
-      const client = auth.value.client;
-      if (!client) throw new Error("Not connected to Tolgee.");
-      const filterKeyName = Array.from(
-        new Set(connectedNodes.map((n) => n.key)),
-      );
-      const filterNamespace = hasNamespacesEnabled
-        ? Array.from(new Set(connectedNodes.map((n) => n.ns ?? "")))
-        : undefined;
-      // `total` is known immediately (the name count) — seed it before the
-      // first batch even resolves so the bar reads "0 / N" from the start
-      // instead of flashing blank.
-      diffProgress = { done: 0, total: filterKeyName.length };
-      const remoteKeys = await fetchRemoteKeys(
-        client,
+    // Resolves with an outcome instead of rejecting — see `settleQuery`: the
+    // svelte-query runes adapter doesn't reliably surface a query's terminal
+    // error, which used to hang "Computing changes…" forever on any API
+    // failure. The view reads the error off `diffQuery.data` below.
+    queryFn: ({ signal }): Promise<QueryOutcome<PushDiff>> =>
+      settleQuery(
+        async () => {
+          const client = auth.value.client;
+          if (!client) throw new Error("Not connected to Tolgee.");
+          const filterKeyName = Array.from(
+            new Set(connectedNodes.map((n) => n.key)),
+          );
+          const filterNamespace = hasNamespacesEnabled
+            ? Array.from(new Set(connectedNodes.map((n) => n.ns ?? "")))
+            : undefined;
+          // `total` is known immediately (the name count) — seed it before the
+          // first batch even resolves so the bar reads "0 / N" from the start
+          // instead of flashing blank.
+          diffProgress = { done: 0, total: filterKeyName.length };
+          const remoteKeys = await fetchRemoteKeys(
+            client,
+            {
+              filterKeyName,
+              filterNamespace,
+              language,
+              branch: branch || undefined,
+              signal,
+            },
+            (done, total) => {
+              diffProgress = { done, total };
+            },
+          );
+          const remoteMap = buildRemoteMapFromKeys(remoteKeys, language);
+          return pushDiff(connectedNodes, remoteMap, {
+            hasNamespacesEnabled,
+            configuredTags,
+          });
+        },
         {
-          filterKeyName,
-          filterNamespace,
-          language,
-          branch: branch || undefined,
           signal,
+          toMessage: (err) => (err as Error)?.message ?? "Failed to compute diff.",
         },
-        (done, total) => {
-          diffProgress = { done, total };
-        },
-      );
-      const remoteMap = buildRemoteMapFromKeys(remoteKeys, language);
-      return pushDiff(connectedNodes, remoteMap, {
-        hasNamespacesEnabled,
-        configuredTags,
-      });
-    },
+      ),
   }));
 
-  const diff = $derived(diffQuery.data ?? null);
+  const diffOutcome = $derived(diffQuery.data ?? null);
+  const diff = $derived(diffOutcome?.ok ? diffOutcome.value : null);
+  // Diff-load failure, surfaced from `.data` (not the adapter's `.error`).
+  const diffLoadError = $derived(
+    diffOutcome && !diffOutcome.ok ? diffOutcome.error : null,
+  );
 
   const noTextChanges = $derived(
     (diff?.newKeys.length ?? 0) === 0 && (diff?.changedKeys.length ?? 0) === 0,
@@ -486,15 +503,6 @@
     return changed?.remoteText ?? "";
   }
 
-  // Map diff-query error to the user-facing banner.
-  $effect(() => {
-    const err = diffQuery.error;
-    if (err) {
-      errorMessage = (err as Error)?.message ?? "Failed to compute diff.";
-      stage = "error";
-    }
-  });
-
   // The diff-computation progress bar only means something while the query
   // is actually in flight — clear it the moment it settles (success or
   // error) so it doesn't linger once the diff card / error banner replaces
@@ -522,6 +530,8 @@
           label="Computing changes…"
         />
       </Card>
+    {:else if diffLoadError}
+      <Message variant="error">{diffLoadError}</Message>
     {:else if stage === "error"}
       <Message variant="error">{errorMessage ?? "An error occurred."}</Message>
     {:else if stage === "done"}

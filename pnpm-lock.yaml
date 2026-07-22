@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@tanstack/svelte-query':
-        specifier: ^6.0.0-0
+        specifier: ^6.1.28
         version: 6.1.28(svelte@5.55.5)
       bits-ui:
         specifier: ^1.0.0

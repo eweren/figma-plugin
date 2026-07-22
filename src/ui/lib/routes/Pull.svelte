@@ -12,8 +12,11 @@
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
   import { pullDiff, formatNodeText } from "$ui/lib/logic/pullDiff";
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
+  import { settleQuery, type QueryOutcome } from "$ui/lib/logic/queryResult";
 
   type Diff = ReturnType<typeof pullDiff>;
+  type PageNodes = Awaited<ReturnType<typeof requestPageConnectedNodes>>;
+  type Translations = Awaited<ReturnType<typeof fetchAllTranslations>>;
 
   // Derive the requested language from the current route. We fall back to the
   // config language so the route still works when navigated to without `lang`
@@ -63,17 +66,29 @@
   // Query 1: page-wide connected text nodes. Re-fetched when the user
   // navigates back into Pull, but cached across the conflict-resolution
   // round-trip so we don't bug the main thread for each render.
+  // Both queries resolve with an OUTCOME instead of rejecting — see
+  // `settleQuery`: the svelte-query runes adapter doesn't reliably surface a
+  // query's terminal error, which used to hang the Pull loader forever on any
+  // API failure. The view derives its error/diff state from `.data` below.
   const pageNodesQuery = createQuery(() => ({
     queryKey: ["page-connected-nodes"],
-    queryFn: () => {
-      pageScanProgress = null;
-      return requestPageConnectedNodes(undefined, (done, total) => {
-        pageScanProgress = { done, total };
-      });
-    },
+    queryFn: (): Promise<QueryOutcome<PageNodes>> =>
+      settleQuery(
+        () => {
+          pageScanProgress = null;
+          return requestPageConnectedNodes(undefined, (done, total) => {
+            pageScanProgress = { done, total };
+          });
+        },
+        { toMessage: (err) => formatQueryError(err) ?? "Cannot scan the page." },
+      ),
     enabled: Boolean(language) && auth.value.authenticated,
     staleTime: 5 * 1000,
   }));
+
+  // Unwrapped page nodes ([] on failure, so downstream deriveds stay array-shaped).
+  const pageNodesOutcome = $derived(pageNodesQuery.data ?? null);
+  const pageNodes = $derived(pageNodesOutcome?.ok ? pageNodesOutcome.value : []);
 
   // The page's connected key names — query 2 filters the server fetch down to
   // exactly these instead of paginating the whole project. Sorted + joined
@@ -82,7 +97,7 @@
   const connectedKeyNames = $derived(
     Array.from(
       new Set(
-        (pageNodesQuery.data ?? [])
+        pageNodes
           .map((n) => n.key)
           .filter((k): k is string => Boolean(k)),
       ),
@@ -103,38 +118,54 @@
   // scopes the fetch tightly.
   const translationsQuery = createQuery(() => ({
     queryKey: ["translations", language, branch, keyFilterCacheKey],
-    queryFn: async ({ signal }) => {
-      progress = { loaded: 0, total: null };
-      const client = auth.value.client;
-      if (!client) throw new Error("Not connected to Tolgee.");
-      return fetchAllTranslations(client, {
-        languages: [language],
-        branch: branch || undefined,
-        keyNames: connectedKeyNames,
-        signal,
-        onProgress: (loaded, total) => {
-          progress = { loaded, total };
+    queryFn: ({ signal }): Promise<QueryOutcome<Translations>> =>
+      settleQuery(
+        () => {
+          progress = { loaded: 0, total: null };
+          const client = auth.value.client;
+          if (!client) throw new Error("Not connected to Tolgee.");
+          return fetchAllTranslations(client, {
+            languages: [language],
+            branch: branch || undefined,
+            keyNames: connectedKeyNames,
+            signal,
+            onProgress: (loaded, total) => {
+              progress = { loaded, total };
+            },
+          });
         },
-      });
-    },
+        { signal, toMessage: (err) => formatQueryError(err) ?? "Cannot load translations." },
+      ),
+    // Gated on the page scan SUCCEEDING (`ok`) — no point fetching translations
+    // when we couldn't even find the page's keys; the scan error wins the stage.
     enabled:
-      Boolean(language) && auth.value.authenticated && pageNodesQuery.data !== undefined,
+      Boolean(language) && auth.value.authenticated && (pageNodesOutcome?.ok ?? false),
     // Translations rarely change during a session and are expensive to fetch;
     // keep them fresh for 30s so toggling Pull off and back on is instant.
     staleTime: 30 * 1000,
   }));
 
-  // Pure derivation: diff is a function of the two queries, so we never have
-  // to imperatively recompute or worry about double-evaluation.
+  const translationsOutcome = $derived(translationsQuery.data ?? null);
+
+  // Pure derivation: diff is a function of the two queries' unwrapped values.
   const diff = $derived<Diff | null>(
-    pageNodesQuery.data && translationsQuery.data
+    pageNodesOutcome?.ok && translationsOutcome?.ok
       ? pullDiff(
-          pageNodesQuery.data,
-          translationsQuery.data,
+          pageNodesOutcome.value,
+          translationsOutcome.value,
           language,
           auth.value.namespacesEnabled,
         )
       : null,
+  );
+
+  // A load failure from either query, surfaced from `.data` (not the adapter's
+  // `.error`). The page-scan error takes precedence — it runs first.
+  const loadError = $derived<string | null>(
+    (pageNodesOutcome && !pageNodesOutcome.ok ? pageNodesOutcome.error : null) ??
+      (translationsOutcome && !translationsOutcome.ok
+        ? translationsOutcome.error
+        : null),
   );
 
   type Stage = "loading" | "diff" | "applying" | "done" | "error";
@@ -142,7 +173,7 @@
   const stage = $derived<Stage>(
     applying
       ? "applying"
-      : applyError || pageNodesQuery.error || translationsQuery.error
+      : applyError || loadError
         ? "error"
         : !language
           ? "error"
@@ -156,10 +187,7 @@
       ? "No language selected."
       : !auth.value.client
         ? "Not connected to Tolgee."
-        : (applyError ??
-          formatQueryError(translationsQuery.error) ??
-          formatQueryError(pageNodesQuery.error) ??
-          null),
+        : (applyError ?? loadError ?? null),
   );
 
   function formatQueryError(err: unknown): string | null {
@@ -191,8 +219,6 @@
     void qc.invalidateQueries({ queryKey: ["page-connected-nodes"] });
     void qc.invalidateQueries({ queryKey: ["translations"] });
   }
-
-  const pageNodes = $derived(pageNodesQuery.data ?? []);
 
   // Build the apply payload from the current diff. We format each node's text
   // up-front so the main thread never has to deal with ICU.
