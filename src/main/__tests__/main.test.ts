@@ -43,7 +43,14 @@ type FakeNode = ReturnType<typeof makeTextNode>;
 type FakeFigma = {
   editorType: "figma" | "dev";
   command: string;
-  currentPage: { selection: unknown[] };
+  currentPage: {
+    selection: unknown[];
+    name: string;
+    loadAsync: () => Promise<void>;
+    getPluginData: (key: string) => string;
+  };
+  root: { getPluginData: (key: string) => string };
+  clientStorage: { getAsync: (key: string) => Promise<unknown> };
   skipInvisibleInstanceChildren: boolean;
   showUI: ReturnType<typeof vi.fn>;
   notify: ReturnType<typeof vi.fn>;
@@ -54,16 +61,28 @@ type FakeFigma = {
 
 /** Installs a fresh `figma` global (+ the two build-time UI-html injected
  *  globals `main.ts` reads at module scope) and imports `main.ts` fresh, so
- *  its top-level `attachBus()` wires `figma.ui.onmessage` for this test. */
+ *  its top-level `attachBus()` wires `figma.ui.onmessage` for this test.
+ *
+ *  `selection` (optional) populates `figma.currentPage.selection` for tests
+ *  that exercise `ui-ready`'s startup scan; the config/pluginData reads all
+ *  return empty (merged config = defaults), which is all those tests need. */
 async function loadMain(
   nodes: FakeNode[],
   editorType: "figma" | "dev" = "figma",
+  selection: FakeNode[] = [],
 ): Promise<FakeFigma> {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const figma: FakeFigma = {
     editorType,
     command: "",
-    currentPage: { selection: [] },
+    currentPage: {
+      selection,
+      name: "Page 1",
+      loadAsync: async () => {},
+      getPluginData: () => "",
+    },
+    root: { getPluginData: () => "" },
+    clientStorage: { getAsync: async () => undefined },
     skipInvisibleInstanceChildren: false,
     showUI: vi.fn(),
     notify: vi.fn(),
@@ -193,5 +212,73 @@ describe("Dev-Mode canvas guard (attachBus + MESSAGE_IMPACT)", () => {
     const calls = figma.ui.postMessage.mock.calls.map((c) => c[0] as { type: string });
     expect(calls.filter((m) => m.type === "apply-translations-result")).toHaveLength(1);
     expect(figma.notify).not.toHaveBeenCalled();
+  });
+});
+
+describe('main.ts on("ui-ready", ...) — config-first init + idempotent scan (task 58/63)', () => {
+  type Posted = { type: string; [k: string]: unknown };
+
+  it("replies with a config-first init immediately, then STREAMS the selection", async () => {
+    const selection = [makeTextNode("1:1", "Hello"), makeTextNode("1:2", "World")];
+    const figma = await loadMain(selection, "figma", selection);
+
+    await figma.ui.onmessage?.({ type: "ui-ready" });
+
+    const calls = figma.ui.postMessage.mock.calls.map((c) => c[0] as Posted);
+    const initIdx = calls.findIndex((m) => m.type === "init");
+    const batchIdx = calls.findIndex((m) => m.type === "selection-batch");
+
+    // (c) init carries config + editorType + pageName …
+    const init = calls[initIdx] as Posted;
+    expect(init).toBeDefined();
+    expect(init.editorType).toBe("figma");
+    expect(init.pageName).toBe("Page 1");
+    expect(init.config).toBeTypeOf("object");
+    // … and NO selection — the nodes arrive via the stream, not the init.
+    expect(init.selectedNodes).toEqual([]);
+    expect(init.hasUserSelection).toBe(true);
+
+    // (b) init goes out BEFORE the first streamed batch.
+    expect(initIdx).toBeGreaterThanOrEqual(0);
+    expect(batchIdx).toBeGreaterThan(initIdx);
+
+    // The streamed batch actually carries the selected nodes.
+    const batch = calls[batchIdx] as Posted & { nodes: unknown[] };
+    expect(batch.nodes).toHaveLength(2);
+  });
+
+  it("runs the scan AT MOST ONCE across repeated ui-ready retries", async () => {
+    const selection = [makeTextNode("1:1", "Hello"), makeTextNode("1:2", "World")];
+    const figma = await loadMain(selection, "figma", selection);
+
+    // Two retries land (the UI resends ui-ready until it sees init).
+    await figma.ui.onmessage?.({ type: "ui-ready" });
+    await figma.ui.onmessage?.({ type: "ui-ready" });
+
+    const calls = figma.ui.postMessage.mock.calls.map((c) => c[0] as Posted);
+
+    // Both ui-readys reply with an init (cheap) …
+    expect(calls.filter((m) => m.type === "init")).toHaveLength(2);
+    // … but the expensive scan ran exactly once: one pending, one batch set,
+    // one done. A second scan would double these.
+    expect(calls.filter((m) => m.type === "selection-pending")).toHaveLength(1);
+    expect(calls.filter((m) => m.type === "selection-batch")).toHaveLength(1);
+    expect(calls.filter((m) => m.type === "selection-done")).toHaveLength(1);
+  });
+
+  it("with no selection: config-first init, an (empty) scan, done total 0", async () => {
+    const figma = await loadMain([], "figma", []);
+
+    await figma.ui.onmessage?.({ type: "ui-ready" });
+
+    const calls = figma.ui.postMessage.mock.calls.map((c) => c[0] as Posted);
+    const init = calls.find((m) => m.type === "init") as Posted;
+    expect(init.hasUserSelection).toBe(false);
+    expect(init.selectedNodes).toEqual([]);
+    // No nodes to stream → no batch, and done reports an empty selection.
+    expect(calls.filter((m) => m.type === "selection-batch")).toHaveLength(0);
+    const done = calls.find((m) => m.type === "selection-done") as Posted;
+    expect(done.total).toBe(0);
+    expect(done.hasUserSelection).toBe(false);
   });
 });

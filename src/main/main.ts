@@ -45,6 +45,14 @@ attachBus();
 // slow older scan can never overwrite a newer selection in the UI.
 let scanGeneration = 0;
 
+// Whether the first `ui-ready` has already kicked off the startup selection
+// scan. The UI retries `ui-ready` every 400ms until it receives `init` (to
+// survive the race where this main-side listener isn't attached yet), so this
+// handler can fire more than once — but the (potentially multi-second) scan
+// must run AT MOST ONCE. A repeat `ui-ready` just re-sends the cheap
+// config-first `init`; it never launches another scan.
+let initHandled = false;
+
 async function emitSelection(sendPending = true): Promise<void> {
   const generation = ++scanGeneration;
   const isStale = () => generation !== scanGeneration;
@@ -146,16 +154,27 @@ figma.on("close", () => {
 
 on("ui-ready", async () => {
   const config = await readMergedConfig();
-  const { nodes } = await getSelectionInfo();
 
+  // Config-FIRST init: reply immediately with everything cheap to read and
+  // `selectedNodes: []`. The real selection streams in right after via the
+  // generation-tokened `selection-pending`/`selection-batch`/`selection-done`
+  // path (same as `selectionchange`). Because this reply is instant, the UI's
+  // `ui-ready` retry stops within a frame — so a slow scan can no longer pile
+  // up one full scan per 400ms retry, and a late `init` from an earlier retry
+  // can no longer overwrite a newer streamed selection.
   send({
     type: "init",
     config,
-    selectedNodes: nodes,
+    selectedNodes: [],
     hasUserSelection: figma.currentPage.selection.length > 0,
     editorType: figma.editorType as "figma" | "dev",
     pageName: figma.currentPage.name,
   });
+
+  // A retry landed after the first init already ran the scan — re-sending the
+  // (cheap) init above is enough; never launch a second scan.
+  if (initHandled) return;
+  initHandled = true;
 
   // Forward the invoked plugin command (if any) so the UI can route to the
   // matching screen after it has finished bootstrapping.
@@ -166,6 +185,12 @@ on("ui-ready", async () => {
   if (cmd && knownCommands.includes(cmd)) {
     send({ type: "command", command: cmd });
   }
+
+  // Stream the initial selection with a generation token, exactly like a
+  // `selectionchange` — the UI already renders `selection-pending`/`-batch`/
+  // `-done` incrementally, so a large startup selection paints progressively
+  // instead of blocking `init` on a full scan.
+  await emitSelection();
 });
 
 on("resize", (msg) => {

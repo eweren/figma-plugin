@@ -92,9 +92,22 @@
     attachBus();
     let initReceived = false;
     const unsubInit = on("init", (msg) => {
+      // The `ui-ready` retry below can make `init` arrive more than once.
+      // Bootstrap only on the first: a repeat init carries `selectedNodes: []`
+      // and would otherwise wipe a selection the stream has already delivered.
+      if (initReceived) return;
       initReceived = true;
       appState.setConfig(msg.config);
       appState.setSelection(msg.selectedNodes, msg.hasUserSelection);
+      // Figma delivers `init` with NO nodes — they stream in right after
+      // (selection-pending/-batch/-done). Show the scanning state now so the
+      // Index doesn't flash an empty list before the first batch; the following
+      // `selection-pending` upgrades it to the overlay immediately. The e2e
+      // host, which puts the nodes IN the init, has a non-empty selection here
+      // and skips this.
+      if (msg.hasUserSelection && msg.selectedNodes.length === 0) {
+        appState.setScanning();
+      }
       appState.setEditorType(msg.editorType);
       appState.setPageName(msg.pageName);
       if (msg.initialRoute) {
