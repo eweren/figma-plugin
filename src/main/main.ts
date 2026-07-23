@@ -177,16 +177,6 @@ on("ui-ready", async () => {
   if (initHandled) return;
   initHandled = true;
 
-  // Forward the invoked plugin command (if any) so the UI can route to the
-  // matching screen after it has finished bootstrapping.
-  const knownCommands = ["open", "open-on-node"] as const;
-  type KnownCommand = (typeof knownCommands)[number];
-  const cmd = figma.command as KnownCommand | "";
-
-  if (cmd && knownCommands.includes(cmd)) {
-    send({ type: "command", command: cmd });
-  }
-
   // Stream the initial selection with a generation token, exactly like a
   // `selectionchange` — the UI already renders `selection-pending`/`-batch`/
   // `-done` incrementally, so a large startup selection paints progressively

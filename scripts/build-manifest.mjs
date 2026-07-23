@@ -37,10 +37,10 @@ const manifest = {
     reasoning: 'Self-hosted Tolgee instances may run on arbitrary domains.',
   },
   // No `menu`: with one, Figma shows a submenu on launch instead of opening the
-  // plugin directly.
-  relaunchButtons: [
-    { command: 'open-on-node', name: 'Edit Tolgee key', multipleSelection: false },
-  ],
+  // plugin directly. No `relaunchButtons`: a canvas-level "Edit Tolgee key"
+  // shortcut was scaffolded but never wired (nothing ever called
+  // `setRelaunchData`, so the button never appeared) — dropped to match
+  // upstream, which has none.
 };
 
 if (!fs.existsSync(distDir)) {

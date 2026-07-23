@@ -126,9 +126,6 @@
       appState.setPageName(msg.pageName);
       void maybeBootstrapAuth(msg.config);
     });
-    const unsubCmd = on("command", (_msg) => {
-      // TODO: route commands (open / open-on-node)
-    });
     // Writes no longer trigger a whole-selection re-scan on the main thread;
     // instead their results carry fresh snapshots of just the written nodes.
     // Patch them into the selection here so every write path (inline edits,
@@ -175,7 +172,6 @@
       unsubDone();
       unsubCfg();
       unsubPage();
-      unsubCmd();
       unsubWriteProgress();
       unsubNodesSet();
       unsubApplied();

@@ -178,10 +178,6 @@ export type MainToUi =
       /** Connected strings the source page lost since the copy was made. */
       removedCount?: number;
       error?: string;
-    }
-  | {
-      type: "command";
-      command: "open" | "open-on-node";
     };
 
 /**
