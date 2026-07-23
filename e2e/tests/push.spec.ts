@@ -188,10 +188,10 @@ test.describe("Push view", () => {
     await expect(pushButton).toBeDisabled();
   });
 
-  test("shows no nodes message when selection has no connected keys", async ({
+  test("shows a 'nothing to upload' message (not a spinner) when no keys are connected", async ({
     page,
   }) => {
-    // An unconnected node (no key) — the diff query won't run.
+    // An unconnected node (no key) — the diff query is gated OFF.
     const node = createTestNode({ text: "Unconnected label" });
 
     await page.goto(
@@ -207,13 +207,14 @@ test.describe("Push view", () => {
 
     await ui.getByRole("button", { name: /Push/ }).click();
 
-    // With no connected nodes the diff never runs; the Push button remains
-    // disabled (since there are no keys to push).
-    await expect(
-      ui.getByRole("heading", { name: /Push to Tolgee/ }),
-    ).toBeVisible({ timeout: 5_000 });
-    // With no connected keys the diff never runs — the footer "Push to Tolgee"
-    // action button is not rendered at all.
+    // A disabled query still reports `isPending`, so without the empty-state
+    // guard the "Computing changes…" card would spin forever. It must instead
+    // show the empty-state message and never the spinner.
+    await expect(ui.getByText("No connected strings to upload.")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(ui.getByText("Computing changes…")).not.toBeVisible();
+    // The diff never runs → the footer "Push to Tolgee" action isn't rendered.
     await expect(ui.getByRole("button", { name: "Push to Tolgee" })).not.toBeVisible();
   });
 

@@ -543,7 +543,14 @@
   />
 
   <div class="flex-1 overflow-auto p-3 space-y-3">
-    {#if diffQuery.isPending}
+    {#if connectedNodes.length === 0}
+      <!-- Nothing to upload: the selection has no strings connected to a Tolgee
+           key (empty frame, all-ignored, or unconnected texts). The diff query
+           is gated OFF in that case, and a disabled query reports `isPending`,
+           so without this branch the "Computing changes…" card below would spin
+           forever. Must stay FIRST so it wins over that pending state. -->
+      <Message variant="info">No connected strings to upload.</Message>
+    {:else if diffQuery.isPending}
       <Card>
         <ProgressBar
           loaded={diffProgress?.done ?? 0}

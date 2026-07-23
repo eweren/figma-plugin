@@ -66,6 +66,11 @@
           where: "Push.svelte · diff empty and no screenshot-only upload",
         },
         {
+          variant: "info",
+          text: "No connected strings to upload.",
+          where: "Push.svelte · selection has no strings connected to a Tolgee key (empty frame, all-ignored, or unconnected texts) — the diff query is gated off",
+        },
+        {
           variant: "success",
           text: "Uploaded {n} key(s) to Tolgee.",
           where: "Push.svelte · done stage (+ toast)",
