@@ -103,7 +103,7 @@ function loadAvailableFontsOnce(): Promise<Font[]> {
 // language pages rewrite the same font set page after page.
 const loadedFonts = new Set<string>();
 
-export async function loadFontCached(font: FontName): Promise<void> {
+async function loadFontCached(font: FontName): Promise<void> {
   const key = `${font.family}\0${font.style}`;
   if (loadedFonts.has(key)) return;
   await figma.loadFontAsync(font);

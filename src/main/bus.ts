@@ -34,8 +34,9 @@ export function attachBus(): void {
     if (handler) {
       await handler(msg);
     } else {
-      // TODO: implement — no handler registered for this UiToMain type yet.
-      console.log("[tolgee:main] unhandled message", msg);
+      // Log only the type, never the whole message — some UI→main messages
+      // carry the API key (e.g. save-config), which must not leak to the console.
+      console.warn("[tolgee:main] unhandled message", msg.type);
     }
   };
 }

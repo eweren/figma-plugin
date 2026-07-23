@@ -4,18 +4,6 @@ import { type IgnoreSettings, shouldIgnoreNode } from "./filter";
 import { getNodeInfo } from "./getNodeInfo";
 
 /**
- * Load the current page (no-op if already loaded) and return every `TextNode`
- * on it. Uses `findAllWithCriteria`, which short-circuits inside the Figma
- * runtime instead of recursing through every child in the JS bridge.
- */
-export const scanCurrentPageTextNodes = async (): Promise<TextNode[]> => {
-  await figma.currentPage.loadAsync();
-  // TODO: for very large pages we may want to yield to the event loop here
-  // (e.g. via `setTimeout`/`requestAnimationFrame`) once we have telemetry.
-  return figma.currentPage.findAllWithCriteria({ types: ["TEXT"] });
-};
-
-/**
  * Return only the text nodes on the current page that carry our plugin data
  * key. The `pluginData.keys` filter is a 2024 addition to the Plugin API and
  * works with `api: 1.0.0` + `documentAccess: "dynamic-page"`, which is what

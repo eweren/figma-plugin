@@ -79,10 +79,6 @@ export function writeDocumentSettings(settings: Partial<CurrentDocumentSettings>
   figma.root.setPluginData(TOLGEE_PLUGIN_CONFIG_NAME, JSON.stringify(settings));
 }
 
-export function deleteDocumentSettings(): void {
-  figma.root.setPluginData(TOLGEE_PLUGIN_CONFIG_NAME, "");
-}
-
 // --- Page (PageNode pluginData) ----------------------------------------------
 
 export function readPageSettings(page: PageNode): Partial<CurrentPageSettings> {
@@ -96,8 +92,4 @@ export function writePageSettings(page: PageNode, settings: Partial<CurrentPageS
     return;
   }
   page.setPluginData(TOLGEE_PLUGIN_CONFIG_NAME, JSON.stringify(settings));
-}
-
-export function deletePageSettings(page: PageNode): void {
-  page.setPluginData(TOLGEE_PLUGIN_CONFIG_NAME, "");
 }

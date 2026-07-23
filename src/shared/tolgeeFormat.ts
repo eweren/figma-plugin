@@ -119,7 +119,7 @@ function parsePlural(input: string): TolgeeFormat | null {
  *
  * Exported so the tokenizer can use it outside `parsePlural`.
  */
-export function findMatchingBrace(input: string, start: number): number {
+function findMatchingBrace(input: string, start: number): number {
   if (input[start] !== "{") return -1;
   let depth = 0;
   let i = start;

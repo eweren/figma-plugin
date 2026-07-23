@@ -34,7 +34,7 @@ export function keyContextForNode(node: NodeInfo): KeyFormatContext {
  * Returns "" when prefill is off or no template is configured — callers treat
  * an empty result as "nothing to generate".
  */
-export function prefillKeyFor(
+function prefillKeyFor(
   node: NodeInfo,
   config: Partial<TolgeeConfig> | null | undefined,
 ): string {
