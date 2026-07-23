@@ -56,6 +56,7 @@ export const getNodeInfo = (node: TextNode, characters?: string): NodeInfo => {
     pluralParamValue: pluginData.pluralParamValue,
     paramsValues: pluginData.paramsValues,
     connected: Boolean(pluginData.connected),
+    prefilledKey: pluginData.prefilledKey,
   };
 };
 
@@ -76,6 +77,9 @@ export const setNodeInfo = (node: TextNode, partial: Partial<NodeInfo>): NodeInf
       "pluralParamValue" in partial ? partial.pluralParamValue : current.pluralParamValue,
     paramsValues: "paramsValues" in partial ? partial.paramsValues : current.paramsValues,
     connected: Boolean(partial.connected ?? current.connected),
+    // Only the prefill write sets this; a manual key edit omits it, leaving the
+    // stale marker so `key !== prefilledKey` and the key is preserved on clear.
+    prefilledKey: "prefilledKey" in partial ? partial.prefilledKey : current.prefilledKey,
   };
 
   // Strip explicit `undefined` values so the serialized form stays compact and

@@ -35,6 +35,15 @@ export interface NodeInfo {
   key: string;
   ns: string | undefined;
   connected: boolean;
+  /**
+   * The exact key value the auto-prefill last generated for this node
+   * (persisted). Provenance marker so turning "Prefill key format" off can wipe
+   * ONLY untouched auto keys: `clearPrefilledKeys` clears the key only while it
+   * still equals this. Any manual edit changes `key` but not this marker, so
+   * hand-typed/edited keys are preserved; a format change re-generates both, so
+   * they stay in sync. Absent on manually-keyed nodes and on data from the
+   * published plugin (which ignores this extra field — rollback-safe). */
+  prefilledKey?: string;
   visible?: boolean;
   /**
    * Names of the node's relevant ancestors, resolved from the live Figma tree

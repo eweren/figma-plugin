@@ -115,7 +115,10 @@
   $effect(() => {
     const prefills = pendingPrefills(appState.value.selectedNodes, appState.value.config);
     for (const p of prefills) {
-      queueNodeSave(p.id, { key: p.key, ns: p.ns, connected: false });
+      // `prefilledKey` marks this as an auto value so turning prefill off later
+      // clears only untouched auto keys (see `clearPrefilledKeys`); it always
+      // equals `key` at write time and re-syncs on every format regeneration.
+      queueNodeSave(p.id, { key: p.key, ns: p.ns, connected: false, prefilledKey: p.key });
     }
   });
 

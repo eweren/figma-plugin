@@ -46,9 +46,10 @@ afterEach(() => {
 });
 
 describe("clearPrefilledKeys", () => {
-  it("clears the key of unconnected nodes that have one, leaving other fields", () => {
+  it("clears an UNTOUCHED auto key (key === prefilledKey), dropping the marker", () => {
     const node = makeTextNode("1:1", {
       key: "auto.generated",
+      prefilledKey: "auto.generated",
       connected: false,
       translation: "Hello",
       ns: "web",
@@ -57,6 +58,7 @@ describe("clearPrefilledKeys", () => {
 
     return clearPrefilledKeys().then((cleared) => {
       expect(cleared).toBe(1);
+      // Key wiped, marker dropped, other fields untouched.
       expect(node._data()).toEqual({
         key: "",
         connected: false,
@@ -66,8 +68,35 @@ describe("clearPrefilledKeys", () => {
     });
   });
 
-  it("never touches CONNECTED nodes (real Tolgee links)", async () => {
-    const node = makeTextNode("1:1", { key: "linked", connected: true });
+  it("PRESERVES an edited key (key !== prefilledKey) — the reported bug", async () => {
+    // Prefill generated "auto.generated", the user edited it to "my.custom.key".
+    const node = makeTextNode("1:1", {
+      key: "my.custom.key",
+      prefilledKey: "auto.generated",
+      connected: false,
+    });
+    installFigma([[node]]);
+
+    const cleared = await clearPrefilledKeys();
+    expect(cleared).toBe(0);
+    expect(node._data()?.key).toBe("my.custom.key");
+  });
+
+  it("PRESERVES a manually-typed key that was never auto (no marker)", async () => {
+    const node = makeTextNode("1:1", { key: "hand.typed", connected: false });
+    installFigma([[node]]);
+
+    const cleared = await clearPrefilledKeys();
+    expect(cleared).toBe(0);
+    expect(node._data()?.key).toBe("hand.typed");
+  });
+
+  it("never touches CONNECTED nodes, even if key === prefilledKey", async () => {
+    const node = makeTextNode("1:1", {
+      key: "linked",
+      prefilledKey: "linked",
+      connected: true,
+    });
     installFigma([[node]]);
 
     const cleared = await clearPrefilledKeys();
@@ -79,27 +108,28 @@ describe("clearPrefilledKeys", () => {
     const node = makeTextNode("1:1", { key: "", connected: false });
     installFigma([[node]]);
 
-    const cleared = await clearPrefilledKeys();
-    expect(cleared).toBe(0);
+    expect(await clearPrefilledKeys()).toBe(0);
   });
 
-  it("clears across every page in the document", async () => {
-    const p1 = makeTextNode("1:1", { key: "a", connected: false });
-    const p2 = makeTextNode("2:1", { key: "b", connected: false });
-    const p2b = makeTextNode("2:2", { key: "c", connected: true }); // connected → kept
-    installFigma([[p1], [p2, p2b]]);
+  it("clears matching auto keys across every page, keeping edited and connected ones", async () => {
+    const autoP1 = makeTextNode("1:1", { key: "a", prefilledKey: "a", connected: false });
+    const editedP2 = makeTextNode("2:1", { key: "b.edited", prefilledKey: "b", connected: false });
+    const autoP2 = makeTextNode("2:2", { key: "c", prefilledKey: "c", connected: false });
+    const connectedP2 = makeTextNode("2:3", { key: "d", prefilledKey: "d", connected: true });
+    installFigma([[autoP1], [editedP2, autoP2, connectedP2]]);
 
     const cleared = await clearPrefilledKeys();
     expect(cleared).toBe(2);
-    expect(p1._data()?.key).toBe("");
-    expect(p2._data()?.key).toBe("");
-    expect(p2b._data()?.key).toBe("c");
+    expect(autoP1._data()?.key).toBe("");
+    expect(autoP2._data()?.key).toBe("");
+    expect(editedP2._data()?.key).toBe("b.edited"); // edited → kept
+    expect(connectedP2._data()?.key).toBe("d"); // connected → kept
   });
 
   it("ignores nodes whose pluginData is unparseable, without throwing", async () => {
     const bad = makeTextNode("1:1", null);
     bad.setPluginData(TOLGEE_NODE_INFO, "{not json");
-    const good = makeTextNode("1:2", { key: "x", connected: false });
+    const good = makeTextNode("1:2", { key: "x", prefilledKey: "x", connected: false });
     installFigma([[bad, good]]);
 
     const cleared = await clearPrefilledKeys();
