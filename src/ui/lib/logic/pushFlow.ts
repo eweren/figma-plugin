@@ -1,5 +1,6 @@
 import type { FrameScreenshot, NodeInfo } from "$shared/types";
 import type { TolgeeClient } from "$ui/lib/api/client";
+import { effectiveNs } from "$ui/lib/api/keyExistence";
 import { fetchRemoteKeys } from "$ui/lib/api/keysByName";
 import {
   type PushKeysResult,
@@ -37,12 +38,29 @@ export type CanonicalKeyState = {
   isPlural: boolean;
 };
 
-export function canonicalKey(n: NodeInfo): string {
-  return `${n.ns ?? ""}|${n.key}`;
+/**
+ * Map key for a (namespace, key) pair, normalised through `effectiveNs`.
+ *
+ * When the project has namespaces DISABLED the whole push pipeline drops a
+ * node's stored `ns` (see `buildPayload` / `pushDiff` / `keyExistence`), so the
+ * key lands in — and the server reports it back from — the DEFAULT namespace.
+ * A node can still carry a stale, invisible `ns` (the badge is hidden with the
+ * feature off). Without this normalisation such a node keys as `"web|greeting"`
+ * while the server's canonical row / conflict keys as `"|greeting"`, so the
+ * post-push connect-back and conflict resolution silently miss it — phantom
+ * "manual change" diffs and no-op OVERRIDEs. With the feature ON, `effectiveNs`
+ * is a passthrough, so behaviour there is unchanged.
+ */
+export function canonicalKey(n: NodeInfo, hasNamespacesEnabled: boolean): string {
+  return `${effectiveNs(n.ns, hasNamespacesEnabled) ?? ""}|${n.key}`;
 }
 
-export function resolutionKey(keyName: string, keyNamespace: string | undefined): string {
-  return `${keyNamespace ?? ""}|${keyName}`;
+export function resolutionKey(
+  keyName: string,
+  keyNamespace: string | undefined,
+  hasNamespacesEnabled: boolean,
+): string {
+  return `${effectiveNs(keyNamespace, hasNamespacesEnabled) ?? ""}|${keyName}`;
 }
 
 /**
@@ -73,7 +91,10 @@ export async function fetchCanonicalAfterPush(
   for (const k of fetched) {
     const text = k.translations?.[ctx.language]?.text;
     if (typeof text !== "string") continue;
-    result.set(`${k.keyNamespace ?? ""}|${k.keyName}`, {
+    // Key by the SAME normalised (ns, key) `buildConnectBackUpdates` looks up
+    // with — the server row's ns is already the effective one, but routing it
+    // through the shared helper keeps the two sides provably consistent.
+    result.set(resolutionKey(k.keyName, k.keyNamespace, ctx.hasNamespacesEnabled), {
       translation: text,
       isPlural: Boolean(k.keyIsPlural),
     });
@@ -106,6 +127,7 @@ export function buildConnectBackUpdates(
   diff: PushDiff,
   connectedNodes: NodeInfo[],
   canonical: Map<string, CanonicalKeyState> | null,
+  hasNamespacesEnabled: boolean,
 ): ConnectBackUpdate[] {
   const droppedConflictIds = new Set(
     diff.conflictingNodes.flatMap((g) => g.nodes.slice(1).map((n) => n.id)),
@@ -115,7 +137,7 @@ export function buildConnectBackUpdates(
   return connectedNodes
     .filter((n) => !droppedConflictIds.has(n.id) && !missingIds.has(n.id))
     .map((n) => {
-      const remote = canonical?.get(canonicalKey(n));
+      const remote = canonical?.get(canonicalKey(n, hasNamespacesEnabled));
       return {
         id: n.id,
         info: {
@@ -327,10 +349,13 @@ export async function applyConfiguredTags(opts: ApplyTagsOptions): Promise<void>
  */
 export function defaultResolutions(
   list: SimpleImportConflictResult[],
+  hasNamespacesEnabled: boolean,
 ): Record<string, PushConflictResolution> {
   const next: Record<string, PushConflictResolution> = {};
   for (const c of list) {
-    next[resolutionKey(c.keyName, c.keyNamespace)] = c.isOverridable ? "OVERRIDE" : "KEEP";
+    next[resolutionKey(c.keyName, c.keyNamespace, hasNamespacesEnabled)] = c.isOverridable
+      ? "OVERRIDE"
+      : "KEEP";
   }
   return next;
 }

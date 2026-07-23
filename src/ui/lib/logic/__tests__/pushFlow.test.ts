@@ -71,14 +71,22 @@ function makeScreenshot(keys: Array<{ key: string; ns?: string }>): FrameScreens
 // ---------------------------------------------------------------------------
 
 describe("canonicalKey", () => {
-  it("formats ns|key when ns is provided", () => {
+  it("formats ns|key when ns is provided (namespaces enabled)", () => {
     const node = makeNode({ key: "greeting", ns: "common" });
-    expect(canonicalKey(node)).toBe("common|greeting");
+    expect(canonicalKey(node, true)).toBe("common|greeting");
   });
 
   it("formats |key when ns is undefined", () => {
     const node = makeNode({ key: "greeting", ns: undefined });
-    expect(canonicalKey(node)).toBe("|greeting");
+    expect(canonicalKey(node, true)).toBe("|greeting");
+  });
+
+  it("ignores a stale ns when namespaces are DISABLED (matches the server's default-ns row)", () => {
+    // A node can carry a stale, invisible ns even on a ns-disabled project.
+    const node = makeNode({ key: "greeting", ns: "web" });
+    expect(canonicalKey(node, false)).toBe("|greeting");
+    // …but with the feature ON the ns is honoured.
+    expect(canonicalKey(node, true)).toBe("web|greeting");
   });
 });
 
@@ -87,12 +95,19 @@ describe("canonicalKey", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolutionKey", () => {
-  it("formats ns|keyName when namespace is provided", () => {
-    expect(resolutionKey("greeting", "common")).toBe("common|greeting");
+  it("formats ns|keyName when namespace is provided (namespaces enabled)", () => {
+    expect(resolutionKey("greeting", "common", true)).toBe("common|greeting");
   });
 
   it("formats |keyName when namespace is undefined", () => {
-    expect(resolutionKey("greeting", undefined)).toBe("|greeting");
+    expect(resolutionKey("greeting", undefined, true)).toBe("|greeting");
+  });
+
+  it("ignores a stale namespace when namespaces are DISABLED", () => {
+    // The server reports conflicts for the default ns; a local node's stale ns
+    // must normalise to the same key so its resolution is found.
+    expect(resolutionKey("greeting", "web", false)).toBe("|greeting");
+    expect(resolutionKey("greeting", "web", true)).toBe("web|greeting");
   });
 });
 
@@ -103,23 +118,23 @@ describe("resolutionKey", () => {
 describe("defaultResolutions", () => {
   it("returns OVERRIDE for isOverridable:true conflicts", () => {
     const conflicts = [makeConflict({ keyName: "k1", isOverridable: true })];
-    const result = defaultResolutions(conflicts);
+    const result = defaultResolutions(conflicts, true);
     expect(result["|k1"]).toBe("OVERRIDE");
   });
 
   it("returns KEEP for isOverridable:false conflicts", () => {
     const conflicts = [makeConflict({ keyName: "k1", isOverridable: false })];
-    const result = defaultResolutions(conflicts);
+    const result = defaultResolutions(conflicts, true);
     expect(result["|k1"]).toBe("KEEP");
   });
 
   it("returns empty object for empty list", () => {
-    expect(defaultResolutions([])).toEqual({});
+    expect(defaultResolutions([], true)).toEqual({});
   });
 
   it("uses resolutionKey format (ns|keyName) for map keys", () => {
     const conflicts = [makeConflict({ keyName: "btn", keyNamespace: "ui", isOverridable: true })];
-    const result = defaultResolutions(conflicts);
+    const result = defaultResolutions(conflicts, true);
     expect(Object.keys(result)).toContain("ui|btn");
   });
 
@@ -128,9 +143,19 @@ describe("defaultResolutions", () => {
       makeConflict({ keyName: "k1", isOverridable: true }),
       makeConflict({ keyName: "k2", isOverridable: false }),
     ];
-    const result = defaultResolutions(conflicts);
+    const result = defaultResolutions(conflicts, true);
     expect(result["|k1"]).toBe("OVERRIDE");
     expect(result["|k2"]).toBe("KEEP");
+  });
+
+  it("REGRESSION: ns-disabled — a default-ns conflict resolves for a node with a stale ns", () => {
+    // The server reports the conflict under the DEFAULT namespace…
+    const resolutions = defaultResolutions(
+      [makeConflict({ keyName: "greeting", keyNamespace: undefined, isOverridable: true })],
+      false,
+    );
+    // …and a local node that still carries a stale "web" ns must find it.
+    expect(resolutions[resolutionKey("greeting", "web", false)]).toBe("OVERRIDE");
   });
 });
 
@@ -381,6 +406,7 @@ describe("buildConnectBackUpdates", () => {
       makeDiff({ newKeys: [a] }),
       [a, b],
       canonical,
+      true,
     );
 
     // Both nodes sharing the pushed key get connected (bulk-assign case).
@@ -398,6 +424,7 @@ describe("buildConnectBackUpdates", () => {
       makeDiff(),
       [withTranslation, withoutAny],
       null,
+      true,
     );
 
     expect(updates[0]?.info.translation).toBe("Saved");
@@ -419,6 +446,7 @@ describe("buildConnectBackUpdates", () => {
       }),
       [kept, dropped, missing, ok],
       null,
+      true,
     );
 
     expect(updates.map((u) => u.id)).toEqual(["kept", "ok"]);
@@ -440,11 +468,49 @@ describe("buildConnectBackUpdates", () => {
     });
     const currentSelection = [strayNode];
 
-    const updates = buildConnectBackUpdates(snapshotDiff, snapshotSelection, null);
+    const updates = buildConnectBackUpdates(snapshotDiff, snapshotSelection, null, true);
 
     // Only the pushed node gets connected — the stray selection must not
     // appear (previously it got `connected: true` with a bogus baseline).
     expect(updates.map((u) => u.id)).toEqual(["pushed"]);
     expect(currentSelection.every((n) => !updates.some((u) => u.id === n.id))).toBe(true);
+  });
+
+  it("REGRESSION: ns-disabled — a node with a stale ns still gets the canonical translation", () => {
+    // Server (namespaces disabled) returns the key under the DEFAULT namespace…
+    const canonical = new Map([
+      ["|greeting", { translation: "Canonical", isPlural: false }],
+    ]);
+    // …while the local node still carries a stale, invisible "web" ns.
+    const node = makeNode({ id: "n", key: "greeting", ns: "web", translation: "Old" });
+
+    const updates = buildConnectBackUpdates(
+      makeDiff({ newKeys: [node] }),
+      [node],
+      canonical,
+      false,
+    );
+
+    // Before the fix the lookup ("web|greeting") missed the map ("|greeting")
+    // and fell back to the node's own stale "Old" → phantom diff next push.
+    expect(updates[0]?.info.translation).toBe("Canonical");
+  });
+
+  it("with namespaces ENABLED, ns is honoured — no cross-namespace match", () => {
+    // A default-ns canonical row must NOT feed a node living in a real ns.
+    const canonical = new Map([
+      ["|greeting", { translation: "Default ns", isPlural: false }],
+    ]);
+    const node = makeNode({ id: "n", key: "greeting", ns: "web", translation: "Own" });
+
+    const updates = buildConnectBackUpdates(
+      makeDiff({ newKeys: [node] }),
+      [node],
+      canonical,
+      true,
+    );
+
+    // "web|greeting" ≠ "|greeting" → falls back to the node's own translation.
+    expect(updates[0]?.info.translation).toBe("Own");
   });
 });

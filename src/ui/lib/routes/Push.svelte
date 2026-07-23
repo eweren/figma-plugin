@@ -301,9 +301,11 @@
     // keeps full screenshot coverage, like the original plugin. Scoped to the
     // pushed keys so we never export a frame that only holds keys we're not
     // pushing (no wasted exports). `mapScreenshotsForNode` attaches them by key.
-    const pushedKeys = new Set(nodesToPush.map((n) => resolutionKey(n.key, n.ns)));
+    const pushedKeys = new Set(
+      nodesToPush.map((n) => resolutionKey(n.key, n.ns, hasNamespacesEnabled)),
+    );
     const screenshotNodes = snapshot.connectedNodes.filter((n) =>
-      pushedKeys.has(resolutionKey(n.key, n.ns)),
+      pushedKeys.has(resolutionKey(n.key, n.ns, hasNamespacesEnabled)),
     );
 
     try {
@@ -343,7 +345,7 @@
 
       if (result.unresolvedConflicts.length > 0) {
         conflicts = result.unresolvedConflicts;
-        resolutions = defaultResolutions(result.unresolvedConflicts);
+        resolutions = defaultResolutions(result.unresolvedConflicts, hasNamespacesEnabled);
         stage = "conflict";
         return;
       }
@@ -371,12 +373,14 @@
 
     const nodesByKey = new Map<string, NodeInfo>();
     for (const n of nodesToPushFrom(snapshot.diff)) {
-      nodesByKey.set(resolutionKey(n.key, n.ns), n);
+      nodesByKey.set(resolutionKey(n.key, n.ns, hasNamespacesEnabled), n);
     }
 
     const subset: NodeInfo[] = [];
     for (const c of conflicts) {
-      const node = nodesByKey.get(resolutionKey(c.keyName, c.keyNamespace));
+      const node = nodesByKey.get(
+        resolutionKey(c.keyName, c.keyNamespace, hasNamespacesEnabled),
+      );
       if (node) subset.push(node);
     }
 
@@ -394,12 +398,13 @@
         screenshots: [],
         uploadedImageIdByScreenshot: new Map(),
         resolutionMode: "FORCE_OVERRIDE",
-        resolutionFor: (k, ns) => resolutions[resolutionKey(k, ns)] ?? "KEEP",
+        resolutionFor: (k, ns) =>
+          resolutions[resolutionKey(k, ns, hasNamespacesEnabled)] ?? "KEEP",
       });
 
       conflicts = result.unresolvedConflicts;
       if (conflicts.length > 0) {
-        resolutions = defaultResolutions(conflicts);
+        resolutions = defaultResolutions(conflicts, hasNamespacesEnabled);
         stage = "conflict";
         return;
       }
@@ -456,6 +461,7 @@
         snapshot.diff,
         snapshot.connectedNodes,
         canonical,
+        hasNamespacesEnabled,
       ),
     });
 
@@ -476,7 +482,7 @@
   ): void {
     resolutions = {
       ...resolutions,
-      [resolutionKey(keyName, ns)]: resolution,
+      [resolutionKey(keyName, ns, hasNamespacesEnabled)]: resolution,
     };
   }
 
@@ -574,7 +580,7 @@
               remoteText={remoteTextFor(conflict)}
               isOverridable={conflict.isOverridable}
               resolution={resolutions[
-                resolutionKey(conflict.keyName, conflict.keyNamespace)
+                resolutionKey(conflict.keyName, conflict.keyNamespace, hasNamespacesEnabled)
               ] ?? (conflict.isOverridable ? "OVERRIDE" : "KEEP")}
               onResolutionChange={handleResolutionChange}
             />
