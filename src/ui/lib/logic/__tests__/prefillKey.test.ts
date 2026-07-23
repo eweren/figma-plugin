@@ -99,6 +99,22 @@ describe("pendingPrefills", () => {
     ]);
   });
 
+  it("finding 65: after a prefill-off reset + cleared key, re-enabling the SAME format regenerates", () => {
+    // Turning prefill off does two things in the app: the main thread clears
+    // the persisted key (clearPrefilledKeys), and App.svelte resets this
+    // session memory. Simulate both, then re-enable with the same format.
+    const node = makeNode({ id: "1:1" });
+    const [applied] = pendingPrefills([node], CONFIG); // generated + settled
+    expect(applied?.key).toBe("Sign in");
+
+    resetPrefillSettled(); // App.svelte's half of the undo
+    const cleared = makeNode({ id: "1:1", key: "" }); // main thread cleared it
+
+    // Without the reset the settled memory would skip this node and leave the
+    // key empty; with it, re-enabling regenerates (production parity).
+    expect(pendingPrefills([cleared], CONFIG)).toEqual([{ id: "1:1", key: "Sign in", ns: "" }]);
+  });
+
   it("waits for parent names before generating from a parent-based format", () => {
     const node = makeNode({ id: "1:1", key: "old" });
     pendingPrefills([node], CONFIG); // decided under {elementText}

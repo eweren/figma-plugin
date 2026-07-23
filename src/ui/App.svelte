@@ -11,6 +11,7 @@
   import { getProjectMeta } from "./lib/api/projectMeta";
   import { hydratePickers, hydrateBranches } from "./lib/api/pickers";
   import { decideAuthBootstrap } from "./lib/logic/authBootstrap";
+  import { resetPrefillSettled } from "./lib/logic/prefillKey";
   import IndexView from "./lib/routes/Index.svelte";
   import PageSetup from "./lib/routes/PageSetup.svelte";
   import CopyView from "./lib/routes/CopyView.svelte";
@@ -87,6 +88,19 @@
     // swallowed — the UI gracefully falls back to "current value only".
     void hydratePickers(client);
   }
+
+  // Reset the session-scoped prefill memory when "Prefill key format" is turned
+  // OFF, so a later re-enable regenerates keys instead of the settled memory
+  // skipping them. The main thread simultaneously clears the persisted keys
+  // (see main.ts `save-config` / `clearPrefilledKeys`); this is the UI half of
+  // that undo. Route-independent — App is always mounted, so it fires even when
+  // the toggle is flipped from the Settings route.
+  let prefillWasOn = false;
+  $effect(() => {
+    const prefillOn = Boolean(appState.value.config?.prefillKeyFormat);
+    if (prefillWasOn && !prefillOn) resetPrefillSettled();
+    prefillWasOn = prefillOn;
+  });
 
   onMount(() => {
     attachBus();

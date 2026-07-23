@@ -6,6 +6,7 @@ import {
 } from "$main/handlers/createCopy";
 import { applyTranslations } from "$main/nodes/selection";
 import { cleanUpHighlights, highlightNode } from "$main/nodes/highlight";
+import { clearPrefilledKeys } from "$main/nodes/clearPrefilled";
 import { buildConnectedNodesInfo, scanConnectedNodes } from "$main/nodes/scan";
 import { type MainComponentNameCache, resolveParentNames } from "$main/nodes/nodeParents";
 import { type KeyParentNames, keyFormatUsesParents } from "$shared/keyFormat";
@@ -237,14 +238,24 @@ on("save-config", async (msg) => {
   send({ type: "config-changed", config: merged });
   const ignoreRulesChanged = IGNORE_RULE_KEYS.some((key) => before[key] !== merged[key]);
   const prefillChanged = PREFILL_KEYS.some((key) => before[key] !== merged[key]);
+  // Prefill turned OFF: drop the auto-generated keys the prefill persisted to
+  // node pluginData while it was on, so they don't linger in the list or get
+  // re-offered on push. Matches the published plugin's `clearPrefilledKeys`
+  // (which triggers on its per-toggle save); we do it on our form Save.
+  const prefillTurnedOff = Boolean(before.prefillKeyFormat) && !merged.prefillKeyFormat;
+  if (prefillTurnedOff) {
+    await clearPrefilledKeys();
+  }
   // Re-scan only when it changes what the scan RETURNS: different ignore
-  // filtering, or a prefill format that needs freshly resolved parent names
-  // ({frame}/{component}/…). Key regeneration itself happens in the UI from
+  // filtering, a prefill format that needs freshly resolved parent names
+  // ({frame}/{component}/…), or a prefill-off clear (so the current selection
+  // reflects the wiped keys). Key regeneration itself happens in the UI from
   // data it already has — re-scanning for a plain format change made a save
   // repaint the list three times (scan overlay + scan result + regeneration
   // patch) instead of once.
   const needsRescan =
     ignoreRulesChanged ||
+    prefillTurnedOff ||
     (prefillChanged &&
       Boolean(merged.prefillKeyFormat) &&
       keyFormatUsesParents(merged.keyFormat));
