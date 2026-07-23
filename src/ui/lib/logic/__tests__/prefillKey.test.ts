@@ -71,19 +71,19 @@ describe("pendingPrefills", () => {
     expect(pendingPrefills([edited], CONFIG)).toEqual([]);
   });
 
-  it("regenerates every unconnected key when the format changes (production parity)", () => {
+  it("on a format change, regenerates UNTOUCHED auto keys but preserves manual edits", () => {
     const nodes = [
-      makeNode({ id: "1:1", key: "Sign in" }),
-      makeNode({ id: "1:2", key: "manual.key", characters: "Log out" }),
+      // Auto key: still equals the marker we generated → follows the new format.
+      makeNode({ id: "1:1", key: "Sign in", prefilledKey: "Sign in" }),
+      // Manual edit: key differs from the marker → left alone.
+      makeNode({ id: "1:2", key: "manual.key", prefilledKey: "Log out", characters: "Log out" }),
       makeNode({ id: "1:3", key: "linked", connected: true }),
     ];
     pendingPrefills(nodes, CONFIG); // decisions made under {elementText}
     const regenerated = pendingPrefills(nodes, { ...CONFIG, keyFormat: "{elementName}" });
-    // Both unconnected nodes get the new-format key; the connected one never.
-    expect(regenerated).toEqual([
-      { id: "1:1", key: "Layer", ns: "" },
-      { id: "1:2", key: "Layer", ns: "" },
-    ]);
+    // Only the untouched auto key reflows; the manual edit and the connected
+    // node are never rewritten.
+    expect(regenerated).toEqual([{ id: "1:1", key: "Layer", ns: "" }]);
   });
 
   it("a format change also refills keys the user had cleared", () => {
@@ -96,18 +96,31 @@ describe("pendingPrefills", () => {
     ]);
   });
 
-  it("regenerates when variable casing changes", () => {
+  it("regenerates an untouched auto key when variable casing changes", () => {
     const node = makeNode({ id: "1:1" });
     pendingPrefills([node], CONFIG);
-    const keyed = makeNode({ id: "1:1", key: "Sign in" });
+    // Auto key (equals the marker) reflows on a casing change too.
+    const keyed = makeNode({ id: "1:1", key: "Sign in", prefilledKey: "Sign in" });
     const regenerated = pendingPrefills([keyed], { ...CONFIG, variableCasing: "camelCase" });
     expect(regenerated).toEqual([{ id: "1:1", key: "signIn", ns: "" }]);
+  });
+
+  it("preserves a manual edit when the style changes (the reported bug)", () => {
+    const node = makeNode({ id: "1:1" });
+    const [applied] = pendingPrefills([node], CONFIG); // auto-generated "Sign in", marker set
+    // User hand-edits the key; the marker still holds the old auto value.
+    const edited = makeNode({ id: "1:1", key: "my.custom", prefilledKey: applied?.key });
+    // Changing the format must NOT overwrite the manual edit…
+    expect(pendingPrefills([edited], { ...CONFIG, keyFormat: "{elementName}" })).toEqual([]);
+    // …nor a casing change.
+    expect(pendingPrefills([edited], { ...CONFIG, variableCasing: "camelCase" })).toEqual([]);
   });
 
   it("toggling prefill off is inert; re-enabling with a NEW format regenerates", () => {
     const node = makeNode({ id: "1:1" });
     const [applied] = pendingPrefills([node], CONFIG);
-    const keyed = makeNode({ id: "1:1", key: applied?.key });
+    // Auto key: key still equals the marker we generated.
+    const keyed = makeNode({ id: "1:1", key: applied?.key, prefilledKey: applied?.key });
     expect(pendingPrefills([keyed], { prefillKeyFormat: false })).toEqual([]);
     expect(pendingPrefills([keyed], { ...CONFIG, keyFormat: "{elementName}" })).toEqual([
       { id: "1:1", key: "Layer", ns: "" },
@@ -125,15 +138,16 @@ describe("pendingPrefills", () => {
     expect(pendingPrefills([cleared], CONFIG)).toEqual([{ id: "1:1", key: "Sign in", ns: "" }]);
   });
 
-  it("waits for parent names before generating from a parent-based format", () => {
-    const node = makeNode({ id: "1:1", key: "old" });
+  it("waits for parent names before regenerating an auto key from a parent-based format", () => {
+    // Auto key (equals the marker) so a format change is allowed to reflow it.
+    const node = makeNode({ id: "1:1", key: "old", prefilledKey: "old" });
     pendingPrefills([node], CONFIG); // decided under {elementText}
     const parentConfig = { ...CONFIG, keyFormat: "{frame}.{elementName}" };
     // Stale snapshot (scan under the old format resolved no ancestors) —
     // generating now would persist a partial key. Stay undecided instead.
     expect(pendingPrefills([node], parentConfig)).toEqual([]);
     // Re-scan delivered the frame → full key generated.
-    const withParents = makeNode({ id: "1:1", key: "old", frame: "Login" });
+    const withParents = makeNode({ id: "1:1", key: "old", prefilledKey: "old", frame: "Login" });
     expect(pendingPrefills([withParents], parentConfig)).toEqual([
       { id: "1:1", key: "Login.Layer", ns: "" },
     ]);
