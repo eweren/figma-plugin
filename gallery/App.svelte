@@ -182,7 +182,7 @@
   seedMockData();
 
   // ---- Top-level view + theme --------------------------------------------
-  let view = $state<"screens" | "components" | "copy" | "onboarding">("screens");
+  let view = $state<"screens" | "components" | "texts" | "onboarding">("screens");
   let dark = $state(false);
   $effect(() => {
     document.documentElement.classList.toggle("figma-dark", dark);
@@ -344,13 +344,13 @@
         </button>
         <button
           type="button"
-          onclick={() => (view = "copy")}
+          onclick={() => (view = "texts")}
           class="h-6 rounded px-2 text-xs transition-colors"
-          class:bg-bg-secondary={view === "copy"}
-          class:text-text={view === "copy"}
-          class:text-text-secondary={view !== "copy"}
+          class:bg-bg-secondary={view === "texts"}
+          class:text-text={view === "texts"}
+          class:text-text-secondary={view !== "texts"}
         >
-          Copy
+          Texts
         </button>
         <button
           type="button"
@@ -373,7 +373,7 @@
   <main class="max-w-4xl mx-auto px-6 py-6">
     {#if view === "screens"}
       <Screens />
-    {:else if view === "copy"}
+    {:else if view === "texts"}
       <CopyDoc />
     {:else if view === "onboarding"}
       <Onboarding />
