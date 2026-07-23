@@ -290,8 +290,8 @@ test.describe("Push view", () => {
     await expect(pushButton).toBeEnabled({ timeout: 5_000 });
     await pushButton.click();
 
-    // The done-state card must show the pushed-key count.
-    await expect(ui.getByText(/Pushed \d+ key\(s\) to Tolgee/)).toBeVisible({
+    // The done state shows a success summary with the new-key count.
+    await expect(ui.getByText(/Uploaded \d+ new key\(s\) to Tolgee/)).toBeVisible({
       timeout: 30_000,
     });
   });

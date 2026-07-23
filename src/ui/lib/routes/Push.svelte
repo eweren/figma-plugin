@@ -73,6 +73,10 @@
   let resolutions = $state<Record<string, PushConflictResolution>>({});
   let errorMessage = $state<string | null>(null);
   let pushedKeyCount = $state(0);
+  // Split + screenshot counts for the success summary, captured at finishPush.
+  let pushedNewCount = $state(0);
+  let pushedChangedCount = $state(0);
+  let pushedScreenshotCount = $state(0);
   // Per-push screenshot toggle (default from settings, like the old plugin).
   // When checked the push uploads screenshots; it also keeps the Upload button
   // active when there are only screenshots to send (no text changes).
@@ -213,6 +217,28 @@
       includeScreenshots &&
       (diff?.unchangedKeys.length ?? 0) > 0,
   );
+
+  // One-line summary for the success ("done") state. Splits new vs updated so
+  // the user sees what actually changed, and reports screenshots separately —
+  // a screenshot-only upload pushes 0 keys, so "Uploaded 0 key(s)" alone read
+  // as a no-op even though frames were sent.
+  const doneSummary = $derived.by(() => {
+    const parts: string[] = [];
+    if (pushedNewCount > 0 && pushedChangedCount > 0) {
+      parts.push(
+        `Uploaded ${pushedNewCount} new and ${pushedChangedCount} updated key(s) to Tolgee.`,
+      );
+    } else if (pushedNewCount > 0) {
+      parts.push(`Uploaded ${pushedNewCount} new key(s) to Tolgee.`);
+    } else if (pushedChangedCount > 0) {
+      parts.push(`Updated ${pushedChangedCount} key(s) in Tolgee.`);
+    }
+    if (pushedScreenshotCount > 0) {
+      parts.push(`${pushedScreenshotCount} screenshot(s) uploaded.`);
+    }
+    if (parts.length === 0) parts.push("Upload complete.");
+    return parts.join(" ");
+  });
 
   function buildContext(): PushContext | null {
     const client = auth.value.client;
@@ -434,8 +460,14 @@
     allNodes: NodeInfo[],
     snapshot: { diff: PushDiff; connectedNodes: NodeInfo[]; screenshots: FrameScreenshot[] },
   ): Promise<void> {
-    pushedKeyCount =
-      snapshot.diff.newKeys.length + snapshot.diff.changedKeys.length;
+    pushedNewCount = snapshot.diff.newKeys.length;
+    pushedChangedCount = snapshot.diff.changedKeys.length;
+    pushedKeyCount = pushedNewCount + pushedChangedCount;
+    // Frame screenshots captured + uploaded for this push (0 when the toggle is
+    // off or nothing applied). Capture and upload happen back-to-back in
+    // `startPush`, so a partial upload throws to the error stage — at `done`
+    // every captured frame is on Tolgee.
+    pushedScreenshotCount = snapshot.screenshots.length;
 
     // Register screenshot key-context ("related keys in order") for in-context
     // suggestions. Here — the single completion point — so it fires ONCE on
@@ -563,11 +595,7 @@
     {:else if stage === "error"}
       <Message variant="error">{errorMessage ?? "An error occurred."}</Message>
     {:else if stage === "done"}
-      <Card>
-        <p class="text-sm">
-          Uploaded {pushedKeyCount} key(s) to Tolgee.
-        </p>
-      </Card>
+      <Message variant="success">{doneSummary}</Message>
     {:else if stage === "uploading" || stage === "pushing"}
       <div class="flex flex-col gap-2 rounded-md border border-border p-3">
         <ProgressBar

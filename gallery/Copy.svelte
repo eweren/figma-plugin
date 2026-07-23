@@ -72,8 +72,8 @@
         },
         {
           variant: "success",
-          text: "Uploaded {n} key(s) to Tolgee.",
-          where: "Push.svelte · done stage (+ toast)",
+          text: "Uploaded {n} new and {m} updated key(s) to Tolgee. {k} screenshot(s) uploaded.",
+          where: "Push.svelte · done stage — success summary; collapses to just the new / just the updated / just the screenshot line as applicable (a screenshot-only upload shows no key count). Canvas toast is separate — see Toasts.",
         },
         {
           variant: "warning",
