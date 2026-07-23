@@ -191,6 +191,7 @@ describe("pushDiff", () => {
       id: "a",
       key: "test.plural.apple",
       isPlural: true,
+      connected: false,
       translation: "{value, plural, one {# apple} other {}}",
       characters: "1 apple",
     });
@@ -198,6 +199,7 @@ describe("pushDiff", () => {
       id: "b",
       key: "test.plural.apple",
       isPlural: true,
+      connected: false,
       translation: "{value, plural, other {# apples}}",
       characters: "2 apples",
     });
@@ -205,11 +207,74 @@ describe("pushDiff", () => {
       id: "c",
       key: "test.plural.apple",
       isPlural: true,
+      connected: false,
       translation: "{value, plural, other {# apples}}",
       characters: "167 apples",
     });
     const diff = pushDiff([one, other, other2], {}, { hasNamespacesEnabled: false });
     expect(diff.conflictingNodes).toEqual([]);
+  });
+
+  it("MERGES plural forms across layers on one key into one complete ICU on push", () => {
+    // The reported case: three layers on test.plural.apple, each pluralized from
+    // its own sample form. Push must send the UNION of forms, not just the first
+    // layer's partial ICU.
+    const one = makeNode({
+      id: "a",
+      key: "test.plural.apple",
+      isPlural: true,
+      connected: false,
+      translation: "{value, plural, one {# apple} other {}}",
+      characters: "1 apple",
+    });
+    const other = makeNode({
+      id: "b",
+      key: "test.plural.apple",
+      isPlural: true,
+      connected: false,
+      translation: "{value, plural, other {# apples}}",
+      characters: "2 apples",
+    });
+    const other2 = makeNode({
+      id: "c",
+      key: "test.plural.apple",
+      isPlural: true,
+      connected: false,
+      translation: "{value, plural, other {# apples}}",
+      characters: "167 apples",
+    });
+    // New key (no remote) → the representative in newKeys carries the merged ICU.
+    const diff = pushDiff([one, other, other2], {}, { hasNamespacesEnabled: false });
+    expect(diff.newKeys).toHaveLength(1);
+    expect(diff.newKeys[0]?.id).toBe("a"); // keeps the first layer's id
+    expect(diff.newKeys[0]?.translation).toBe(
+      "{value, plural, one {# apple} other {# apples}}",
+    );
+  });
+
+  it("does NOT merge a single-layer plural key (nothing to combine)", () => {
+    const only = makeNode({
+      id: "a",
+      key: "solo.apple",
+      isPlural: true,
+      connected: false,
+      translation: "{value, plural, one {# apple} other {# apples}}",
+      characters: "2 apples",
+    });
+    const diff = pushDiff([only], {}, { hasNamespacesEnabled: false });
+    expect(diff.newKeys[0]?.translation).toBe(only.translation); // untouched
+  });
+
+  it("does NOT merge across a NON-plural group (plain duplicates keep their own text)", () => {
+    // Two plain layers on one key are a conflict, never a merge — the plural
+    // union must not touch them.
+    const a = makeNode({ id: "a", key: "dup", connected: false, translation: "Hello", characters: "Hello" });
+    const b = makeNode({ id: "b", key: "dup", connected: false, translation: "Hi", characters: "Hi" });
+    const diff = pushDiff([a, b], {}, { hasNamespacesEnabled: false });
+    // Conflicting → the representative is the untouched first node, no merged ICU.
+    expect(diff.conflictingNodes).toHaveLength(1);
+    const rep = diff.newKeys[0] ?? diff.changedKeys[0]?.node ?? diff.unchangedKeys[0];
+    expect(rep?.translation).toBe("Hello");
   });
 
   it("STILL reports a plain layer sharing a plural layer's key as a conflict", () => {

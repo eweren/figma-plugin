@@ -4,7 +4,7 @@ import { isAdvancedString } from "./manualChange";
 // Local mini-implementation of `getTolgeeFormat` from `@tginternal/editor`.
 // The upstream package transitively pulls in `@codemirror/{state,view}`
 // (~500 kB raw / ~125 kB gzip) — see `$shared/tolgeeFormat.ts` for the rationale.
-import { getTolgeeFormat } from "$shared/tolgeeFormat";
+import { getTolgeeFormat, tolgeeFormatGenerateIcu } from "$shared/tolgeeFormat";
 
 /**
  * Subset of `KeyWithTranslationsModel` we depend on for diffing. Kept narrow
@@ -122,6 +122,20 @@ export function pushDiff(
       }
     }
 
+    // PLURALS ONLY: when several layers hold one plural key, each may carry a
+    // different FORM (`one {# apple}` vs `other {# apples}`) because it was
+    // pluralized from its own sample. Assemble every form into ONE complete ICU
+    // so the push sends the whole plural, not just the first layer's partial
+    // one. Gated hard on the WHOLE group being plural, so plain / param / markup
+    // groups are untouched. The representative keeps `first`'s id — only its
+    // `translation` changes — so id-keyed bookkeeping (screenshots, unchanged
+    // set) is unaffected.
+    let representative = first;
+    if (group.length > 1 && group.every(isPluralLayer)) {
+      const merged = mergePluralForms(group);
+      if (merged) representative = { ...first, translation: merged };
+    }
+
     const nsLookup = hasNamespacesEnabled ? (first.ns ?? "") : "";
     const remoteEntry = remote[nsLookup]?.[first.key];
 
@@ -130,15 +144,15 @@ export function pushDiff(
       // deleted on the platform → skip it (don't re-create). If any node is
       // unconnected, it's a genuinely new local key someone wants created, so
       // don't drop it just because a stale connected node shares the key.
-      if (group.every((n) => n.connected)) missingKeys.push(first);
-      else newKeys.push(first);
+      if (group.every((n) => n.connected)) missingKeys.push(representative);
+      else newKeys.push(representative);
       continue;
     }
 
-    if (isChanged(first, remoteEntry, configuredTags)) {
-      changedKeys.push({ node: first, remoteText: remoteEntry.translation ?? "" });
+    if (isChanged(representative, remoteEntry, configuredTags)) {
+      changedKeys.push({ node: representative, remoteText: remoteEntry.translation ?? "" });
     } else {
-      unchangedKeys.push(first);
+      unchangedKeys.push(representative);
     }
   }
 
@@ -201,6 +215,36 @@ export function conflictText(node: NodeInfo): string {
   return isAdvancedString(node)
     ? (node.translation ?? "")
     : node.characters || node.translation || "";
+}
+
+/** A layer participating in a plural key — same detection `conflictText` uses. */
+function isPluralLayer(node: NodeInfo): boolean {
+  return node.isPlural || PLURAL_ICU_RE.test(node.translation ?? "");
+}
+
+/**
+ * Merge the plural FORMS of several layers on one key into a single complete
+ * ICU. Each layer, pluralized from its own sample, may hold only the form its
+ * count selects (`one {# apple}` / `other {# apples}`); this unions them so the
+ * push carries every form instead of just the first layer's. The first NON-empty
+ * body per category wins (so the empty `other {}` placeholder partial generation
+ * appends never shadows a real `other`). Returns null when NO layer parses as a
+ * plural — the caller only reaches it for all-plural groups, but this keeps it
+ * inert for anything else.
+ */
+function mergePluralForms(nodes: NodeInfo[]): string | null {
+  const variants: Record<string, string> = {};
+  let parameter: string | undefined;
+  for (const n of nodes) {
+    const fmt = getTolgeeFormat(n.translation ?? "", true, false);
+    if (fmt.parameter === undefined) continue; // not a parseable plural ICU
+    parameter ??= fmt.parameter;
+    for (const [category, body] of Object.entries(fmt.variants)) {
+      if (body && variants[category] === undefined) variants[category] = body;
+    }
+  }
+  if (parameter === undefined || Object.keys(variants).length === 0) return null;
+  return tolgeeFormatGenerateIcu({ parameter, variants }, false);
 }
 
 /**
