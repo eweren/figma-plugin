@@ -61,7 +61,15 @@
   // never-pushed nodes as connected). No clearing needed: every reader is
   // only reachable inside a push `startPush` began, and `startPush` always
   // re-captures first.
-  let pushInputs: { diff: PushDiff; connectedNodes: NodeInfo[] } | null = null;
+  let pushInputs: {
+    diff: PushDiff;
+    connectedNodes: NodeInfo[];
+    // Screenshots captured for THIS push, kept on the snapshot so `finishPush`
+    // can register their big-meta once — on the direct AND the conflict-
+    // resolution path alike (they're uploaded in `startPush`, before any
+    // conflict detour). Empty when screenshots are off / none apply.
+    screenshots: FrameScreenshot[];
+  } | null = null;
   let resolutions = $state<Record<string, PushConflictResolution>>({});
   let errorMessage = $state<string | null>(null);
   let pushedKeyCount = $state(0);
@@ -293,7 +301,7 @@
 
     errorMessage = null;
     pushedKeyCount = 0;
-    const snapshot = { diff, connectedNodes };
+    const snapshot = { diff, connectedNodes, screenshots: [] as FrameScreenshot[] };
     pushInputs = snapshot;
     const nodesToPush = nodesToPushFrom(snapshot.diff);
     // Screenshots cover EVERY layer of each pushed key (all frames it appears
@@ -323,6 +331,9 @@
         uploadedById = await uploadScreenshots(ctx, screenshots, (e) => {
           progress = e;
         });
+        // Keep them on the snapshot so `finishPush` can register their big-meta
+        // even when the push detours through the conflict dialog.
+        snapshot.screenshots = screenshots;
       }
 
       stage = "pushing";
@@ -348,12 +359,6 @@
         resolutions = defaultResolutions(result.unresolvedConflicts, hasNamespacesEnabled);
         stage = "conflict";
         return;
-      }
-
-      // Register screenshot key-context for in-context suggestions (best-effort,
-      // never fails the push). Only when screenshots were actually uploaded.
-      if (includeScreenshots && screenshots.length > 0) {
-        await submitBigMeta(ctx, screenshots);
       }
 
       await finishPush(ctx, nodesToPush, snapshot);
@@ -427,10 +432,20 @@
   async function finishPush(
     ctx: PushContext,
     allNodes: NodeInfo[],
-    snapshot: { diff: PushDiff; connectedNodes: NodeInfo[] },
+    snapshot: { diff: PushDiff; connectedNodes: NodeInfo[]; screenshots: FrameScreenshot[] },
   ): Promise<void> {
     pushedKeyCount =
       snapshot.diff.newKeys.length + snapshot.diff.changedKeys.length;
+
+    // Register screenshot key-context ("related keys in order") for in-context
+    // suggestions. Here — the single completion point — so it fires ONCE on
+    // both the direct push and the conflict-resolution re-submit (it used to
+    // sit only on the no-conflict branch, so a push that hit the conflict
+    // dialog uploaded its screenshots but never registered their big-meta).
+    // Best-effort: `submitBigMeta` swallows failures and never blocks the push.
+    if (snapshot.screenshots.length > 0) {
+      await submitBigMeta(ctx, snapshot.screenshots);
+    }
 
     // Best-effort: tag failures must not undo the push.
     if (addTags && configuredTags.length > 0) {
