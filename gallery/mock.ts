@@ -263,6 +263,47 @@ export function showNoSelection(): void {
   appState.setSelection([], false);
 }
 
+// --- Project-feature scenarios ----------------------------------------------
+// Flip branching / namespaces on the auth store (and seed branches) so the
+// branch picker (header), namespace badges (rows), stale-branch banner (Index)
+// and copy branch indicators become visible — none of which show under the
+// default "simple" project.
+
+const SAMPLE_BRANCHES = [{ name: "main", isDefault: true }, { name: "feature-x" }];
+
+/** Default: no branching, no namespaces — the plain single-branch project. */
+export function showSimpleProject(): void {
+  auth.setProjectFeatures({
+    branchingEnabled: false,
+    namespacesEnabled: false,
+    projectName: "Figma 2.0",
+  });
+  appState.setConfig({ ...(appState.value.config ?? {}), branch: "" });
+}
+
+/** Branching + namespaces enabled: header branch picker, row ns badges. */
+export function showBranchingProject(): void {
+  auth.setProjectFeatures({
+    branchingEnabled: true,
+    namespacesEnabled: true,
+    projectName: "Figma 2.0",
+  });
+  auth.setBranches(SAMPLE_BRANCHES, "main", true);
+  appState.setConfig({ ...(appState.value.config ?? {}), branch: "main" });
+}
+
+/** Branching enabled, but the CONFIGURED branch no longer exists on Tolgee →
+ *  Index shows the "branch no longer exists" banner + a picker to recover. */
+export function showStaleBranchProject(): void {
+  auth.setProjectFeatures({
+    branchingEnabled: true,
+    namespacesEnabled: true,
+    projectName: "Figma 2.0",
+  });
+  auth.setBranches(SAMPLE_BRANCHES, "main", true);
+  appState.setConfig({ ...(appState.value.config ?? {}), branch: "old-release" });
+}
+
 let seeded = false;
 export function seedMockData(): void {
   if (seeded) return;

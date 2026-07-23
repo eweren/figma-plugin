@@ -10,6 +10,9 @@
     showSampleSelection,
     showEmptySelection,
     showNoSelection,
+    showSimpleProject,
+    showBranchingProject,
+    showStaleBranchProject,
   } from "./mock";
 
   import Index from "$ui/lib/routes/Index.svelte";
@@ -18,6 +21,9 @@
   import Settings from "$ui/lib/routes/Settings.svelte";
   import Connect from "$ui/lib/routes/Connect.svelte";
   import StringDetails from "$ui/lib/routes/StringDetails.svelte";
+  import PageSetup from "$ui/lib/routes/PageSetup.svelte";
+  import CopyView from "$ui/lib/routes/CopyView.svelte";
+  import CreateCopy from "$ui/lib/routes/CreateCopy.svelte";
   import ResizeHandle from "$ui/lib/components/domain/ResizeHandle.svelte";
 
   seedMockData();
@@ -37,7 +43,24 @@
     { label: "Settings", name: "settings", go: () => appState.navigate({ name: "settings" }) },
     { label: "Connect", name: "connect", go: () => appState.navigate({ name: "connect", node: sampleNode }) },
     { label: "String details", name: "stringDetails", go: () => appState.navigate({ name: "stringDetails", node: sampleNode }) },
+    { label: "Page setup", name: "pageSetup", go: () => appState.navigate({ name: "pageSetup" }) },
+    { label: "Copy view", name: "copyView", go: () => { appState.setConfig({ ...(appState.value.config ?? {}), pageCopy: true }); appState.navigate({ name: "copyView" }); } },
+    { label: "Create copy", name: "createCopy", go: () => appState.navigate({ name: "createCopy" }) },
   ];
+
+  // Project-feature scenarios — orthogonal to the route: flip branching /
+  // namespaces so the branch picker, ns badges, stale-branch banner and copy
+  // branch indicators are visible (none show under the default simple project).
+  let activeFeature = $state<string>("simple");
+  const features: { id: string; label: string; setup: () => void }[] = [
+    { id: "simple", label: "Simple (no branch/ns)", setup: showSimpleProject },
+    { id: "branching", label: "Branching + namespaces", setup: showBranchingProject },
+    { id: "stale", label: "Stale branch", setup: showStaleBranchProject },
+  ];
+  function pickFeature(f: (typeof features)[number]): void {
+    f.setup();
+    activeFeature = f.id;
+  }
 
   // Empty-state scenarios for Index: each flips the selection store into a
   // given state, then shows Index so the matching empty state renders.
@@ -142,6 +165,26 @@
     {/each}
   </div>
 
+  <!-- Project-feature scenarios (branching / namespaces) -->
+  <div class="flex flex-wrap items-center gap-1.5">
+    <span class="text-xs text-text-secondary">Project:</span>
+    {#each features as f (f.id)}
+      <button
+        type="button"
+        onclick={() => pickFeature(f)}
+        class="h-7 rounded border px-3 text-xs transition-colors"
+        class:bg-bg-brand={activeFeature === f.id}
+        class:text-text-onbrand={activeFeature === f.id}
+        class:border-border-brand={activeFeature === f.id}
+        class:border-border={activeFeature !== f.id}
+        class:text-text-secondary={activeFeature !== f.id}
+        class:hover:text-text={activeFeature !== f.id}
+      >
+        {f.label}
+      </button>
+    {/each}
+  </div>
+
   <!-- Frame size controls -->
   <div class="flex flex-wrap items-center gap-4 text-xs text-text-secondary">
     <label class="flex items-center gap-2">
@@ -176,6 +219,12 @@
             <Connect />
           {:else if route.name === "stringDetails"}
             <StringDetails />
+          {:else if route.name === "pageSetup"}
+            <PageSetup />
+          {:else if route.name === "copyView"}
+            <CopyView />
+          {:else if route.name === "createCopy"}
+            <CreateCopy />
           {:else}
             <Index />
           {/if}
