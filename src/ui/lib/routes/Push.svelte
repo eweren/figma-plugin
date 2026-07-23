@@ -12,6 +12,7 @@
   import {
     pushDiff,
     buildRemoteMapFromKeys,
+    droppedConflictNodeIds,
     textOfNode,
     type PushDiff,
   } from "$ui/lib/logic/pushDiff";
@@ -335,11 +336,19 @@
     // keeps full screenshot coverage, like the original plugin. Scoped to the
     // pushed keys so we never export a frame that only holds keys we're not
     // pushing (no wasted exports). `mapScreenshotsForNode` attaches them by key.
+    //
+    // BUT drop the same-key conflict LOSERS: a layer that lost its key never
+    // connects (see `buildConnectBackUpdates`), so it must not be captured or
+    // boxed on that key's screenshot either — otherwise the key's screenshot
+    // shows a box around text that isn't actually linked to it.
+    const droppedConflictIds = droppedConflictNodeIds(snapshot.diff);
     const pushedKeys = new Set(
       nodesToPush.map((n) => resolutionKey(n.key, n.ns, hasNamespacesEnabled)),
     );
-    const screenshotNodes = snapshot.connectedNodes.filter((n) =>
-      pushedKeys.has(resolutionKey(n.key, n.ns, hasNamespacesEnabled)),
+    const screenshotNodes = snapshot.connectedNodes.filter(
+      (n) =>
+        !droppedConflictIds.has(n.id) &&
+        pushedKeys.has(resolutionKey(n.key, n.ns, hasNamespacesEnabled)),
     );
 
     try {

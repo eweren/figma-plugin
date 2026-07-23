@@ -223,6 +223,16 @@ function isPluralLayer(node: NodeInfo): boolean {
 }
 
 /**
+ * Ids of the same-key conflict LOSERS — every layer of a conflict group except
+ * the first, which is the one that actually uploads/connects. Push excludes
+ * these from BOTH connect-back and screenshot capture, so a layer that lost its
+ * key isn't marked connected, nor boxed on that key's uploaded screenshot.
+ */
+export function droppedConflictNodeIds(diff: PushDiff): Set<string> {
+  return new Set(diff.conflictingNodes.flatMap((g) => g.nodes.slice(1).map((n) => n.id)));
+}
+
+/**
  * Merge the plural FORMS of several layers on one key into a single complete
  * ICU. Each layer, pluralized from its own sample, may hold only the form its
  * count selects (`one {# apple}` / `other {# apples}`); this unions them so the

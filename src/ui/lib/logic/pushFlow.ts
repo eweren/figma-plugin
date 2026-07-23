@@ -13,7 +13,7 @@ import {
 import type { components } from "$ui/lib/api/schema.generated";
 import { uploadScreenshot } from "$ui/lib/api/screenshots";
 import { applyTags } from "$ui/lib/api/tags";
-import { type PushDiff, textOfNode } from "./pushDiff";
+import { type PushDiff, droppedConflictNodeIds, textOfNode } from "./pushDiff";
 
 /**
  * How the user resolved a translation conflict. Lives here (not in the
@@ -129,9 +129,7 @@ export function buildConnectBackUpdates(
   canonical: Map<string, CanonicalKeyState> | null,
   hasNamespacesEnabled: boolean,
 ): ConnectBackUpdate[] {
-  const droppedConflictIds = new Set(
-    diff.conflictingNodes.flatMap((g) => g.nodes.slice(1).map((n) => n.id)),
-  );
+  const droppedConflictIds = droppedConflictNodeIds(diff);
   const missingIds = new Set(diff.missingKeys.map((n) => n.id));
 
   return connectedNodes

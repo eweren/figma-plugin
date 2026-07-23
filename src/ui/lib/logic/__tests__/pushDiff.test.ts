@@ -1,5 +1,10 @@
 import type { NodeInfo } from "$shared/types";
-import { buildRemoteMapFromKeys, pushDiff, textOfNode } from "$ui/lib/logic/pushDiff";
+import {
+  buildRemoteMapFromKeys,
+  droppedConflictNodeIds,
+  pushDiff,
+  textOfNode,
+} from "$ui/lib/logic/pushDiff";
 import type { RemoteTranslationMap } from "$ui/lib/logic/pushDiff";
 import { describe, expect, it } from "vitest";
 
@@ -361,6 +366,28 @@ describe("pushDiff", () => {
     };
     const diff = pushDiff([node], remote, { hasNamespacesEnabled: false });
     expect(diff.unchangedKeys).toHaveLength(1);
+  });
+});
+
+describe("droppedConflictNodeIds", () => {
+  it("returns every conflict-group loser (all but the first) so they skip connect-back AND screenshots", () => {
+    // "Ahoy" / "Ahoy2" share one key with different text → conflict. Only the
+    // first uploads/connects; the loser must not be captured or boxed on the
+    // key's screenshot.
+    const win = makeNode({ id: "ahoy", key: "greet", translation: "Ahoy", characters: "Ahoy" });
+    const lose = makeNode({ id: "ahoy2", key: "greet", translation: "Ahoy2", characters: "Ahoy2" });
+    const diff = pushDiff([win, lose], {}, { hasNamespacesEnabled: false });
+    expect(diff.conflictingNodes).toHaveLength(1);
+    expect([...droppedConflictNodeIds(diff)]).toEqual(["ahoy2"]);
+  });
+
+  it("is empty when there are no conflicts", () => {
+    const diff = pushDiff(
+      [makeNode({ id: "x", key: "k", translation: "hi", connected: false })],
+      {},
+      { hasNamespacesEnabled: false },
+    );
+    expect(droppedConflictNodeIds(diff).size).toBe(0);
   });
 });
 
