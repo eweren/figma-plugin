@@ -217,6 +217,46 @@ test.describe("Push view", () => {
     await expect(ui.getByRole("button", { name: "Push to Tolgee" })).not.toBeVisible();
   });
 
+  test("surfaces a diff error instead of an endless spinner when the fetch fails", async ({
+    page,
+  }) => {
+    // Regression guard for fix 62: a failed diff query used to leave the
+    // "Computing changes…" card spinning forever (the runes adapter swallows
+    // the terminal error). It now settles to an OUTCOME and shows an error.
+    const node = createTestNode({
+      text: "On the road",
+      key: "on-the-road-title",
+      connected: true,
+    });
+
+    // The diff fetches remote keys via GET /v2/projects/translations — fail it.
+    await page.route("**/v2/projects/translations**", (route) =>
+      route.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
+    );
+
+    await page.goto(
+      hostUrl(SIGNED_IN, {
+        allNodes: [node],
+        selectedNodes: [node],
+        hasUserSelection: true,
+      }),
+    );
+
+    const ui = page.frameLocator(IFRAME_SELECTOR);
+    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+
+    await ui.getByRole("button", { name: /Push/ }).click();
+
+    // The diff query settles to an error banner …
+    await expect(
+      ui.getByText(/Failed to fetch remote keys|Failed to compute diff/),
+    ).toBeVisible({ timeout: 20_000 });
+
+    // … and the loading card is gone (not stuck), with no push action offered.
+    await expect(ui.getByText("Computing changes…")).not.toBeVisible();
+    await expect(ui.getByRole("button", { name: "Push to Tolgee" })).not.toBeVisible();
+  });
+
   test("completes push successfully for new key", async ({ page }) => {
     // Timestamp suffix guarantees this key never exists before the test runs.
     const uniqueKey = `e2e-push-success-${Date.now()}`;

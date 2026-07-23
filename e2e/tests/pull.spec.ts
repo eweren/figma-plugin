@@ -225,6 +225,49 @@ test.describe("Pull view", () => {
     await expect(ui.getByRole("button", { name: /^Apply \(/ })).toBeVisible();
   });
 
+  test("surfaces an error instead of an endless spinner when the fetch fails", async ({
+    page,
+  }) => {
+    // Regression guard for fix 62: the svelte-query runes adapter doesn't
+    // reliably surface a query's terminal error, which used to hang the Pull
+    // loader forever on any API failure. The queries now settle to an OUTCOME,
+    // so a failed translations fetch must reach the error stage, not spin.
+    const node = createTestNode({
+      text: "On the road",
+      key: "on-the-road-title",
+      connected: true,
+    });
+
+    // Fail only the remote translations fetch (Pull's second query). Auth
+    // bootstrap hits other endpoints, so "1 selected" still appears.
+    await page.route("**/v2/projects/translations**", (route) =>
+      route.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
+    );
+
+    await page.goto(
+      hostUrl(SIGNED_IN, {
+        allNodes: [node],
+        selectedNodes: [node],
+        hasUserSelection: true,
+      }),
+    );
+
+    const ui = page.frameLocator(IFRAME_SELECTOR);
+    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+
+    await ui.getByRole("button", { name: /Pull/ }).click();
+
+    // The failed query settles to an error message (fallback wording depends on
+    // whether the server body carried an error code).
+    await expect(
+      ui.getByText(/Failed to fetch translations|Cannot load translations/),
+    ).toBeVisible({ timeout: 20_000 });
+
+    // Error stage reached → no Apply action is offered (proves it isn't stuck
+    // in the loading/diff stage).
+    await expect(ui.getByRole("button", { name: /^Apply \(/ })).not.toBeVisible();
+  });
+
   test("Apply button applies translations and returns to Index", async ({
     page,
   }) => {
