@@ -204,11 +204,15 @@
    * layout-neutral box-shadow.
    */
 
-  /* Variable placeholder `{name}` — blue pill, braces invisible */
+  /* Variable placeholder `{name}` — blue pill, braces invisible.
+   * Colours come from the theme-aware semantic palette (styles.css): `-fg`
+   * is the readable text shade (deep blue on light, bright blue on dark) and
+   * the base `--sem-info` drives the tint + border, so the pill adapts to
+   * Figma's light/dark theme instead of the old fixed hexes. */
   .icu-wrap :global(.tok-var) {
-    color: #1d4ed8;
-    background: color-mix(in srgb, #2563eb 16%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, #2563eb 50%, transparent);
+    color: var(--sem-info-fg);
+    background: color-mix(in srgb, var(--sem-info) 16%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sem-info) 50%, transparent);
     border-radius: 3px;
     padding-inline: 0.3em;
     margin-inline: -0.3em;
@@ -216,9 +220,9 @@
 
   /* HTML inline tag `<strong>`, `</strong>` etc. — green pill, brackets invisible */
   .icu-wrap :global(.tok-tag) {
-    color: #15803d;
-    background: color-mix(in srgb, #16a34a 16%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, #16a34a 50%, transparent);
+    color: var(--sem-success-fg);
+    background: color-mix(in srgb, var(--sem-success) 16%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sem-success) 50%, transparent);
     border-radius: 3px;
     padding-inline: 0.3em;
     margin-inline: -0.3em;
@@ -231,14 +235,14 @@
 
   /* `plural`, `one`, `other`, variant names — plain green, no pill */
   .icu-wrap :global(.tok-kw) {
-    color: #16a34a;
+    color: var(--sem-success-fg);
   }
 
   /* `#` count marker inside plural bodies — small green pill */
   .icu-wrap :global(.tok-hash) {
-    color: #15803d;
-    background: color-mix(in srgb, #16a34a 16%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, #16a34a 50%, transparent);
+    color: var(--sem-success-fg);
+    background: color-mix(in srgb, var(--sem-success) 16%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sem-success) 50%, transparent);
     border-radius: 3px;
     padding-inline: 0.3em;
     margin-inline: -0.3em;
