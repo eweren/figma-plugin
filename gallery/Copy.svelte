@@ -35,6 +35,11 @@
           where: "Index.svelte · top of list when ≥2 different Figma texts share one key",
         },
         {
+          variant: "warning",
+          text: 'Branch "{branch}" no longer exists. Please select a different branch.',
+          where: "Index.svelte · warning banner when the configured branch was deleted in Tolgee (+ inline branch re-pick Select and Refresh branches button; shown even with nothing selected)",
+        },
+        {
           variant: "error",
           text: "Advanced text format detected. Edit the string via plugin to preserve formatting.",
           where: "StringDetails.svelte · RED warning when a connected advanced string was edited directly in Figma (+ “Revert string in design” button)",
@@ -71,6 +76,11 @@
           where: "Push.svelte · post-push tag failure (severity: warning)",
         },
         {
+          variant: "error",
+          text: "Failed to compute diff.",
+          where: "Push.svelte · Upload preview when the diff query fails to load (fallback; the underlying error message is shown when present)",
+        },
+        {
           variant: "info",
           text: "Download applies to every connected text on this page, not just your selection. All {n} layers will be set to {language}.",
           where: "Pull.svelte · page-wide info banner",
@@ -79,6 +89,11 @@
           variant: "success",
           text: "Everything is up to date.",
           where: "Pull.svelte · no changed nodes",
+        },
+        {
+          variant: "error",
+          text: "Cannot scan the page. / Cannot load translations. / Invalid project API key. / No language selected. / Not connected to Tolgee.",
+          where: "Pull.svelte · error stage — page-scan or translations query failed, or a precondition is missing (specific fallbacks layered above the generic “Something went wrong.”; “Not connected to Tolgee.” also appears in CopyView/CreateCopy)",
         },
         {
           variant: "secondary",
@@ -152,6 +167,10 @@
         {
           text: "Create a duplicate of this page (per language or with raw keys)",
           where: "Header.svelte · create-page-copy button",
+        },
+        {
+          text: "Copies follow the branch set in Settings.",
+          where: "CreateCopy.svelte, CopyView.svelte · disabled (read-only) branch Select on branching projects — the branch is changed in Settings, not per copy",
         },
         {
           text: "Open plugin settings",
