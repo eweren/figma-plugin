@@ -33,8 +33,13 @@ describe("pendingPrefills", () => {
     const first = pendingPrefills(nodes, CONFIG);
     expect(first.map((p) => p.id)).toEqual(["1:1", "1:2"]);
     expect(first[0]?.key).toBe("Sign in");
-    // Same selection again — already settled, nothing to persist.
-    expect(pendingPrefills(nodes, CONFIG)).toEqual([]);
+    // Once the caller has persisted the generated keys, a re-scan is a no-op
+    // (the keys are now non-empty, so nothing regenerates).
+    const persisted = [
+      makeNode({ id: "1:1", key: "Sign in" }),
+      makeNode({ id: "1:2", key: "Log out", characters: "Log out" }),
+    ];
+    expect(pendingPrefills(persisted, CONFIG)).toEqual([]);
   });
 
   it("plugin open never rewrites keys persisted earlier (boot is not a format change)", () => {
@@ -49,11 +54,21 @@ describe("pendingPrefills", () => {
     ]);
   });
 
-  it("a cleared key stays cleared for the session", () => {
+  it("a cleared key REGENERATES on the same format (clearing = 'give me a fresh auto value')", () => {
     const node = makeNode({ id: "1:1" });
     pendingPrefills([node], CONFIG); // prefill applied → settled
     const cleared = makeNode({ id: "1:1", key: "" }); // user deleted the key
-    expect(pendingPrefills([cleared], CONFIG)).toEqual([]);
+    // Matches upstream (fills any keyless unconnected node); a clear no longer
+    // "sticks" — the empty key is refilled with the current-format value.
+    expect(pendingPrefills([cleared], CONFIG)).toEqual([{ id: "1:1", key: "Sign in", ns: "" }]);
+  });
+
+  it("a manual (non-empty) key is NOT overwritten on re-scan under the same format", () => {
+    const node = makeNode({ id: "1:1" });
+    pendingPrefills([node], CONFIG); // generated "Sign in", settled
+    const edited = makeNode({ id: "1:1", key: "my.custom" }); // user edited it
+    // The non-empty edit is protected: regeneration only touches empty keys.
+    expect(pendingPrefills([edited], CONFIG)).toEqual([]);
   });
 
   it("regenerates every unconnected key when the format changes (production parity)", () => {
@@ -99,19 +114,14 @@ describe("pendingPrefills", () => {
     ]);
   });
 
-  it("finding 65: after a prefill-off reset + cleared key, re-enabling the SAME format regenerates", () => {
-    // Turning prefill off does two things in the app: the main thread clears
-    // the persisted key (clearPrefilledKeys), and App.svelte resets this
-    // session memory. Simulate both, then re-enable with the same format.
+  it("finding 65 round-trip: prefill-off clears the key (main), re-enabling regenerates it", () => {
+    // While on, the key is generated + persisted. Turning prefill off clears
+    // the persisted key on the main thread (clearPrefilledKeys). Re-enabling
+    // with the same format regenerates it — no session-memory reset needed,
+    // because an empty key always regenerates.
     const node = makeNode({ id: "1:1" });
-    const [applied] = pendingPrefills([node], CONFIG); // generated + settled
-    expect(applied?.key).toBe("Sign in");
-
-    resetPrefillSettled(); // App.svelte's half of the undo
-    const cleared = makeNode({ id: "1:1", key: "" }); // main thread cleared it
-
-    // Without the reset the settled memory would skip this node and leave the
-    // key empty; with it, re-enabling regenerates (production parity).
+    expect(pendingPrefills([node], CONFIG)[0]?.key).toBe("Sign in"); // generated + settled
+    const cleared = makeNode({ id: "1:1", key: "" }); // main thread cleared it on prefill-off
     expect(pendingPrefills([cleared], CONFIG)).toEqual([{ id: "1:1", key: "Sign in", ns: "" }]);
   });
 
