@@ -1,5 +1,5 @@
 import type { NodeInfo } from "$shared/types";
-import { buildRemoteMapFromKeys, pushDiff } from "$ui/lib/logic/pushDiff";
+import { buildRemoteMapFromKeys, pushDiff, textOfNode } from "$ui/lib/logic/pushDiff";
 import type { RemoteTranslationMap } from "$ui/lib/logic/pushDiff";
 import { describe, expect, it } from "vitest";
 
@@ -287,5 +287,42 @@ describe("buildRemoteMapFromKeys", () => {
   it("returns undefined translation when no language entry is present", () => {
     const map = buildRemoteMapFromKeys([{ keyName: "k", translations: {} }], "en");
     expect(map[""]?.k?.translation).toBeUndefined();
+  });
+});
+
+describe("textOfNode — authoritative text (shared with String details)", () => {
+  it("prefers the live canvas `characters` for a PLAIN string", () => {
+    // The reported bug: a connected string whose canvas text was overwritten
+    // (e.g. a duplicated node) must resolve to the NEW canvas text, not the
+    // stale stored translation it inherited. String details loads this too, so
+    // the editor shows exactly what Push will upload.
+    const node = makeNode({
+      key: "test.myNameIsZuzka",
+      translation: "My name is Zuzka",
+      characters: "2 apples",
+    });
+    expect(textOfNode(node)).toBe("2 apples");
+  });
+
+  it("prefers the stored ICU `translation` for an ADVANCED string", () => {
+    // Plural: `characters` is only the rendered form ("2 apples"), the ICU in
+    // `translation` is authoritative and must not be clobbered by the render.
+    const node = makeNode({
+      isPlural: true,
+      translation: "{count, plural, one {# apple} other {# apples}}",
+      characters: "2 apples",
+    });
+    expect(textOfNode(node)).toBe("{count, plural, one {# apple} other {# apples}}");
+  });
+
+  it("falls back across the missing side for both kinds", () => {
+    // Plain with no canvas text → the stored translation.
+    expect(textOfNode(makeNode({ translation: "only stored", characters: "" }))).toBe(
+      "only stored",
+    );
+    // Advanced (markup) with no stored translation → the canvas render.
+    expect(textOfNode(makeNode({ translation: "", characters: "<b>bold</b>" }))).toBe(
+      "<b>bold</b>",
+    );
   });
 });

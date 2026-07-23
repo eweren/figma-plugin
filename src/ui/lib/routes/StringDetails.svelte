@@ -9,6 +9,7 @@
   import * as Tooltip from "$ui/lib/components/ui/tooltip";
   import Info from "lucide-svelte/icons/info";
   import { hasManualChange } from "$ui/lib/logic/manualChange";
+  import { textOfNode } from "$ui/lib/logic/pushDiff";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
   import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import IcuPreview from "$ui/lib/components/domain/IcuPreview.svelte";
@@ -88,7 +89,16 @@
   // baseline. Split out from the effect so both the normal selection-follow
   // path and the post-dialog resume path (`resolvePendingSwitch`) share it.
   function prefillFrom(n: NodeInfo): void {
-    translation = n.translation || n.characters;
+    // Load the AUTHORITATIVE text — the exact same `textOfNode` heuristic the
+    // Push diff uses — so the editor shows what will actually be uploaded. For a
+    // PLAIN string that means the live canvas `characters`: a connected string
+    // whose text was edited directly in Figma (e.g. a duplicated node whose copy
+    // was overwritten) must show the NEW canvas text, not the stale stored
+    // `translation` it inherited. ADVANCED strings still load the stored ICU
+    // source (`characters` there is only its render). Previously this always
+    // preferred `translation`, so a plain canvas edit showed the old text here
+    // while Push correctly sent the new one — a confusing mismatch.
+    translation = textOfNode(n);
     keyName = n.key ?? "";
     isPlural = n.isPlural ?? false;
     paramsValues = { ...(n.paramsValues ?? {}) };
