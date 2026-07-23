@@ -290,7 +290,9 @@ export async function submitPush(opts: SubmitPushOptions): Promise<PushKeysResul
 }
 
 /** The `relatedKeysInOrder` for one screenshot: the keys it contains, in the
- *  order captured, capped at 100 (matching the original plugin). */
+ *  order captured, capped at 100 (matching the original plugin). The branch is
+ *  set per key on `RelatedKeyDto.branch` — the current big-meta API's mechanism,
+ *  which replaced the old `?branch=` query param (see `storeBigMeta`). */
 export function buildRelatedKeys(
   ctx: PushContext,
   screenshot: FrameScreenshot,

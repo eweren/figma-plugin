@@ -74,8 +74,16 @@ export async function pushKeys(
 /**
  * Registers "big meta" — the related keys that appear together (in order) in a
  * screenshot — via `POST /v2/projects/big-meta`. This feeds Tolgee's in-context
- * translation suggestions. The branch (if any) is carried per key on
- * `RelatedKeyDto.branch`.
+ * translation suggestions.
+ *
+ * Branch handling deliberately differs from the older published plugin, which
+ * passed the branch as a `?branch=` query param on this endpoint. The current
+ * Tolgee API dropped that query param and instead carries the branch PER KEY on
+ * `RelatedKeyDto.branch`. Verified against the live app.tolgee.io OpenAPI (and
+ * mirrored in our generated schema): the big-meta operation has NO parameters,
+ * and `RelatedKeyDto` gained a `branch` field. A query param here would be
+ * ignored by the current server and silently drop the branch, so the caller
+ * (`buildRelatedKeys`) sets it on each related key instead.
  */
 export async function storeBigMeta(
   client: TolgeeClient,
