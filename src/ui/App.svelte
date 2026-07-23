@@ -8,9 +8,9 @@
   import { flushNodeSaves } from "./lib/logic/saveQueue";
   import { validateApiKey } from "./lib/api/auth";
   import { createTolgeeClient } from "./lib/api/client";
-  import { getProjectMeta } from "./lib/api/projectMeta";
-  import { hydratePickers, hydrateBranches } from "./lib/api/pickers";
+  import { hydratePickers } from "./lib/api/pickers";
   import { decideAuthBootstrap } from "./lib/logic/authBootstrap";
+  import ProjectMetaSync from "./lib/components/domain/ProjectMetaSync.svelte";
   import IndexView from "./lib/routes/Index.svelte";
   import PageSetup from "./lib/routes/PageSetup.svelte";
   import CopyView from "./lib/routes/CopyView.svelte";
@@ -66,22 +66,11 @@
     if (config?.projectId !== result.projectId) {
       send({ type: "persist-project-id", projectId: result.projectId });
     }
-    // Hydrate project-level feature flags (branching, namespaces) so push /
-    // pull can decide whether to send `branch` and how to surface namespaces.
-    try {
-      const meta = await getProjectMeta(apiUrl, apiKey, result.projectId);
-      auth.setProjectFeatures({
-        branchingEnabled: meta.branchingEnabled,
-        namespacesEnabled: meta.namespacesFeaturesEnabled,
-        projectName: meta.name,
-      });
-      if (meta.branchingEnabled) void hydrateBranches(client);
-    } catch {
-      auth.setProjectFeatures({
-        branchingEnabled: false,
-        namespacesEnabled: false,
-      });
-    }
+    // Project-level feature flags (branching, namespaces) are read — and kept
+    // fresh across the session — by the `<ProjectMetaSync>` component (mounted
+    // inside the QueryClientProvider below), which refetches on window focus so
+    // toggling them in the Tolgee web app takes effect without reopening.
+    //
     // Hydrate the language and namespace pickers so the header dropdowns are
     // populated for every route without each one re-fetching. Errors are
     // swallowed — the UI gracefully falls back to "current value only".
@@ -197,6 +186,9 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
+  <!-- Markup-less: keeps the project feature flags fresh (needs the query
+       context this provider supplies). -->
+  <ProjectMetaSync />
   <div class="relative flex flex-col h-screen text-text">
     {#if appState.value.errorBanner}
       <ErrorBanner banner={appState.value.errorBanner} />
