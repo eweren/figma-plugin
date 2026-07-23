@@ -181,9 +181,23 @@ export function textOfNode(node: NodeInfo): string {
  * plain canvas edits); this one deliberately does NOT fall back for advanced
  * strings. Shared by the Push diff and the Index warning banner so they agree.
  */
+// A plural ICU, detected from the string itself (`{x, plural, …}`) — robust to a
+// stale `isPlural` flag (see the plural render notes in interpolate.ts).
+const PLURAL_ICU_RE = /,\s*plural\s*,/i;
+
 export function conflictText(node: NodeInfo): string {
-  // ADVANCED: the ICU only — no `characters` fallback (a render is derived, so
-  // two plural forms of one key never conflict). PLAIN: same as `textOfNode`.
+  // PLURAL: the forms (one / other / …) legitimately vary across layers of one
+  // key, and pluralizing each layer independently can even yield DIFFERENT
+  // partial ICUs ("1 apple" → `one {# apple}`, "2 apples" → `other {# apples}`).
+  // They are still the SAME plural on the SAME key, so they must NEVER count as a
+  // conflict — collapse every plural layer to one form-agnostic marker. (Was
+  // comparing the full ICU, which wrongly flagged those partial-ICU variants.)
+  if (node.isPlural || PLURAL_ICU_RE.test(node.translation ?? "")) {
+    return "\0plural";
+  }
+  // Other ADVANCED (params / markup): the ICU is authoritative — two different
+  // param strings on one key DO conflict; no `characters` fallback (a render is
+  // derived). PLAIN: same as `textOfNode`.
   return isAdvancedString(node)
     ? (node.translation ?? "")
     : node.characters || node.translation || "";

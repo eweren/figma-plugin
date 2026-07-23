@@ -182,6 +182,51 @@ describe("pushDiff", () => {
     expect(diff.conflictingNodes).toEqual([]);
   });
 
+  it("does NOT report plural variants as conflicting when each was pluralized independently (different PARTIAL ICUs)", () => {
+    // The reported bug: three layers on one plural key, each pluralized from its
+    // own single form → DIFFERENT partial ICUs. They are still the same plural,
+    // so the same-key conflict must not fire (was flagged because the full ICU
+    // differed between "one {…}" and "other {…}").
+    const one = makeNode({
+      id: "a",
+      key: "test.plural.apple",
+      isPlural: true,
+      translation: "{value, plural, one {# apple} other {}}",
+      characters: "1 apple",
+    });
+    const other = makeNode({
+      id: "b",
+      key: "test.plural.apple",
+      isPlural: true,
+      translation: "{value, plural, other {# apples}}",
+      characters: "2 apples",
+    });
+    const other2 = makeNode({
+      id: "c",
+      key: "test.plural.apple",
+      isPlural: true,
+      translation: "{value, plural, other {# apples}}",
+      characters: "167 apples",
+    });
+    const diff = pushDiff([one, other, other2], {}, { hasNamespacesEnabled: false });
+    expect(diff.conflictingNodes).toEqual([]);
+  });
+
+  it("STILL reports a plain layer sharing a plural layer's key as a conflict", () => {
+    // A form-agnostic plural marker must not swallow a genuine mix: a plural and
+    // a plain string on ONE key really do conflict (only one can upload).
+    const plural = makeNode({
+      id: "a",
+      key: "shared",
+      isPlural: true,
+      translation: "{value, plural, other {# apples}}",
+      characters: "2 apples",
+    });
+    const plain = makeNode({ id: "b", key: "shared", translation: "banana", characters: "banana" });
+    const diff = pushDiff([plural, plain], {}, { hasNamespacesEnabled: false });
+    expect(diff.conflictingNodes).toHaveLength(1);
+  });
+
   it("flags plural mismatch as changed even when text matches", () => {
     const node = makeNode({
       id: "n1",
