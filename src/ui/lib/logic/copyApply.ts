@@ -118,3 +118,70 @@ export async function applyCopyPages(
   }
   return { ok: true };
 }
+
+const RECREATE_IDLE_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * MODULE-SCOPED continuation for "Recreate copy": waits for this
+ * `create-copy-result`, then renders + applies `translations` onto the fresh
+ * clone and toasts "Copy recreated.".
+ *
+ * Why not in CopyView: recreating deletes the CURRENT page first (main switches
+ * to the source page as fallback), and the source page isn't a copy — so
+ * App.svelte routes away and CopyView UNMOUNTS mid-flight, tearing down any
+ * `$effect`-registered result handler along with the held translations. The
+ * clone then completed with nobody left to apply the fetched language onto it,
+ * and the "recreated" page silently kept the source-language text. This job
+ * lives outside the component lifecycle, so it survives that unmount/remount.
+ * (Plain "Create copy" never hit this: it runs from the source page, which is
+ * not removed, so CreateCopy stays mounted.)
+ *
+ * `onProgress`/`onDone` are best-effort UI hooks — after the unmount they
+ * update a dead instance's state, which is harmless; the canvas work and the
+ * toast don't depend on them.
+ */
+export function finishCopyRecreate(opts: {
+  correlationId: string;
+  /** Per-language map to render onto the clone; null for a keys copy. */
+  translations: Record<string, CopyTranslations> | null;
+  onProgress?: (current: number, total: number) => void;
+  onDone?: (result: { ok: boolean; error?: string }) => void;
+}): void {
+  const cleanup = (): void => {
+    offResult();
+    offProgress();
+    watchdog.clear();
+  };
+  // Idle timeout, not wall-clock: create-copy-progress pings keep resetting it,
+  // so only a genuinely silent recreate trips it (same shape as the apply
+  // watchdogs above).
+  const watchdog = createIdleTimeout(RECREATE_IDLE_TIMEOUT_MS, () => {
+    cleanup();
+    opts.onDone?.({ ok: false, error: "Timed out waiting for the copy to be recreated." });
+  });
+  const offProgress = on("create-copy-progress", (msg) => {
+    if (msg.correlationId !== opts.correlationId) return;
+    watchdog.touch();
+    opts.onProgress?.(msg.current, msg.total);
+  });
+  const offResult = on("create-copy-result", (msg) => {
+    if (msg.correlationId !== opts.correlationId) return;
+    cleanup();
+    void (async () => {
+      if (!msg.ok) {
+        opts.onDone?.({ ok: false, error: msg.error ?? "Failed to recreate the copy." });
+        return;
+      }
+      const pages = msg.pages ?? [];
+      if (pages.length > 0 && opts.translations) {
+        const applied = await applyCopyPages(pages, opts.translations, opts.onProgress);
+        if (!applied.ok) {
+          opts.onDone?.({ ok: false, error: applied.error ?? "Failed to recreate the copy." });
+          return;
+        }
+      }
+      send({ type: "notify", text: "Copy recreated." });
+      opts.onDone?.({ ok: true });
+    })();
+  });
+}

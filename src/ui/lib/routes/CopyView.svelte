@@ -12,7 +12,7 @@
   import { resolveCopyLanguage } from "$ui/lib/logic/copyLanguage";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
   import { pullDiff, formatNodeText } from "$ui/lib/logic/pullDiff";
-  import { applyCopyPages, type CopyTranslations } from "$ui/lib/logic/copyApply";
+  import { finishCopyRecreate, type CopyTranslations } from "$ui/lib/logic/copyApply";
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import { hasRichFormat } from "$ui/lib/logic/icuParams";
   import { computeVirtualWindow } from "$ui/lib/logic/virtualWindow";
@@ -81,14 +81,11 @@
   let staleness = $state(false);
   let stalenessCorrelationId: string | null = null;
 
+  // Progress of an in-flight recreate. The completion itself (result handling,
+  // watchdog, apply) lives OUTSIDE this component in `finishCopyRecreate` —
+  // recreating deletes this very page, so this component unmounts mid-flight
+  // and anything registered here would die with it (see copyApply.ts).
   let recreateProgress = $state<{ current: number; total: number } | null>(null);
-  let recreateCorrelationId = $state<string | null>(null);
-  let recreateWatchdog: RequestWatchdog | null = null;
-  // The one-language translations map fetched by `recreateCopy`, consumed by
-  // the create-copy-result handler once the clone exists (plain plumbing, not
-  // `$state` — nothing renders from it).
-  let recreateTranslations: Record<string, CopyTranslations> | null = null;
-  const RECREATE_TIMEOUT_MS = 5 * 60_000;
 
   /** "Download all" with nothing selected, "Download" over the current
    *  selection — mirrors production's Pull/Pull all split, just renamed to
@@ -334,18 +331,40 @@
     errorMessage = null;
     recreateProgress = null;
     const correlationId = nextCorrelationId();
-    recreateCorrelationId = correlationId;
-    recreateWatchdog?.clear();
-    recreateWatchdog = createIdleTimeout(RECREATE_TIMEOUT_MS, () => {
-      stage = "error";
-      errorMessage = "Timed out waiting for the copy to be recreated.";
-      recreateProgress = null;
-      recreateCorrelationId = null;
-      recreateWatchdog = null;
-    });
+
+    // Registers the MODULE-scoped continuation (result wait + watchdog + apply)
+    // BEFORE the create-copy message goes out. It must not live in this
+    // component: recreating removes this very page, main switches to the source
+    // page (not a copy), App routes away and this instance unmounts — an
+    // instance-held handler died there, so the fetched language was never
+    // applied and the "recreated" page silently kept the source-language text.
+    // The callbacks below just drive this instance's UI while it's still alive.
+    const startJob = (translations: Record<string, CopyTranslations> | null): void => {
+      finishCopyRecreate({
+        correlationId,
+        translations,
+        onProgress: (current, total) => {
+          recreateProgress = { current, total };
+        },
+        onDone: (result) => {
+          recreateProgress = null;
+          if (!result.ok) {
+            stage = "error";
+            errorMessage = result.error ?? "Failed to recreate the copy.";
+            return;
+          }
+          stage = "idle";
+          staleness = false;
+          // The main thread switched `figma.currentPage` to the fresh
+          // replacement — App.svelte's `currentpagechange` listener re-syncs
+          // config/selection for it automatically.
+        },
+      });
+    };
 
     try {
       if (!language) {
+        startJob(null);
         send({
           type: "create-copy",
           correlationId,
@@ -372,10 +391,7 @@
         const text = k.translations[language]?.text;
         if (text) translationsForLang[idx] = { text, isPlural: k.isPlural };
       }
-      // Held for the create-copy-result handler below: once the clone exists,
-      // the UI renders + applies these onto it (the main thread can't — no
-      // `Intl` in its sandbox, see $ui/lib/logic/copyApply).
-      recreateTranslations = { [language]: translationsForLang };
+      startJob({ [language]: translationsForLang });
       send({
         type: "create-copy",
         correlationId,
@@ -386,62 +402,8 @@
     } catch (err) {
       stage = "error";
       errorMessage = err instanceof Error ? err.message : String(err);
-      recreateWatchdog?.clear();
-      recreateWatchdog = null;
     }
   }
-
-  $effect(() => {
-    const off = on("create-copy-progress", (msg) => {
-      if (msg.correlationId !== recreateCorrelationId) return;
-      recreateWatchdog?.touch();
-      recreateProgress = { current: msg.current, total: msg.total };
-    });
-    return off;
-  });
-
-  $effect(() => {
-    const off = on("create-copy-result", (msg) => {
-      if (msg.correlationId !== recreateCorrelationId) return;
-      recreateWatchdog?.clear();
-      recreateWatchdog = null;
-      recreateProgress = null;
-      recreateCorrelationId = null;
-      if (!msg.ok) {
-        recreateTranslations = null;
-        stage = "error";
-        errorMessage = msg.error ?? "Failed to recreate the copy.";
-        return;
-      }
-      // The clone exists but still holds the SOURCE page's text — render +
-      // write the fetched translations from here (the main thread can't: no
-      // `Intl` in its sandbox). Same pipeline as the Download flow.
-      const pages = msg.pages ?? [];
-      const translations = recreateTranslations;
-      recreateTranslations = null;
-      void (async () => {
-        if (pages.length > 0 && translations) {
-          const applied = await applyCopyPages(pages, translations, (done, total) => {
-            recreateProgress = { current: done, total };
-          });
-          recreateProgress = null;
-          if (!applied.ok) {
-            stage = "error";
-            errorMessage = applied.error ?? "Failed to recreate the copy.";
-            return;
-          }
-        }
-        stage = "idle";
-        staleness = false;
-        send({ type: "notify", text: "Copy recreated." });
-        // The main thread may have switched `figma.currentPage` to the fresh
-        // replacement (this page can't delete itself while active) —
-        // App.svelte's existing `currentpagechange` listener re-syncs
-        // config/selection for it automatically.
-      })();
-    });
-    return off;
-  });
 
   // ---- Chrome/list split & windowing ----------------------------------------
   // Chrome (staleness banner, progress/error/success messages, count row)
