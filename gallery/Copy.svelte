@@ -368,8 +368,8 @@
       items: [
         { text: "{pageName} (copy)", where: "header title" },
         { text: "Shows Tolgee keys. Doesn't sync back.", where: "\"About this page\" (i), keys-mode only" },
-        { text: "Download / Download all / Scanning…", where: "header action button — label depends on hasUserSelection / a page-wide scan in flight; hidden entirely in Dev Mode" },
-        { text: "Recreate copy", where: "staleness banner button, hidden in Dev Mode (banner text itself is in Messages & banners)" },
+        { text: "Download / Download all / Scanning…", where: "header action button on LANGUAGE copies — label depends on hasUserSelection / a page-wide scan in flight; hidden entirely in Dev Mode" },
+        { text: "Recreate copy", where: "staleness banner button on any copy, AND the permanent header action on KEYS copies (nothing to download there — labels refresh only by recreating). Both need a recorded sourcePageId and hide in Dev Mode (banner text itself is in Messages & banners)" },
         { text: "Loading translations from Tolgee / Scanning page for connected keys… / Applying translations / Recreating copy…", where: "ProgressBar labels for the four in-flight stages" },
         { text: "Downloaded {n} strings.", where: "persisted success Message after a language-mode Download (distinct from the toast of the same shape — see Toasts)" },
         { text: "Timed out waiting for the translations to apply. / Timed out waiting for the copy to be recreated.", where: "idle-timeout errors (apply-translations / create-copy watchdogs)" },

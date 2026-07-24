@@ -106,6 +106,11 @@
   // is useful read-only information); only the remedies are hidden.
   const isDev = $derived(appState.value.editorType === "dev");
 
+  // Recreate needs the recorded source page — copies made before sourcePageId
+  // tracking (older builds / production) can't be recreated, so their header
+  // button and banner action would be dead clicks.
+  const canRecreate = $derived(Boolean(appState.value.config?.sourcePageId));
+
   // Persists across the "toast disappears" problem: once a download
   // finishes, this stays on screen as a dismissable success message — the
   // user gets to see what actually happened instead of relying on a fleeting
@@ -507,6 +512,22 @@
           onclick={pull}
         >
           {downloadButtonLabel}
+        </Button>
+      {:else if !language && !isDev && canRecreate}
+        <!-- KEYS copy: there's nothing to "download" (the key labels come from
+             the clone's own frozen pluginData, not Tolgee), so the header
+             action is Recreate — the only true way to refresh the labels after
+             connections/renames on the source page. Permanently available, not
+             just via the staleness banner: connection changes the check can't
+             see (e.g. copies without full history) still deserve a manual
+             refresh. Hidden without a recorded sourcePageId (pre-tracking
+             copies can't recreate) and in Dev Mode (canvas write). -->
+        <Button
+          size="sm"
+          disabled={stage === "recreating"}
+          onclick={recreateCopy}
+        >
+          Recreate copy
         </Button>
       {/if}
     </header>
