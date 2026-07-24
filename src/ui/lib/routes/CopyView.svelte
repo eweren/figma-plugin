@@ -558,7 +558,11 @@
           {#if staleness && stage !== "recreating"}
             <!-- The source page gained connections since this copy was made —
                  Download can't discover those on its own (it only refreshes text
-                 for keys the copy already tracks), so recreating is the only fix. -->
+                 for keys the copy already tracks), so recreating is the only fix.
+                 The BANNER stays in Dev Mode (it's useful to know the copy is
+                 outdated), but the Recreate button — a canvas write blocked in
+                 Dev — is hidden: Dev shows the copy read-only, no action it
+                 can't perform. -->
             <Message variant="info" class="items-start">
               <div class="space-y-1.5">
                 <p>The original page changed since this copy was made.</p>
