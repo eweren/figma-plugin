@@ -69,6 +69,24 @@ describe("splitConfig", () => {
     expect((split.global as Record<string, unknown>).language).toBeUndefined();
   });
 
+  it("routes the immutable `copyLanguage` marker to `page` only (survives writeConfig, no doc leak)", () => {
+    // A repointed selectable `language` must not drag the copy's true language
+    // with it — `copyLanguage` stays page-scoped so a later config write echoes
+    // it straight back onto the copy page instead of leaking onto the document.
+    const split = splitConfig({
+      language: "en",
+      copyLanguage: "cs",
+      pageCopy: true,
+      sourcePageId: "1:2",
+    } as Partial<TolgeeConfig>);
+
+    expect(split.page.copyLanguage).toBe("cs");
+    expect((split.doc as Record<string, unknown>).copyLanguage).toBeUndefined();
+    expect((split.global as Record<string, unknown>).copyLanguage).toBeUndefined();
+    // Round-trip: it comes back out of the merged view unchanged.
+    expect(mergeConfig(split.global, split.doc, split.page).copyLanguage).toBe("cs");
+  });
+
   it("routes doc-only fields (namespace, branch, documentInfo) to `doc`", () => {
     const split = splitConfig({
       namespace: "ns",

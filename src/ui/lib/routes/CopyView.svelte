@@ -31,11 +31,15 @@
    * route, so there's no "back" affordance — same as production.
    */
 
-  // The copy's language, persisted page-scoped by `markPageAsCopy` at
-  // creation time. Undefined/empty means a "keys" copy (shows Tolgee keys
-  // instead of translations) — those never get a Download button, matching
-  // production (Download only re-fetches translations, keys never change).
-  const language = $derived(appState.value.config?.language);
+  // The copy's language. Prefer the IMMUTABLE `copyLanguage` marker written at
+  // creation — the selectable `language` shares the page scope and can get
+  // repointed (e.g. to the source/default), which made Recreate/Download revert
+  // a `cs` copy to `en`. Fall back to `language` for copies from before this
+  // marker existed. Undefined/empty ⇒ a "keys" copy (shows Tolgee keys instead
+  // of translations) — those never get a Download button, matching production.
+  const language = $derived(
+    appState.value.config?.copyLanguage ?? appState.value.config?.language,
+  );
   const selectedNodes = $derived(appState.value.selectedNodes);
   const hasUserSelection = $derived(appState.value.hasUserSelection);
 

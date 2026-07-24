@@ -140,6 +140,15 @@ export type CurrentPageSettings = {
    * the staleness check just skips itself when it's missing.
    */
   sourcePageId?: string;
+  /**
+   * The language a "languages" copy was created in — an IMMUTABLE property of
+   * the copy, written once by `createCopy`/`markPageAsCopy`. Distinct from
+   * `language` (the selectable Push/Pull language, which shares the page scope
+   * and can be repointed): `CopyView` must Download/Recreate in the language the
+   * copy actually holds, not whatever `language` currently reads, so it reads
+   * `copyLanguage` first. Absent on "keys" copies and pre-existing copies.
+   */
+  copyLanguage?: string;
 };
 
 export type TolgeeConfig = CurrentDocumentSettings & CurrentPageSettings;

@@ -319,6 +319,12 @@ function markPageAsCopy(page: PageNode, sourcePageId: string, language?: string)
   };
   if (language) {
     payload.language = language;
+    // Immutable copy-language marker: `language` shares the page scope with the
+    // selectable Push/Pull language and can get repointed, which made Recreate
+    // (and Download) fall back to the source/default language. `copyLanguage`
+    // is written once here and read first by CopyView so the copy always
+    // Recreates/Downloads in the language it was actually made in.
+    payload.copyLanguage = language;
   }
   page.setPluginData(TOLGEE_PLUGIN_CONFIG_NAME, JSON.stringify(payload));
 }

@@ -22,6 +22,7 @@ const PAGE_KEYS = [
   // here so any future writeConfig echoing it back routes it to the PAGE
   // scope — doc-scoped it would leak onto every other page's merged config.
   "sourcePageId",
+  "copyLanguage",
 ] as const satisfies ReadonlyArray<keyof CurrentPageSettings>;
 
 /**
