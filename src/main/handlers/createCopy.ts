@@ -342,7 +342,12 @@ async function writeTextSafely(
   options?: { plainOnly?: boolean },
 ): Promise<void> {
   if (node.hasMissingFont) return;
-  if (node.fontName === figma.mixed) return;
+  // NO bail on `fontName === figma.mixed`: an advanced string rendered with
+  // bold/italic ranges IS mixed, and skipping it left the keys copy showing
+  // the original text instead of the key for exactly those nodes (the
+  // original plugin wrote keys onto mixed nodes too). `applyRichText`
+  // handles mixed safely — it pre-loads every font on the node via
+  // `getRangeAllFontNames` before assigning `characters`.
   await applyRichText(node, text, options);
 }
 

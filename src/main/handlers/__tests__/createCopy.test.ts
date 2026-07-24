@@ -412,6 +412,29 @@ describe("createCopy — ignore settings", () => {
     expect(result.pages?.[0]?.nodes.map((n) => n.id)).toEqual(["n1"]);
   });
 
+  it("keys mode: writes the key onto a MIXED-font node (advanced string with bold/italic ranges)", async () => {
+    // Regression: an advanced string rendered with <b>/<i> ranges has
+    // `fontName === figma.mixed`, and writeTextSafely used to bail on that —
+    // leaving the keys copy showing the original text instead of the key for
+    // exactly those nodes. applyRichText pre-loads every range font, so the
+    // write is safe; the original plugin wrote keys onto mixed nodes too.
+    const rich = writableTextNode({ id: "n1", characters: "bold italic text", key: "rich.key" });
+    const src = cloneableSourcePage("Home", [rich]);
+    installFigmaForCreateCopy(src);
+    // Same sentinel the fake figma env exposes — assigned after install.
+    rich.fontName = (globalThis as unknown as { figma: { mixed: unknown } }).figma
+      .mixed as never;
+    rich.getRangeAllFontNames = () => [
+      { family: "Inter", style: "Regular" },
+      { family: "Inter", style: "Bold Italic" },
+    ];
+
+    const result = await createCopy({ mode: "keys", correlationId: "c6" }, {});
+
+    expect(result.ok).toBe(true);
+    expect(rich.characters).toBe("rich.key");
+  });
+
   it("keys mode: prefixes the label with the namespace when namespacesEnabled is true", async () => {
     const namespaced = writableTextNode({
       id: "n1",
