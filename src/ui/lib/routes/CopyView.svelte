@@ -9,6 +9,7 @@
   import * as Tooltip from "$ui/lib/components/ui/tooltip";
   import TooltipIconButton from "$ui/lib/components/ui/tooltipIconButton.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
+  import { resolveCopyLanguage } from "$ui/lib/logic/copyLanguage";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
   import { pullDiff, formatNodeText } from "$ui/lib/logic/pullDiff";
   import { applyCopyPages, type CopyTranslations } from "$ui/lib/logic/copyApply";
