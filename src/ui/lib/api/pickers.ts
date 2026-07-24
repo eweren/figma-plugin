@@ -33,20 +33,38 @@ export async function hydratePickers(client: TolgeeClient): Promise<void> {
   } catch {
     auth.setLanguages([]);
   }
+  // Startup/reconnect: a failed fetch RESETS to [] — the previous project's
+  // namespaces must not linger after switching projects.
+  auth.setNamespaces((await fetchUsedNamespaces(client)) ?? []);
+}
+
+/** The project's used namespaces, or null on failure (caller decides whether a
+ *  miss should reset or keep the existing list). */
+async function fetchUsedNamespaces(
+  client: TolgeeClient,
+): Promise<{ name: string }[] | null> {
   try {
     const { data } = await client.GET("/v2/projects/used-namespaces", {});
-    const raw = data as {
-      _embedded?: { namespaces?: Array<{ name?: string }> };
-    };
-    const list = raw._embedded?.namespaces ?? [];
-    auth.setNamespaces(
-      list
-        .filter((n): n is { name: string } => Boolean(n.name))
-        .map((n) => ({ name: n.name })),
-    );
+    const raw = data as { _embedded?: { namespaces?: Array<{ name?: string }> } };
+    return (raw._embedded?.namespaces ?? [])
+      .filter((n): n is { name: string } => Boolean(n.name))
+      .map((n) => ({ name: n.name }));
   } catch {
-    auth.setNamespaces([]);
+    return null;
   }
+}
+
+/**
+ * Re-pull the project's used namespaces into the store — best-effort, so a
+ * transient failure KEEPS the current list rather than wiping it (unlike the
+ * startup hydrate). Call after a push: uploading a key under a brand-new
+ * namespace creates it server-side, and the namespace picker (Index rows,
+ * bulk "Set namespace") must offer it afterwards even when no currently
+ * selected node carries it.
+ */
+export async function refreshNamespaces(client: TolgeeClient): Promise<void> {
+  const list = await fetchUsedNamespaces(client);
+  if (list) auth.setNamespaces(list);
 }
 
 /**

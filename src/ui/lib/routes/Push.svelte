@@ -18,6 +18,7 @@
   } from "$ui/lib/logic/pushDiff";
   import type { SimpleImportConflictResult } from "$ui/lib/api/push";
   import { fetchRemoteKeys } from "$ui/lib/api/keysByName";
+  import { refreshNamespaces } from "$ui/lib/api/pickers";
   import {
     applyConfiguredTags,
     buildConnectBackUpdates,
@@ -528,6 +529,11 @@
     // Drop the diff cache so the next visit recomputes against the new
     // canonical translations.
     void qc.invalidateQueries({ queryKey: ["push-diff"] });
+    // Re-pull the project's namespaces: this push may have created a brand-new
+    // one server-side, and the namespace picker (Index rows / bulk "Set
+    // namespace") must offer it even when no selected node carries it.
+    // Best-effort — never blocks the done state.
+    if (hasNamespacesEnabled) void refreshNamespaces(ctx.client);
     stage = "done";
   }
 
