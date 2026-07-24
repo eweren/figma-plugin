@@ -31,14 +31,19 @@
    * route, so there's no "back" affordance — same as production.
    */
 
-  // The copy's language. Prefer the IMMUTABLE `copyLanguage` marker written at
-  // creation — the selectable `language` shares the page scope and can get
-  // repointed (e.g. to the source/default), which made Recreate/Download revert
-  // a `cs` copy to `en`. Fall back to `language` for copies from before this
-  // marker existed. Undefined/empty ⇒ a "keys" copy (shows Tolgee keys instead
-  // of translations) — those never get a Download button, matching production.
+  // The copy's language, resolved most-reliable first (see `resolveCopyLanguage`):
+  // the immutable `copyLanguage` marker (new copies) → the "…- cs" page-name
+  // suffix (backward-compatible with the original plugin + pre-marker copies) →
+  // the selectable `language` as a last resort. The last is why the bug existed:
+  // it shares the page scope and can get repointed to the main/default, which
+  // made Recreate/Download revert a `cs` copy to `en`. Undefined ⇒ a "keys" copy
+  // (shows Tolgee keys, never a Download button — matching production).
   const language = $derived(
-    appState.value.config?.copyLanguage ?? appState.value.config?.language,
+    resolveCopyLanguage(
+      appState.value.config,
+      appState.value.pageName,
+      new Set(auth.value.languages.map((l) => l.tag)),
+    ),
   );
   const selectedNodes = $derived(appState.value.selectedNodes);
   const hasUserSelection = $derived(appState.value.hasUserSelection);
