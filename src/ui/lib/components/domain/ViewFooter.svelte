@@ -28,6 +28,10 @@
     cancelLabel?: string;
     onCancel?: () => void;
     children?: Snippet;
+    /** Optional content pinned to the LEFT of the action bar (e.g. a quiet
+     *  version/about line), so it shares the row with Cancel/Save instead of
+     *  taking one of its own. */
+    leftContent?: Snippet;
   };
   let {
     confirmLabel,
@@ -36,20 +40,30 @@
     cancelLabel = "Cancel",
     onCancel,
     children,
+    leftContent,
   }: Props = $props();
 </script>
 
-<footer class="flex items-center justify-end gap-2 border-t border-border p-2">
-  {#if children}
-    {@render children()}
-  {:else}
-    {#if onCancel}
-      <Button variant="ghost" onclick={onCancel}>{cancelLabel}</Button>
-    {/if}
-    {#if onConfirm}
-      <Button onclick={onConfirm} disabled={confirmDisabled}>
-        {confirmLabel}
-      </Button>
-    {/if}
+<footer
+  class="flex items-center gap-2 border-t border-border p-2 {leftContent
+    ? 'justify-between'
+    : 'justify-end'}"
+>
+  {#if leftContent}
+    {@render leftContent()}
   {/if}
+  <div class="flex items-center gap-2">
+    {#if children}
+      {@render children()}
+    {:else}
+      {#if onCancel}
+        <Button variant="ghost" onclick={onCancel}>{cancelLabel}</Button>
+      {/if}
+      {#if onConfirm}
+        <Button onclick={onConfirm} disabled={confirmDisabled}>
+          {confirmLabel}
+        </Button>
+      {/if}
+    {/if}
+  </div>
 </footer>

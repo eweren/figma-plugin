@@ -3,7 +3,11 @@
   import { appState } from "$ui/lib/stores/app.svelte";
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { send } from "$ui/lib/bus";
+  import { ICON } from "$shared/iconSizes";
+  import { APP_VERSION, APP_RELEASED, FIGMA_PLUGIN_URL } from "$shared/version";
   import * as Tabs from "$ui/lib/components/ui/tabs";
+  import * as Tooltip from "$ui/lib/components/ui/tooltip";
+  import ExternalLinkIcon from "lucide-svelte/icons/external-link";
   import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
   import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import SettingsSectionConnection from "$ui/lib/components/domain/SettingsSectionConnection.svelte";
@@ -41,6 +45,10 @@
 
   function cancel(): void {
     appState.navigate({ name: "index" });
+  }
+
+  function openPluginPage(): void {
+    send({ type: "open-external", url: FIGMA_PLUGIN_URL });
   }
 </script>
 
@@ -92,5 +100,31 @@
     </div>
   </Tabs.Root>
 
-  <ViewFooter onCancel={cancel} confirmLabel="Save" onConfirm={save} />
+  <ViewFooter onCancel={cancel} confirmLabel="Save" onConfirm={save}>
+    {#snippet leftContent()}
+      <!-- Quiet version tag in the action bar. Hover for the release date,
+           click (the external-link icon hints it) to open the plugin's Figma
+           Community page. -->
+      <Tooltip.Provider delayDuration={200}>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <button
+                {...props}
+                type="button"
+                onclick={openPluginPage}
+                class="inline-flex items-center gap-1 leading-none text-[11px] text-text-secondary transition-colors hover:text-text"
+              >
+                v{APP_VERSION}
+                <ExternalLinkIcon size={ICON.badge} />
+              </button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content side="top" align="start">
+            Tolgee for Figma · updated {APP_RELEASED} · open on Figma
+          </Tooltip.Content>
+        </Tooltip.Root>
+      </Tooltip.Provider>
+    {/snippet}
+  </ViewFooter>
 </div>
