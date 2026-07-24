@@ -14,6 +14,7 @@
     type KeySearchResult,
   } from "$ui/lib/api/keys";
   import type { NodeInfo } from "$shared/types";
+  import { textOfNode } from "$ui/lib/logic/pushDiff";
   import { cn } from "$ui/lib/utils";
   import KeyRound from "lucide-svelte/icons/key-round";
 
@@ -65,7 +66,13 @@
     }
     if (prefilledForId === n.id) return;
     prefilledForId = n.id;
-    query = n.characters || n.key || "";
+    // Prefill with the AUTHORITATIVE text `textOfNode` picks: for a plural /
+    // advanced string that's the ICU (`{count, plural, …}`, `<b>…`), which is
+    // exactly what Tolgee stores as the key's source — so the exact match can
+    // hit. A plain string still prefills with its rendered canvas text (no
+    // change). The ICU is only in `translation`, so a node that hasn't stored
+    // one falls back to `characters`.
+    query = textOfNode(n) || n.key || "";
   });
 
   // Debounced search against the Tolgee project.

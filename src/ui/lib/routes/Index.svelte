@@ -18,7 +18,7 @@
     effectiveNs,
   } from "$ui/lib/api/keyExistence";
   import { hasManualChange } from "$ui/lib/logic/manualChange";
-  import { conflictText } from "$ui/lib/logic/pushDiff";
+  import { conflictText, textOfNode } from "$ui/lib/logic/pushDiff";
   import { hasRichFormat } from "$ui/lib/logic/icuParams";
   import { collectNamespaceNames } from "$ui/lib/logic/namespaces";
   import { formatKey, keyFormatUsesParents } from "$shared/keyFormat";
@@ -643,7 +643,11 @@
     const groups = new Map<string, { text: string; ns: string; nodes: NodeInfo[] }>();
     for (const n of selectedNodesList) {
       if (n.connected) continue;
-      const t = (n.characters ?? "").trim();
+      // Match on the AUTHORITATIVE text: a plural / advanced string resolves to
+      // its ICU (what Tolgee stores as the source), a plain string to its
+      // rendered canvas text — so advanced strings can auto-connect too, not
+      // just plain ones. Same `textOfNode` the Connect prefill and Push use.
+      const t = textOfNode(n).trim();
       if (!t) continue;
       const ns = n.ns ?? "";
       const gk = scope === "namespace" ? `${ns}\0${t}` : t;
