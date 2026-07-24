@@ -86,11 +86,6 @@
           where: "Push.svelte · Upload preview when the diff query fails to load (fallback; the underlying error message is shown when present)",
         },
         {
-          variant: "info",
-          text: "Download applies to every connected text on this page, not just your selection. All {n} layers will be set to {language}.",
-          where: "Pull.svelte · page-wide info banner",
-        },
-        {
           variant: "success",
           text: "Everything is up to date.",
           where: "Pull.svelte · no changed nodes",

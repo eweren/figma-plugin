@@ -63,6 +63,18 @@
 
   const qc = useQueryClient();
 
+  // SCOPE — matches the original plugin: pull the user's SELECTION when there
+  // is one (so changing the language affects ONLY the selected screen/frame),
+  // and fall back to the whole page only when nothing is selected. `getConnected
+  // Nodes({ ignoreSelection: false })` did exactly this: `selection.length > 0 ?
+  // currentPage.selection : currentPage.children`.
+  const hasSelection = $derived(appState.value.hasUserSelection);
+  // The already-scanned selection, narrowed to connected keys — no main-thread
+  // round-trip needed, unlike the page scan.
+  const selectionNodes = $derived(
+    appState.value.selectedNodes.filter((n) => n.connected && n.key),
+  );
+
   // Query 1: page-wide connected text nodes. Re-fetched when the user
   // navigates back into Pull, but cached across the conflict-resolution
   // round-trip so we don't bug the main thread for each render.
@@ -82,7 +94,9 @@
         },
         { toMessage: (err) => formatQueryError(err) ?? "Cannot scan the page." },
       ),
-    enabled: Boolean(language) && auth.value.authenticated,
+    // Only scan the whole page when nothing is selected — with a selection the
+    // scope is `selectionNodes`, already in hand.
+    enabled: Boolean(language) && auth.value.authenticated && !hasSelection,
     staleTime: 5 * 1000,
   }));
 
@@ -90,14 +104,19 @@
   const pageNodesOutcome = $derived(pageNodesQuery.data ?? null);
   const pageNodes = $derived(pageNodesOutcome?.ok ? pageNodesOutcome.value : []);
 
-  // The page's connected key names — query 2 filters the server fetch down to
+  // The connected nodes this pull acts on: the selection, or the whole page.
+  const scopeNodes = $derived(hasSelection ? selectionNodes : pageNodes);
+  // Ready to diff: the selection is always ready; the page scan must have run.
+  const scopeReady = $derived(hasSelection ? true : (pageNodesOutcome?.ok ?? false));
+
+  // The scope's connected key names — query 2 filters the server fetch down to
   // exactly these instead of paginating the whole project. Sorted + joined
   // into a stable string so svelte-query's cache key doesn't churn on every
   // re-render (same trick as Push.svelte's `keyFilterCacheKey`).
   const connectedKeyNames = $derived(
     Array.from(
       new Set(
-        pageNodes
+        scopeNodes
           .map((n) => n.key)
           .filter((k): k is string => Boolean(k)),
       ),
@@ -136,10 +155,9 @@
         },
         { signal, toMessage: (err) => formatQueryError(err) ?? "Cannot load translations." },
       ),
-    // Gated on the page scan SUCCEEDING (`ok`) — no point fetching translations
-    // when we couldn't even find the page's keys; the scan error wins the stage.
-    enabled:
-      Boolean(language) && auth.value.authenticated && (pageNodesOutcome?.ok ?? false),
+    // Gated on the scope being READY — with a selection that's immediate; with
+    // none, the page scan must have succeeded first (its error wins the stage).
+    enabled: Boolean(language) && auth.value.authenticated && scopeReady,
     // Translations rarely change during a session and are expensive to fetch;
     // keep them fresh for 30s so toggling Pull off and back on is instant.
     staleTime: 30 * 1000,
@@ -147,11 +165,11 @@
 
   const translationsOutcome = $derived(translationsQuery.data ?? null);
 
-  // Pure derivation: diff is a function of the two queries' unwrapped values.
+  // Pure derivation: diff over the SCOPE (selection or page) + remote translations.
   const diff = $derived<Diff | null>(
-    pageNodesOutcome?.ok && translationsOutcome?.ok
+    scopeReady && translationsOutcome?.ok
       ? pullDiff(
-          pageNodesOutcome.value,
+          scopeNodes,
           translationsOutcome.value,
           language,
           auth.value.namespacesEnabled,
@@ -160,9 +178,12 @@
   );
 
   // A load failure from either query, surfaced from `.data` (not the adapter's
-  // `.error`). The page-scan error takes precedence — it runs first.
+  // `.error`). The page-scan error only counts when we actually scan (no
+  // selection); it runs first, so it takes precedence.
   const loadError = $derived<string | null>(
-    (pageNodesOutcome && !pageNodesOutcome.ok ? pageNodesOutcome.error : null) ??
+    (!hasSelection && pageNodesOutcome && !pageNodesOutcome.ok
+      ? pageNodesOutcome.error
+      : null) ??
       (translationsOutcome && !translationsOutcome.ok
         ? translationsOutcome.error
         : null),
@@ -177,7 +198,7 @@
         ? "error"
         : !language
           ? "error"
-          : pageNodesQuery.isPending || translationsQuery.isPending
+          : (!hasSelection && pageNodesQuery.isPending) || translationsQuery.isPending
             ? "loading"
             : "diff",
   );
@@ -318,13 +339,6 @@
     return off;
   });
 
-  // Whether to warn the user that pull is page-wide. Only relevant when the
-  // user actually picked a selection on the canvas — without a selection,
-  // page-wide behaviour matches what they expect.
-  const showPageWideHint = $derived(
-    appState.value.hasUserSelection && pageNodes.length > 0,
-  );
-
   // Cap the visible lists to keep the iframe responsive for large diffs.
   const VISIBLE_LIMIT = 50;
   const visibleChanged = $derived(
@@ -383,17 +397,6 @@
       />
     {:else if stage === "diff"}
       {#if diff}
-        {#if showPageWideHint}
-          <div
-            class="rounded border border-(--figma-color-border-brand) bg-(--figma-color-bg-brand-tertiary) p-2 text-[11px] text-text"
-            role="status"
-          >
-            Download applies to every connected text on this page, not just your
-            selection. All {pageNodes.length} layer{pageNodes.length === 1
-              ? ""
-              : "s"} will be set to <strong>{language}</strong>.
-          </div>
-        {/if}
         <PullSummary
           changedCount={diff.changedNodes.length}
           missingCount={diff.missingKeys.length}
