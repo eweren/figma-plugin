@@ -17,7 +17,7 @@ Unzip `tolgee-plugin.zip` somewhere permanent (e.g. `Documents/tolgee-plugin`).
 **Keep the folder** — Figma loads the plugin from these files every time, so
 don't delete or move them after importing.
 
-The folder contains: `manifest.json`, `main.js`, `ui.html`, `ui-inspect.html`.
+The folder contains: `manifest.json`, `main.js`, `ui.html`, and this `INSTALL.md`.
 
 ## 2. Import into Figma
 
