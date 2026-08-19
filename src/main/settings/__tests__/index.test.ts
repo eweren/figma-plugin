@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TOLGEE_PLUGIN_CONFIG_NAME } from "$shared/constants";
-import { writeConfig } from "$main/settings";
+import { invalidateConfigCache, readMergedConfig, writeConfig } from "$main/settings";
 import { readGlobalSettings, writeGlobalSettings } from "$main/settings/storage";
 
 /**
@@ -109,5 +109,76 @@ describe("global settings clientStorage format (rollback compatibility)", () => 
     // lose their settings either.
     clientStorage.set(TOLGEE_PLUGIN_CONFIG_NAME, { apiKey: "o" });
     expect(await readGlobalSettings()).toEqual({ apiKey: "o" });
+  });
+});
+
+describe("config cache around a save", () => {
+  beforeEach(() => {
+    invalidateConfigCache();
+  });
+
+  it("does not keep a pre-write config that was cached DURING the save", async () => {
+    // `writeConfig` invalidates on entry, then awaits several times before the
+    // writes land. Anything that reads in that window (a `selectionchange`
+    // scan, say) caches the OLD state — and without a second invalidation that
+    // stale promise outlives the save, reverting the form in the UI and
+    // keeping the old ignore/prefill behaviour.
+    const { clientStorage } = installFigma();
+    clientStorage.set(TOLGEE_PLUGIN_CONFIG_NAME, JSON.stringify({ apiUrl: "https://old.example" }));
+
+    // Force a read to land mid-save by making the first storage await yield.
+    const figma = (globalThis as unknown as { figma: { clientStorage: { getAsync: unknown } } })
+      .figma;
+    const original = figma.clientStorage.getAsync as (k: string) => Promise<unknown>;
+    let concurrentRead: Promise<unknown> | undefined;
+    figma.clientStorage.getAsync = vi.fn(async (key: string) => {
+      // Read once, from inside the save's own await.
+      concurrentRead ??= readMergedConfig();
+      return original(key);
+    }) as never;
+
+    await writeConfig({ apiUrl: "https://new.example" });
+    await concurrentRead;
+    figma.clientStorage.getAsync = original as never;
+
+    await expect(readMergedConfig()).resolves.toMatchObject({
+      apiUrl: "https://new.example",
+    });
+  });
+
+  it("serves the persisted config once the save has settled", async () => {
+    installFigma();
+
+    await writeConfig({ apiUrl: "https://one.example" });
+    await expect(readMergedConfig()).resolves.toMatchObject({ apiUrl: "https://one.example" });
+
+    await writeConfig({ apiUrl: "https://two.example" });
+    await expect(readMergedConfig()).resolves.toMatchObject({ apiUrl: "https://two.example" });
+  });
+});
+
+describe("safeParseObject logging", () => {
+  it("logs instead of silently resetting when stored settings are unreadable", async () => {
+    // A silent `{}` here wipes the API key, language, ignore rules and key
+    // format with nothing in the console to explain it.
+    const { clientStorage } = installFigma();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    clientStorage.set(TOLGEE_PLUGIN_CONFIG_NAME, "{not json");
+
+    expect(await readGlobalSettings()).toEqual({});
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain("global");
+
+    warn.mockRestore();
+  });
+
+  it("stays quiet for an absent value — a fresh document is not an anomaly", async () => {
+    installFigma();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(await readGlobalSettings()).toEqual({});
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
   });
 });

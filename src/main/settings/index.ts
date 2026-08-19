@@ -93,6 +93,15 @@ export async function writeConfig(partial: Partial<TolgeeConfig>): Promise<void>
   await writeGlobalSettings(nextGlobal);
   writeDocumentSettings(nextDoc);
   writePageSettings(figma.currentPage, nextPage);
+
+  // Invalidate AGAIN, now that the writes have landed. The invalidation at the
+  // top of this function only clears what was cached before it; every `await`
+  // since is a window in which another event (a `selectionchange` scan, say)
+  // can call `readMergedConfig` and cache the pre-write state. That stale
+  // promise would then survive the save — reverting the form in the UI and
+  // keeping the old ignore/prefill behaviour until something else happened to
+  // invalidate.
+  invalidateConfigCache();
 }
 
 /**
