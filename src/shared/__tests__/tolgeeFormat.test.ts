@@ -1,4 +1,5 @@
 import {
+  findArgumentNames,
   findPluralParameters,
   getTolgeeFormat,
   hasIcuArgument,
@@ -338,4 +339,36 @@ describe("round-trip of ICU written by the PUBLISHED plugin", () => {
       expect(tolgeeFormatGenerateIcu(getTolgeeFormat(icu, true, false), false)).toBe(icu);
     });
   }
+});
+
+describe("findArgumentNames", () => {
+  it("finds an argument whose own body contains braces", () => {
+    // The gap a regex can't close: `{gender, select, …}` has no bounded
+    // `[^{}]*` tail, so it was never seen — and an unseeded argument makes
+    // IntlMessageFormat throw MISSING_VALUE.
+    expect(findArgumentNames("{gender, select, other {x}}")).toEqual(["gender"]);
+  });
+
+  it("finds both the outer argument and one nested inside it", () => {
+    expect(
+      findArgumentNames("{gender, select, other {{count, plural, other {# replies}}}}"),
+    ).toEqual(["gender", "count"]);
+  });
+
+  it("finds an argument inside a plural variant body", () => {
+    expect(findArgumentNames("{count, plural, one {Hello {name}} other {hi}}")).toEqual([
+      "count",
+      "name",
+    ]);
+  });
+
+  it("finds a plain argument and dedupes repeats", () => {
+    expect(findArgumentNames("Hi {name}, bye {name}")).toEqual(["name"]);
+  });
+
+  it("ignores escaped braces and prose between braces", () => {
+    expect(findArgumentNames("literal '{'name'}' here")).toEqual([]);
+    expect(findArgumentNames("{not an argument}")).toEqual([]);
+    expect(findArgumentNames("plain text")).toEqual([]);
+  });
 });

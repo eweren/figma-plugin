@@ -167,14 +167,30 @@ describe("plural embedded in surrounding text", () => {
     expect(out.text).toBe("Only 1 day");
   });
 
-  it("seeds a plural nested inside another argument", () => {
-    // Asserted on the params rather than a full render: the outer `select`'s
-    // own `gender` argument is NOT seeded (`namedPlaceholders` can't see
-    // through nested braces — a separate, pre-existing gap), so rendering the
-    // whole string would fail for an unrelated reason.
+  it("renders a plural nested inside a select — BOTH arguments get seeded", () => {
+    // This used to be asserted on the params alone, because the outer
+    // `select`'s own `gender` argument was invisible to the placeholder regex
+    // (no bounded `[^{}]*` tail when the body holds braces) and the full
+    // render therefore threw MISSING_VALUE on it. Both are seeded now.
     const icu = "{gender, select, other {{count, plural, one {# reply} other {# replies}}}}";
     const node = makeNode({ isPlural: true, pluralParamValue: "5" });
-    expect(renderParams(icu, node).count).toBe("5");
+
+    const params = renderParams(icu, node);
+    expect(params.count).toBe("5");
+    expect(params.gender).toBe("gender");
+
+    const out = renderIcuForNode(icu, node, "en");
+    expect(out.error).toBeUndefined();
+    expect(out.text).toBe("5 replies");
+  });
+
+  it("seeds a plain select so it renders instead of throwing", () => {
+    const icu = "{gender, select, female {her} male {his} other {their}} bag";
+    const node = makeNode({ paramsValues: { gender: "female" } });
+
+    const out = renderIcuForNode(icu, node, "en");
+    expect(out.error).toBeUndefined();
+    expect(out.text).toBe("her bag");
   });
 
   it("does not treat an ICU-escaped brace as a plural argument", () => {

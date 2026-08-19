@@ -211,8 +211,59 @@ export function hasIcuArgument(input: string): boolean {
 }
 
 /** Header of a plural argument: `name, plural,` — the `{` and the variants
- *  are matched separately by the scanner below. */
+ *  are matched separately by the walker below. */
 const PLURAL_HEADER_RE = /^\s*([\w.-]+)\s*,\s*plural\s*,/;
+
+/** The argument NAME at the head of `{name}` / `{name, type, …}`. */
+const ARGUMENT_NAME_RE = /^\s*([\w.-]+)/;
+
+/** An argument that is followed by a VARIANT LIST rather than by a value —
+ *  `plural`, `select`, `selectordinal`. */
+const VARIANT_HEADER_RE = /^\s*[\w.-]+\s*,\s*(?:plural|select|selectordinal)\s*,/i;
+
+/**
+ * Visit the body of every ARGUMENT `{…}` run in `input`, at any depth.
+ *
+ * Walks by the same `'`-escape rules `findMatchingBrace` uses, so an escaped
+ * brace never opens a phantom run.
+ *
+ * The `inVariantList` flag is what keeps this honest. Inside a plural or
+ * select, the immediate `{…}` runs are variant BODIES, not arguments — in
+ * `{gender, select, other {x}}`, `{x}` is the body of `other`, and reporting
+ * it as an argument named `x` would invent a parameter nobody declared. Their
+ * CONTENTS are ordinary again, so `one {Hello {name}}` still yields `name`.
+ */
+function walkIcuArguments(
+  input: string,
+  visit: (inner: string) => void,
+  inVariantList = false,
+): void {
+  let i = 0;
+  while (i < input.length) {
+    const skipped = skipEscape(input, i);
+    if (skipped >= 0) {
+      i = skipped;
+      continue;
+    }
+    if (input[i] === "{") {
+      const close = findMatchingBrace(input, i);
+      if (close > i) {
+        const inner = input.slice(i + 1, close);
+        if (inVariantList) {
+          // A variant body: not an argument, but its contents can hold them.
+          walkIcuArguments(inner, visit, false);
+        } else {
+          visit(inner);
+          // `inner` is strictly shorter, so this terminates.
+          walkIcuArguments(inner, visit, VARIANT_HEADER_RE.test(inner));
+        }
+        i = close + 1;
+        continue;
+      }
+    }
+    i += 1;
+  }
+}
 
 /**
  * Every plural argument NAME in `input`, at any nesting depth.
@@ -228,36 +279,31 @@ const PLURAL_HEADER_RE = /^\s*([\w.-]+)\s*,\s*plural\s*,/;
  */
 export function findPluralParameters(input: string): string[] {
   const out: string[] = [];
-  collectPluralParameters(input, out);
+  walkIcuArguments(input, (inner) => {
+    const name = inner.match(PLURAL_HEADER_RE)?.[1];
+    if (name && !out.includes(name)) out.push(name);
+  });
   return out;
 }
 
-function collectPluralParameters(input: string, out: string[]): void {
-  let i = 0;
-  while (i < input.length) {
-    // An escaped brace never opens a phantom argument.
-    const skipped = skipEscape(input, i);
-    if (skipped >= 0) {
-      i = skipped;
-      continue;
-    }
-
-    if (input[i] === "{") {
-      const close = findMatchingBrace(input, i);
-      if (close > i) {
-        const inner = input.slice(i + 1, close);
-        const name = inner.match(PLURAL_HEADER_RE)?.[1];
-        if (name && !out.includes(name)) out.push(name);
-        // Descend — a variant body (or any other argument) can hold another
-        // plural. `inner` is strictly shorter, so this terminates.
-        collectPluralParameters(inner, out);
-        i = close + 1;
-        continue;
-      }
-    }
-
-    i += 1;
-  }
+/**
+ * Every ICU argument NAME in `input`, at any nesting depth — `{name}`,
+ * `{count, plural, …}`, `{gender, select, …}`.
+ *
+ * A regex can't do this: an argument whose own body contains braces (any
+ * `select`, or a plural wrapping one) has no bounded `[^{}]*` tail to match,
+ * so it goes unseen. That's not academic — an unseeded argument makes
+ * `IntlMessageFormat` throw `MISSING_VALUE`, which drops the node in
+ * `copyApply` and leaves stale text on the canvas after Pull.
+ */
+export function findArgumentNames(input: string): string[] {
+  const out: string[] = [];
+  walkIcuArguments(input, (inner) => {
+    if (!ICU_ARGUMENT_RE.test(inner)) return;
+    const name = inner.match(ARGUMENT_NAME_RE)?.[1];
+    if (name && !out.includes(name)) out.push(name);
+  });
+  return out;
 }
 
 // ============================================================

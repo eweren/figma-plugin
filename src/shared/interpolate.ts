@@ -1,6 +1,6 @@
 import { formatIcuMessage } from "$shared/icu";
 import type { NodeInfo } from "$shared/types";
-import { findPluralParameters } from "$shared/tolgeeFormat";
+import { findArgumentNames, findPluralParameters } from "$shared/tolgeeFormat";
 
 /**
  * Port of the published plugin's render/diff core
@@ -28,17 +28,14 @@ function numericCount(value: string | undefined): string | undefined {
 }
 
 /** Named `{param}` placeholders in an ICU string (excludes `#` and positional
- *  numeric args). Simple regex — matches placeholders without nested braces,
- *  which covers plain params and the ones inside plural variants. */
-const PLACEHOLDER_RE = /\{\s*(\w+)\s*(?:,[^{}]*)?\}/g;
+ *  numeric args).
+ *
+ *  Uses the brace-aware scan rather than a regex: the previous
+ *  `\{\s*(\w+)\s*(?:,[^{}]*)?\}` couldn't match an argument whose own body
+ *  contains braces, so a `select` — or a plural wrapped in one — was never
+ *  seen and never seeded, and the render threw `MISSING_VALUE`. */
 function namedPlaceholders(icu: string): string[] {
-  const out = new Set<string>();
-  PLACEHOLDER_RE.lastIndex = 0;
-  for (const m of icu.matchAll(PLACEHOLDER_RE)) {
-    const name = m[1];
-    if (name && name !== "#" && !/^\d+$/.test(name)) out.add(name);
-  }
-  return [...out];
+  return findArgumentNames(icu).filter((name) => name !== "#" && !/^\d+$/.test(name));
 }
 
 /**
