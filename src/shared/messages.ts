@@ -6,6 +6,19 @@ import type { FrameScreenshot, NodeInfo, TolgeeConfig, WindowSize } from "./type
  */
 export type MainToUi =
   | {
+      /**
+       * A main-thread handler threw. Sent by the bus's error boundary so the
+       * UI can settle whatever it armed for this request instead of waiting
+       * out a multi-minute idle timeout (or, where there is no watchdog,
+       * forever).
+       */
+      type: "handler-error";
+      /** The UI→main message type whose handler failed. */
+      forType: string;
+      /** Present when the failed request carried one. */
+      correlationId?: string;
+    }
+  | {
       type: "init";
       config: Partial<TolgeeConfig> | null;
       selectedNodes: NodeInfo[];

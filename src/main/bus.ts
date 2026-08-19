@@ -32,7 +32,30 @@ export function attachBus(): void {
     }
     const handler = handlers[msg.type] as ((m: UiToMain) => void | Promise<void>) | undefined;
     if (handler) {
-      await handler(msg);
+      try {
+        await handler(msg);
+      } catch (err) {
+        // Figma drops an unhandled rejection from `onmessage` without a trace,
+        // so an unwrapped throw meant the UI simply never got an answer: no
+        // response, no error, and whatever pending/progress state it armed for
+        // this request stayed armed until the user force-quit the plugin.
+        // Individual handlers had started growing their own try/catch to work
+        // around this (see `request-copy-staleness` in main.ts); the boundary
+        // belongs here, once.
+        console.error("[tolgee:main] handler failed", msg.type, err);
+        figma.notify("Something went wrong. Please try again.");
+        send({
+          type: "handler-error",
+          forType: msg.type,
+          // Correlated requests can settle exactly the round-trip that died;
+          // uncorrelated ones (e.g. the bulk-write progress bar) still get a
+          // signal to clear on.
+          correlationId:
+            "correlationId" in msg && typeof msg.correlationId === "string"
+              ? msg.correlationId
+              : undefined,
+        });
+      }
     } else {
       // Log only the type, never the whole message — some UI→main messages
       // carry the API key (e.g. save-config), which must not leak to the console.

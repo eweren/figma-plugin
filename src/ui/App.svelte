@@ -146,6 +146,14 @@
       }
     });
     const unsubApplied = on("apply-translations-result", (msg) => appState.patchNodes(msg.nodes));
+    // A main-thread handler threw, so the response this request was waiting
+    // for is never coming. The bulk-write bar is the one piece of global state
+    // with no watchdog of its own — without this it would sit at its last
+    // percentage forever, with the action bar disabled behind it.
+    const unsubHandlerError = on("handler-error", (msg) => {
+      console.error("[tolgee:ui] main handler failed for", msg.forType);
+      appState.clearWriteProgress();
+    });
     // Figma can tear the iframe down at any moment — persist any debounced
     // inline edits so the last ~300ms of typing isn't silently lost.
     const flushOnHide = () => flushNodeSaves();
@@ -175,6 +183,7 @@
       unsubWriteProgress();
       unsubNodesSet();
       unsubApplied();
+      unsubHandlerError();
       window.removeEventListener("pagehide", flushOnHide);
     };
   });

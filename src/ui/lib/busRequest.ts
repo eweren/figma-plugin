@@ -2,14 +2,17 @@
  * Timeout watchdog for UI -> main round-trips over `bus.ts`.
  *
  * Every UI -> main request (`send()` + a correlated `on()` listener waiting
- * for the matching result) currently waits forever. Main-thread error
- * handling is already hardened elsewhere (the bus dispatch has try/catch,
- * `applyTranslations`/`setNodesData` collect per-node errors instead of
- * throwing) — this isn't a reproducing crash, it's a missing safety net: if a
- * response is ever lost for a reason NOT covered by that handling (an
- * exception escaping a try/catch somewhere, Figma killing the sandboxed
- * process, a future regression), the UI hangs on a spinner forever with no
- * recovery except force-quitting the plugin.
+ * for the matching result) would otherwise wait forever. Main-thread error
+ * handling covers the expected failures (the bus dispatch wraps handlers and
+ * answers with `handler-error`; `applyTranslations`/`setNodesData` collect
+ * per-node errors instead of throwing) — this is the safety net for the rest:
+ * if a response is ever lost for a reason NOT covered by that handling (Figma
+ * killing the sandboxed process, a future regression), the UI hangs on a
+ * spinner with no recovery except force-quitting the plugin.
+ *
+ * (That claim about the bus was written before the wrapping existed — the
+ * dispatch had no try/catch at all, which is exactly how a thrown handler
+ * could strand a request with no trace.)
  *
  * This module is intentionally just the "give up after N seconds of
  * silence" timer. Call sites keep wiring their own `on()` listeners for the
