@@ -72,17 +72,27 @@ export async function exportFrame(frame: FrameNode): Promise<Uint8Array> {
  * Capture screenshots for the supplied node ids, delivering each frame to
  * `onFrame` AS SOON as it is exported. Streaming keeps at most one PNG buffer
  * alive at a time — accumulating them meant peak memory of the whole set plus
- * one giant postMessage at the end. Returns the number of frames delivered.
+ * one giant postMessage at the end. Returns how many frames were delivered AND
+ * how many failed to export — a per-frame failure skips that frame rather than
+ * killing the capture, so the caller has to be told about the gap or it will
+ * report the reduced count as if it were the whole set.
  *
  * Each id is resolved (via `getNodeByIdAsync` to respect dynamic-page access),
  * filtered down to `TextNode`s, then grouped by closest enclosing frame. Each
  * frame is exported once as a PNG and the contained text nodes contribute
  * positioned `NodeInfo` entries.
  */
+export type CaptureResult = {
+  /** Frames handed to `onFrame`. */
+  delivered: number;
+  /** Frames whose export threw and were skipped. */
+  failed: number;
+};
+
 export async function captureScreenshots(
   nodeIds: string[],
   onFrame: (screenshot: FrameScreenshot) => void,
-): Promise<number> {
+): Promise<CaptureResult> {
   // 1. Resolve ids → nodes. Missing nodes are skipped silently; the UI is
   //    free to pass a stale selection without crashing the export. Sequential
   //    (rather than one giant `Promise.all`) so a push touching thousands of
@@ -112,6 +122,7 @@ export async function captureScreenshots(
   //    responsive; per-frame failures skip that frame instead of killing the
   //    whole capture.
   let delivered = 0;
+  let failed = 0;
   let processed = 0;
   for (const [frame, nodes] of frameToNodes) {
     processed += 1;
@@ -143,6 +154,7 @@ export async function captureScreenshots(
       onFrame({ image, info, keys });
       delivered += 1;
     } catch (err) {
+      failed += 1;
       console.warn(
         `[tolgee:main] screenshot export failed for frame "${frame.name}":`,
         err instanceof Error ? err.message : err,
@@ -150,5 +162,5 @@ export async function captureScreenshots(
     }
   }
 
-  return delivered;
+  return { delivered, failed };
 }

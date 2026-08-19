@@ -64,7 +64,7 @@ describe("captureScreenshots", () => {
 
     const delivered: FrameScreenshot[] = [];
     // "missing-id" resolves to null and must be skipped, not crash the batch.
-    const count = await captureScreenshots(["t-1", "t-2", "missing-id"], (s) =>
+    const { delivered: count } = await captureScreenshots(["t-1", "t-2", "missing-id"], (s) =>
       delivered.push(s),
     );
 
@@ -100,7 +100,7 @@ describe("captureScreenshots", () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 
     const ids = Array.from({ length: total }, (_, i) => `n-${i}`);
-    const count = await captureScreenshots(ids, () => {});
+    const { delivered: count } = await captureScreenshots(ids, () => {});
 
     expect(count).toBe(0);
     // Sequential resolution: at most one lookup in flight at any time, never
@@ -108,5 +108,45 @@ describe("captureScreenshots", () => {
     expect(maxInFlight).toBe(1);
     // Yields at 50 and 100 resolved ids (120 isn't itself a multiple of 50).
     expect(setTimeoutSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("captureScreenshots — failed frames", () => {
+  it("reports frames whose export threw instead of dropping them silently", async () => {
+    // A failed export was console.warn'd (dev-only, invisible to users) and
+    // vanished, so the push summary presented the reduced count as the whole
+    // set: "N screenshot(s) uploaded" with no hint that M never made it.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const page = makePage("page-1");
+    const okFrame = makeFrame("f-ok", page);
+    const badFrame = makeFrame("f-bad", page);
+    badFrame.exportAsync = vi.fn(async () => {
+      throw new Error("export blew up");
+    }) as never;
+    const tOk = makeTextNode("t-ok", okFrame);
+    const tBad = makeTextNode("t-bad", badFrame);
+    const nodesById = new Map<string, unknown>([
+      ["t-ok", tOk],
+      ["t-bad", tBad],
+    ]);
+    installFigma(async (id) => nodesById.get(id) ?? null);
+
+    const delivered: FrameScreenshot[] = [];
+    const result = await captureScreenshots(["t-ok", "t-bad"], (s) => delivered.push(s));
+
+    expect(result.delivered).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(delivered).toHaveLength(1);
+  });
+
+  it("reports zero failures when every frame exports", async () => {
+    const page = makePage("page-1");
+    const frame = makeFrame("f-1", page);
+    const t1 = makeTextNode("t-1", frame);
+    installFigma(async (id) => (id === "t-1" ? t1 : null));
+
+    const result = await captureScreenshots(["t-1"], () => {});
+
+    expect(result).toEqual({ delivered: 1, failed: 0 });
   });
 });

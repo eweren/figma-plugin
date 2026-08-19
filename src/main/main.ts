@@ -367,7 +367,7 @@ on("request-screenshots", async (msg) => {
   // peak memory at one PNG and avoids serializing tens of MB in one go on
   // the canvas thread.
   let index = 0;
-  const total = await captureScreenshots(msg.nodeIds, (screenshot) => {
+  const { delivered, failed } = await captureScreenshots(msg.nodeIds, (screenshot) => {
     send({
       type: "screenshot-frame",
       correlationId: msg.correlationId,
@@ -375,7 +375,12 @@ on("request-screenshots", async (msg) => {
       index: index++,
     });
   });
-  send({ type: "screenshots-done", correlationId: msg.correlationId, total });
+  send({
+    type: "screenshots-done",
+    correlationId: msg.correlationId,
+    total: delivered,
+    failed,
+  });
 });
 
 on("scroll-to-node", async (msg) => {

@@ -195,6 +195,7 @@ window.addEventListener("message", (event) => {
         type: "screenshots-done",
         correlationId: msg.correlationId,
         total: 0,
+        failed: 0,
       });
       return;
     }

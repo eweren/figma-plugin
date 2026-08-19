@@ -75,6 +75,9 @@
   let resolutions = $state<Record<string, PushConflictResolution>>({});
   let errorMessage = $state<string | null>(null);
   let pushedKeyCount = $state(0);
+  // Frames whose export failed main-side during this push — reported alongside
+  // the uploaded count so a partial capture isn't presented as a complete one.
+  let failedScreenshotCount = $state(0);
   // Split + screenshot counts for the success summary, captured at finishPush.
   let pushedNewCount = $state(0);
   let pushedChangedCount = $state(0);
@@ -247,7 +250,11 @@
       parts.push(`Updated ${pushedChangedCount} key(s) in Tolgee.`);
     }
     if (pushedScreenshotCount > 0) {
-      parts.push(`${pushedScreenshotCount} screenshot(s) uploaded.`);
+      parts.push(
+        failedScreenshotCount > 0
+          ? `${pushedScreenshotCount} screenshot(s) uploaded, ${failedScreenshotCount} failed to capture.`
+          : `${pushedScreenshotCount} screenshot(s) uploaded.`,
+      );
     }
     if (parts.length === 0) parts.push("Upload complete.");
     return parts.join(" ");
@@ -308,6 +315,10 @@
       const offDone = on("screenshots-done", (msg) => {
         if (msg.correlationId !== correlationId) return;
         cleanup();
+        // A frame whose export threw is skipped main-side. Remember how many,
+        // so the summary can say so instead of presenting the reduced count as
+        // the whole set.
+        failedScreenshotCount = msg.failed;
         resolve(collected);
       });
       send({ type: "request-screenshots", correlationId, nodeIds });
@@ -339,6 +350,9 @@
     }
 
     errorMessage = null;
+    // Fresh per push — a previous run's failures must not surface in this
+    // run's summary (this run may not capture screenshots at all).
+    failedScreenshotCount = 0;
     pushedKeyCount = 0;
     const snapshot = { diff, connectedNodes, screenshots: [] as FrameScreenshot[] };
     pushInputs = snapshot;

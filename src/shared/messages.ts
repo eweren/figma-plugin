@@ -91,7 +91,11 @@ export type MainToUi =
           number of `screenshot-frame` messages that were sent. */
       type: "screenshots-done";
       correlationId: string;
+      /** Frames actually delivered. */
       total: number;
+      /** Frames whose export failed and were skipped, so the push summary can
+       *  report the gap instead of presenting `total` as the whole set. */
+      failed: number;
     }
   | {
       /** Progress for an in-flight `set-nodes-data` write. Same `total > 100`
