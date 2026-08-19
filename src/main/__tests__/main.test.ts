@@ -282,3 +282,69 @@ describe('main.ts on("ui-ready", ...) — config-first init + idempotent scan (t
     expect(done.hasUserSelection).toBe(false);
   });
 });
+
+/**
+ * The supersede mechanism behind `selectionchange` — flagged as untested in
+ * review, and the exact place the race below lived.
+ *
+ * `getSelectionInfo` is mocked so a scan's completion can be held open across
+ * a second selection event; the real one resolves too fast to interleave.
+ */
+describe("main.ts selection supersede", () => {
+  /** A scan whose completion the test controls. */
+  function deferredScan() {
+    const pending: Array<{
+      resolve: () => void;
+      isStale: () => boolean;
+      emit: (nodes: unknown[], first: boolean) => void;
+    }> = [];
+    const getSelectionInfo = vi.fn(
+      (isStale: () => boolean, onBatch: (nodes: unknown[], first: boolean) => void) =>
+        new Promise<void>((resolve) => {
+          pending.push({ resolve, isStale, emit: onBatch });
+        }),
+    );
+    return { pending, getSelectionInfo };
+  }
+
+  it("drops a scan superseded by a newer selection before it finishes", async () => {
+    const scan = deferredScan();
+    vi.doMock("$main/nodes/selection", async () => {
+      const actual = await vi.importActual<typeof import("$main/nodes/selection")>(
+        "$main/nodes/selection",
+      );
+      return { ...actual, getSelectionInfo: scan.getSelectionInfo };
+    });
+
+    const figma = await loadMain([]);
+    const selectionChange = figma.on.mock.calls.find((c) => c[0] === "selectionchange")?.[1] as
+      | (() => void)
+      | undefined;
+    expect(selectionChange).toBeTypeOf("function");
+
+    // Selection A — starts a scan and leaves it hanging.
+    selectionChange?.();
+    await vi.waitFor(() => expect(scan.pending).toHaveLength(1));
+    figma.ui.postMessage.mockClear();
+
+    // Selection B arrives while A is still in flight.
+    selectionChange?.();
+
+    // A now finishes. It must be recognised as stale: no batch, no done.
+    const first = scan.pending[0];
+    first?.emit([{ id: "stale-node" }], true);
+    first?.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const types = figma.ui.postMessage.mock.calls.map((c) => (c[0] as { type: string }).type);
+    expect(first?.isStale()).toBe(true);
+    expect(types).not.toContain("selection-batch");
+    expect(types).not.toContain("selection-done");
+    // The UI must still be told a scan is under way, or it would sit on the
+    // previous result with no loader.
+    expect(types).toContain("selection-pending");
+
+    vi.doUnmock("$main/nodes/selection");
+  });
+})

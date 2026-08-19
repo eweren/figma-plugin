@@ -96,14 +96,23 @@ async function emitSelection(sendPending = true): Promise<void> {
 // bursts (arrow-keying / drag-selecting through layers fires one event per
 // step). A deliberate click scans IMMEDIATELY — a fixed delay on every click
 // reads as sluggishness against the previous plugin. Only events that follow
-// each other closely (a burst) are coalesced with a short trailing debounce;
-// the scan generation token drops any older in-flight result either way.
+// each other closely (a burst) are coalesced with a short trailing debounce.
 const SELECTION_BURST_MS = 150;
 const SELECTION_DEBOUNCE_MS = 60;
 let selectionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSelectionChangeAt = 0;
 
 function scheduleEmitSelection(): void {
+  // Invalidate any in-flight scan NOW, not whenever the debounced call gets
+  // around to running. `emitSelection` bumps the token itself, but during the
+  // debounce window it hasn't run yet — so an older scan finishing in that gap
+  // still passed its own staleness check and sent `selection-batch` +
+  // `selection-done` for the PREVIOUS selection. The UI took that as the final
+  // answer and cleared its loading state, then the debounced scan started with
+  // `sendPending = false` and nothing put the loader back: the old selection's
+  // result sat there looking authoritative, and a bulk action fired in that
+  // window would have targeted those nodes instead of the current ones.
+  scanGeneration++;
   send({ type: "selection-pending" });
   const now = Date.now();
   const inBurst = now - lastSelectionChangeAt < SELECTION_BURST_MS;
