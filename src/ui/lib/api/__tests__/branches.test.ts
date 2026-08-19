@@ -142,3 +142,28 @@ describe("isConfiguredBranchMissing", () => {
     expect(isConfiguredBranchMissing("main", [], true)).toBe(true);
   });
 });
+
+describe("fetchBranches — failed request", () => {
+  it("throws instead of reporting an empty branch list", async () => {
+    // `openapi-fetch` RESOLVES on 4xx/5xx with an `error` field rather than
+    // throwing. Discarding it turned a failed request into "this project has
+    // no branches" on the SUCCESS path — `hydrateBranches` then set
+    // `loaded: true` and the UI announced that the user's configured branch
+    // had been deleted, offering an empty picker to replace it.
+    const client = {
+      GET: async () => ({ error: { message: "Forbidden" } }),
+    } as unknown as Parameters<typeof fetchBranches>[0];
+
+    await expect(fetchBranches(client)).rejects.toThrow("Forbidden");
+  });
+
+  it("still returns the list on success", async () => {
+    const client = {
+      GET: async () => ({
+        data: { _embedded: { branches: [{ name: "main", isDefault: true }] } },
+      }),
+    } as unknown as Parameters<typeof fetchBranches>[0];
+
+    await expect(fetchBranches(client)).resolves.toEqual([{ name: "main", isDefault: true }]);
+  });
+});

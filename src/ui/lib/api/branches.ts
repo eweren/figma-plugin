@@ -3,7 +3,20 @@ import type { TolgeeClient } from "./client";
 export type BranchInfo = { name: string; isDefault?: boolean };
 
 export async function fetchBranches(client: TolgeeClient): Promise<BranchInfo[]> {
-  const { data } = await client.GET("/v2/projects/branches", {});
+  // `openapi-fetch` RESOLVES on 4xx/5xx with an `error` field instead of
+  // throwing. Discarding it turned a failed request into an empty branch list
+  // on the SUCCESS path: `hydrateBranches` then set `loaded: true`, and
+  // `isConfiguredBranchMissing` announced that the user's configured branch
+  // had been deleted — offering an empty picker to replace it — when all that
+  // had happened was a request failing.
+  const { data, error } = await client.GET("/v2/projects/branches", {});
+  if (error) {
+    throw new Error(
+      typeof error === "object" && error && "message" in error
+        ? String((error as { message?: unknown }).message)
+        : "Failed to load branches.",
+    );
+  }
   const raw = data as {
     _embedded?: { branches?: Array<{ name?: string; isDefault?: boolean }> };
   };
