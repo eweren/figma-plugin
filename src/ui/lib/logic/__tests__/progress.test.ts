@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeProgressPercent } from "$ui/lib/logic/progress";
+import { computeProgressPercent, formatProgressCount } from "$ui/lib/logic/progress";
 
 describe("computeProgressPercent", () => {
   it("returns null (indeterminate) when total is null", () => {
@@ -29,5 +29,25 @@ describe("computeProgressPercent", () => {
   it("full/empty edges", () => {
     expect(computeProgressPercent(0, 100)).toBe(0);
     expect(computeProgressPercent(100, 100)).toBe(100);
+  });
+});
+
+describe("formatProgressCount", () => {
+  it("counts when the total is known", () => {
+    expect(formatProgressCount(0, 1)).toBe("0 / 1");
+    expect(formatProgressCount(3, 10)).toBe("3 / 10");
+  });
+
+  it("returns null when the total is unknown, so the caller omits the counter", () => {
+    // Reported live: a single-translation upload showed "0 / …" — one request
+    // has no sub-progress, so there is no honest denominator to print.
+    expect(formatProgressCount(0, null)).toBeNull();
+    expect(formatProgressCount(5, 0)).toBeNull();
+    expect(formatProgressCount(0, -1)).toBeNull();
+  });
+
+  it("clamps a stale loaded value instead of printing 7 / 5", () => {
+    expect(formatProgressCount(7, 5)).toBe("5 / 5");
+    expect(formatProgressCount(-2, 5)).toBe("0 / 5");
   });
 });

@@ -387,7 +387,11 @@
       progress = {
         current: 0,
         total: null,
-        message: "Uploading translations…",
+        // One request, so there is no sub-progress to report — the count goes
+        // in the label, where it is information rather than a fake tally.
+        message: `Uploading ${nodesToPush.length} ${
+          nodesToPush.length === 1 ? "translation" : "translations"
+        }…`,
       };
 
       const result = await submitPush({
