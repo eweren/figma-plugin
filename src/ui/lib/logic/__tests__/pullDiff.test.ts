@@ -493,3 +493,58 @@ describe("buildApplyUpdates", () => {
     );
   });
 });
+
+describe("nodes left stale by the published plugin", () => {
+  // The published plugin stores the remote translation even when its own ICU
+  // render threw (`src/ui/views/Pull/Pull.tsx` — `catch` returns
+  // `formatted: n.characters`, and `setNodesDataMutation` then writes
+  // `translation: changedNode.translation` regardless). That leaves a node
+  // whose cached translation already MATCHES the remote while its canvas still
+  // shows the old text — so the first pullDiff branch sees nothing to do, and
+  // only the drift branch can rescue it.
+  //
+  // An embedded plural is exactly the shape that used to fail that render, so
+  // these nodes arrive stale on migration. `canvasDrifted` swallows a render
+  // error as "no drift" (re-applying on unknowns loops forever), which meant
+  // the node stayed stale on every future pull too. Seeding the plural count
+  // for embedded plurals is what lets the render — and so the rescue — work.
+  const EMBEDDED = "{count, plural, one {# day} other {# days}} left";
+
+  it("re-applies a stale node whose translation already matches the remote", () => {
+    const node = makeNode({
+      key: "trial",
+      translation: EMBEDDED,
+      characters: "old stale text",
+      pluralParamValue: "10",
+    });
+    const remote = makeRemoteKey({
+      keyName: "trial",
+      translations: { en: { text: EMBEDDED } },
+    });
+
+    const result = pullDiff([node], [remote], "en", false);
+    expect(result.changedNodes).toHaveLength(1);
+    expect(result.changedNodes[0]?.newText).toBe(EMBEDDED);
+    expect(result.unchangedNodes).toHaveLength(0);
+  });
+
+  it("leaves the node alone once its canvas shows the rendered text", () => {
+    // The other half of the same property: having rescued it, a second pull
+    // must report nothing — that regression ("Downloaded 2 strings" forever)
+    // is what the drift branch's render-through-the-apply-pipeline is for.
+    const node = makeNode({
+      key: "trial",
+      translation: EMBEDDED,
+      characters: "10 days left",
+      pluralParamValue: "10",
+    });
+    const remote = makeRemoteKey({
+      keyName: "trial",
+      translations: { en: { text: EMBEDDED } },
+    });
+
+    const result = pullDiff([node], [remote], "en", false);
+    expect(result.changedNodes).toHaveLength(0);
+    expect(result.unchangedNodes).toHaveLength(1);
+  });
+});
