@@ -120,9 +120,14 @@ export function formatKey(
   }
   if (last < template.length) parts.push({ ph: false, value: template.slice(last) });
 
-  // Drop each empty placeholder plus one adjacent separator: prefer the literal
-  // immediately BEFORE it, or the one AFTER when nothing precedes it (so a
-  // leading empty placeholder doesn't leave a dangling separator either).
+  // Drop each empty placeholder plus ONE adjacent separator CHARACTER: prefer
+  // the literal immediately BEFORE it, or the one AFTER when nothing precedes
+  // it (so a leading empty placeholder doesn't leave a dangling separator).
+  //
+  // One character, not the whole literal. A literal can carry fixed text as
+  // well as a separator — `app.{component}.{elementName}` holds `app.` — and
+  // removing all of it silently drops text the user put in their template,
+  // straight into a key name that then gets persisted and uploaded.
   const drop = new Set<number>();
   let contentBefore = false;
   for (let i = 0; i < parts.length; i++) {
@@ -135,10 +140,10 @@ export function formatKey(
     drop.add(i);
     const prev = parts[i - 1];
     const next = parts[i + 1];
-    if (contentBefore && prev && !prev.ph && !drop.has(i - 1)) {
-      drop.add(i - 1);
+    if (contentBefore && prev && !prev.ph) {
+      prev.value = trimTrailingSeparator(prev.value);
     } else if (next && !next.ph) {
-      drop.add(i + 1);
+      next.value = trimLeadingSeparator(next.value);
     }
   }
 
@@ -146,4 +151,19 @@ export function formatKey(
     .filter((_, i) => !drop.has(i))
     .map((p) => p.value)
     .join("");
+}
+
+/** Anything that isn't a letter or a digit reads as a separator here — `.`,
+ *  `-`, `/` and `_` are all in common use in key templates, so `\w` (which
+ *  keeps `_`) would be the wrong test. */
+const SEPARATOR = /[^\p{L}\p{N}]/u;
+
+function trimTrailingSeparator(value: string): string {
+  const last = value.slice(-1);
+  return last && SEPARATOR.test(last) ? value.slice(0, -1) : value;
+}
+
+function trimLeadingSeparator(value: string): string {
+  const first = value.slice(0, 1);
+  return first && SEPARATOR.test(first) ? value.slice(1) : value;
 }

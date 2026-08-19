@@ -195,3 +195,54 @@ describe("formatKey", () => {
     expect(formatKey("{unknown}_{frame}", { frame: "Hero" }, "snake_case")).toBe("{unknown}_hero");
   });
 });
+
+describe("formatKey — an empty placeholder trims a separator, not a literal", () => {
+  it("keeps fixed text that sits between two placeholders", () => {
+    // The reported bug: the whole adjacent literal was dropped, so `bar`
+    // vanished from a key that then got persisted and uploaded. Only the
+    // separator should go — and `bar` isn't one.
+    expect(
+      formatKey("foo{component}bar{elementName}", { elementName: "Name" }, "snake_case"),
+    ).toBe("foobarname");
+  });
+
+  it("keeps a fixed prefix ahead of the empty placeholder", () => {
+    // `app.` is the user's own prefix, not a separator to be eaten.
+    expect(
+      formatKey("app.{component}.{elementName}", { elementName: "Title" }, "snake_case"),
+    ).toBe("app.title");
+  });
+
+  it("still drops a leading separator so the key can't start with one", () => {
+    expect(
+      formatKey("{component}.{elementName}", { elementName: "my element" }, "snake_case"),
+    ).toBe("my_element");
+  });
+
+  it("still collapses a separator between two present placeholders", () => {
+    expect(
+      formatKey(
+        "{frame}.{component}.{elementName}",
+        { frame: "Web", elementName: "Title" },
+        "snake_case",
+      ),
+    ).toBe("web.title");
+  });
+
+  it("treats an underscore as a separator, not as word content", () => {
+    // `\w` would keep `_`, which is exactly the separator most templates use.
+    expect(formatKey("{component}_{elementName}", { elementName: "Title" }, "snake_case")).toBe(
+      "title",
+    );
+  });
+
+  it("handles consecutive empty placeholders without eating extra characters", () => {
+    expect(
+      formatKey("{frame}.{component}.{elementName}", { elementName: "Title" }, "snake_case"),
+    ).toBe("title");
+  });
+
+  it("leaves a trailing empty placeholder's separator off the end", () => {
+    expect(formatKey("{frame}.{component}", { frame: "Home" }, "snake_case")).toBe("home");
+  });
+});
