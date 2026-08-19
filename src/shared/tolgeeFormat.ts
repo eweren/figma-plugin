@@ -159,6 +159,57 @@ function findMatchingBrace(input: string, start: number): number {
   return -1;
 }
 
+/**
+ * If an ICU `'`-escape starts at `i`, the index just past it; `-1` when `i`
+ * isn't an escape at all. Unterminated runs report the end of the string, so a
+ * caller consumes the rest as literal rather than looping.
+ *
+ * Every brace-aware pass in this file (`findMatchingBrace` inline, the escaper,
+ * the scanners) has to agree on these rules — `''` is a literal apostrophe,
+ * `'{` / `'}` / `'#` open a literal run that ends at the next `'`, and a lone
+ * `'` is just an apostrophe — so they share one implementation of them.
+ */
+function skipEscape(input: string, i: number): number {
+  if (input[i] !== "'") return -1;
+  const next = input[i + 1];
+  if (next === "'") return i + 2;
+  if (next === "{" || next === "}" || next === "#") {
+    const close = input.indexOf("'", i + 2);
+    return close < 0 ? input.length : close + 1;
+  }
+  return i + 1;
+}
+
+/**
+ * Does `input` contain a real ICU argument (`{name}`, `{count, plural, …}`)?
+ *
+ * A brace pair is NOT enough: Tolgee stores a plain translation with literal
+ * braces as ICU-escaped text (`Use '{'braces'}'`), and treating that as an
+ * argument makes callers read the string as "advanced" — which, in
+ * `textOfNode`, means the stored translation outranks the live canvas
+ * `characters` and a designer's edit is silently dropped from the push.
+ */
+export function hasIcuArgument(input: string): boolean {
+  let i = 0;
+  while (i < input.length) {
+    const skipped = skipEscape(input, i);
+    if (skipped >= 0) {
+      i = skipped;
+      continue;
+    }
+    if (input[i] === "{") {
+      const close = findMatchingBrace(input, i);
+      if (close > i) {
+        if (ICU_ARGUMENT_RE.test(input.slice(i + 1, close))) return true;
+        i = close + 1;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return false;
+}
+
 /** Header of a plural argument: `name, plural,` — the `{` and the variants
  *  are matched separately by the scanner below. */
 const PLURAL_HEADER_RE = /^\s*([\w.-]+)\s*,\s*plural\s*,/;
@@ -184,27 +235,14 @@ export function findPluralParameters(input: string): string[] {
 function collectPluralParameters(input: string, out: string[]): void {
   let i = 0;
   while (i < input.length) {
-    const ch = input[i];
-
-    // Same `'`-escape rules `findMatchingBrace` walks by, so an escaped brace
-    // never opens a phantom argument.
-    if (ch === "'") {
-      const next = input[i + 1];
-      if (next === "'") {
-        i += 2;
-        continue;
-      }
-      if (next === "{" || next === "}" || next === "#") {
-        const close = input.indexOf("'", i + 2);
-        if (close < 0) return; // unterminated — nothing parseable left
-        i = close + 1;
-        continue;
-      }
-      i += 1;
+    // An escaped brace never opens a phantom argument.
+    const skipped = skipEscape(input, i);
+    if (skipped >= 0) {
+      i = skipped;
       continue;
     }
 
-    if (ch === "{") {
+    if (input[i] === "{") {
       const close = findMatchingBrace(input, i);
       if (close > i) {
         const inner = input.slice(i + 1, close);
@@ -257,32 +295,18 @@ function escapeIcuBraces(text: string): string {
   let i = 0;
 
   while (i < text.length) {
-    const ch = text[i];
-
-    if (ch === "'") {
-      const next = text[i + 1];
-      // `''` is a literal apostrophe, not the start of an escaped run.
-      if (next === "'") {
-        out += "''";
-        i += 2;
-        continue;
-      }
-      if (next === "{" || next === "}" || next === "#") {
-        const close = text.indexOf("'", i + 2);
-        if (close < 0) {
-          // Unterminated escape — copy the rest verbatim. Escaping inside it
-          // would only add a second unbalanced quote on top of the first.
-          return out + text.slice(i);
-        }
-        out += text.slice(i, close + 1);
-        i = close + 1;
-        continue;
-      }
-      // Lone `'` before a non-escapable character is just an apostrophe.
-      out += ch;
-      i += 1;
+    // An escaped run (or a bare apostrophe) is copied through untouched —
+    // escaping it again would turn `a '{' b` into `a ''{'' b`, an unclosed
+    // argument. An unterminated run reports end-of-string, so the rest is
+    // copied verbatim rather than half-escaped.
+    const skipped = skipEscape(text, i);
+    if (skipped >= 0) {
+      out += text.slice(i, skipped);
+      i = skipped;
       continue;
     }
+
+    const ch = text[i];
 
     if (ch === "{") {
       const close = findMatchingBrace(text, i);

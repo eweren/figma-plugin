@@ -1,6 +1,7 @@
 import {
   findPluralParameters,
   getTolgeeFormat,
+  hasIcuArgument,
   tolgeeFormatGenerateIcu,
 } from "$shared/tolgeeFormat";
 import IntlMessageFormat from "intl-messageformat";
@@ -279,5 +280,29 @@ describe("findPluralParameters", () => {
     const embedded = "{count, plural, one {# day} other {# days}} left";
     expect(getTolgeeFormat(embedded, true, false).parameter).toBeUndefined();
     expect(findPluralParameters(embedded)).toEqual(["count"]);
+  });
+});
+
+describe("hasIcuArgument", () => {
+  it("is true for a real argument", () => {
+    expect(hasIcuArgument("Hello, {name}!")).toBe(true);
+    expect(hasIcuArgument("{count, plural, one {# day} other {# days}}")).toBe(true);
+    expect(hasIcuArgument("{count, plural, other {# days}} left")).toBe(true);
+  });
+
+  it("is false for ICU-escaped literal braces", () => {
+    expect(hasIcuArgument("Use '{'braces'}' here")).toBe(false);
+    expect(hasIcuArgument("a '{' b")).toBe(false);
+  });
+
+  it("is false for stray or prose braces", () => {
+    expect(hasIcuArgument("co{unt")).toBe(false);
+    expect(hasIcuArgument("wrong}brace")).toBe(false);
+    expect(hasIcuArgument("{not an argument}")).toBe(false);
+  });
+
+  it("is false for plain text", () => {
+    expect(hasIcuArgument("")).toBe(false);
+    expect(hasIcuArgument("just words")).toBe(false);
   });
 });

@@ -452,6 +452,19 @@ describe("textOfNode — authoritative text (shared with String details)", () =>
     expect(textOfNode(node)).toBe("{count, plural, one {# apple} other {# apples}}");
   });
 
+  it("prefers the canvas edit for a plain string holding ICU-escaped braces", () => {
+    // The consequence of the brace-pair misclassification: `Use '{'braces'}'`
+    // is PLAIN text (the braces are escaped literals, not an argument), so a
+    // canvas edit must win here exactly as it does for any other plain string.
+    // While it read as advanced, the stale stored value won and the edit was
+    // silently dropped from the push.
+    const node = makeNode({
+      translation: "Use '{'braces'}' here",
+      characters: "Use {braces} there",
+    });
+    expect(textOfNode(node)).toBe("Use {braces} there");
+  });
+
   it("falls back across the missing side for both kinds", () => {
     // Plain with no canvas text → the stored translation.
     expect(textOfNode(makeNode({ translation: "only stored", characters: "" }))).toBe(

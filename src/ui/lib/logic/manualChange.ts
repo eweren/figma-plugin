@@ -1,5 +1,6 @@
 import type { NodeInfo } from "$shared/types";
 import { translationDiffersFromNodeCached } from "$shared/interpolate";
+import { hasIcuArgument } from "$shared/tolgeeFormat";
 
 /**
  * Detection for the "manual changes detected" conflict — an ADVANCED connected
@@ -12,18 +13,27 @@ import { translationDiffersFromNodeCached } from "$shared/interpolate";
  * adds friction. Plain edits are NOT flagged.
  */
 
-// Inline HTML markup we render (b/i/u/strong/em) or an ICU argument like
-// `{count}` / `{count, plural, …}` — formatting a plain Figma edit would drop.
-const ADVANCED_MARKUP = /<\/?(?:b|i|u|strong|em)\b|\{[^}]*\}/i;
+// Inline HTML markup we render (b/i/u/strong/em) — formatting a plain Figma
+// edit would drop. The ICU side is `hasIcuArgument`, NOT a brace-pair regex:
+// Tolgee stores a plain translation containing literal braces as ICU-escaped
+// text (`Use '{'braces'}'`), which has no argument in it at all.
+const INLINE_MARKUP = /<\/?(?:b|i|u|strong|em)\b/i;
 
 /**
  * Does this string rely on advanced ICU / formatting features (plural, params,
  * or inline markup)?
+ *
+ * Getting this wrong in the permissive direction is not cosmetic: `textOfNode`
+ * hands ADVANCED strings their stored `translation` and PLAIN strings their
+ * live canvas `characters`. So a plain string misread as advanced has its
+ * designer edit outranked by the stale stored value — the Push diff then sees
+ * no change and drops the edit without a word.
  */
 export function isAdvancedString(node: NodeInfo): boolean {
   if (node.isPlural) return true;
   if (node.paramsValues && Object.keys(node.paramsValues).length > 0) return true;
-  return ADVANCED_MARKUP.test(node.translation ?? "");
+  const translation = node.translation ?? "";
+  return INLINE_MARKUP.test(translation) || hasIcuArgument(translation);
 }
 
 export function hasManualChange(node: NodeInfo, language: string): boolean {
