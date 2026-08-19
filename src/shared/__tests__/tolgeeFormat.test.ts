@@ -306,3 +306,36 @@ describe("hasIcuArgument", () => {
     expect(hasIcuArgument("just words")).toBe(false);
   });
 });
+
+describe("round-trip of ICU written by the PUBLISHED plugin", () => {
+  // The property that decides whether a user migrating from the published
+  // plugin gets phantom "changed" keys: parsing what that plugin stored and
+  // regenerating it must return the identical string, or Push reports a
+  // difference nobody made. `mergePluralForms` regenerates on every plural key
+  // with more than one layer, so this is not a rare path.
+  //
+  // Values below are the real output of `@tginternal/editor@1.15.2`, captured
+  // by running the package (it is deliberately not a dependency here — it
+  // drags in ~500 kB of CodeMirror). To refresh them:
+  //   npm i @tginternal/editor@1.15.2   # in a scratch dir
+  //   node -e 'const {tolgeeFormatGenerateIcu}=require("<abs>/dist/tolgee-editor.cjs"); …'
+  // The `exports` map blocks both bare-name ESM import and subpath require, so
+  // the absolute path to the dist file is required.
+  const WRITTEN_BY_THE_ORIGINAL = [
+    "{count, plural, one {# day} other {x}}",
+    "{count, plural, one {One for {name}} other {x}}",
+    "{count, plural, one {a '{' b} other {x}}",
+    "{count, plural, one {'{not an argument}'} other {x}}",
+    "{count, plural, one {co'{'unt} other {x}}",
+    "{count, plural, one {wrong'}'brace} other {x}}",
+    "{count, plural, one {Hi '{name} and co{'unt} other {x}}",
+    "{count, plural, one {100% '{'sure'}'} other {x}}",
+    "{count, plural, one {# item — {a}, {b}} other {x}}",
+  ];
+
+  for (const icu of WRITTEN_BY_THE_ORIGINAL) {
+    it(`survives parse → generate unchanged: ${icu}`, () => {
+      expect(tolgeeFormatGenerateIcu(getTolgeeFormat(icu, true, false), false)).toBe(icu);
+    });
+  }
+});
