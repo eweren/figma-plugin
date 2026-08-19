@@ -541,9 +541,23 @@
       type: "notify",
       text: `Uploaded ${pushedKeyCount} key(s) to Tolgee`,
     });
-    // Drop the diff cache so the next visit recomputes against the new
-    // canonical translations.
-    void qc.invalidateQueries({ queryKey: ["push-diff"] });
+    // Drop every cache whose ANSWER this push just changed. Keeping only the
+    // diff here meant a user who uploaded a missing translation and went
+    // straight to "Download to Figma" was served the translations fetched
+    // BEFORE the upload — so the string they had just pushed still showed as
+    // missing (reported live).
+    //   push-diff               — recompute against the new canonical values
+    //   translations            — Pull/CopyView read these to build the download
+    //   page-connected-nodes    — connect-back just linked nodes to keys
+    //   connected-keys-existence— keys created by this push are no longer missing
+    for (const queryKey of [
+      ["push-diff"],
+      ["translations"],
+      ["page-connected-nodes"],
+      ["connected-keys-existence"],
+    ]) {
+      void qc.invalidateQueries({ queryKey });
+    }
     // Re-pull the project's namespaces: this push may have created a brand-new
     // one server-side, and the namespace picker (Index rows / bulk "Set
     // namespace") must offer it even when no selected node carries it.
