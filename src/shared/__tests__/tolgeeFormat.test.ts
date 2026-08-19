@@ -1,4 +1,8 @@
-import { getTolgeeFormat, tolgeeFormatGenerateIcu } from "$shared/tolgeeFormat";
+import {
+  findPluralParameters,
+  getTolgeeFormat,
+  tolgeeFormatGenerateIcu,
+} from "$shared/tolgeeFormat";
 import IntlMessageFormat from "intl-messageformat";
 import { describe, expect, it } from "vitest";
 
@@ -242,5 +246,38 @@ describe("tolgeeFormatGenerateIcu — literal vs. argument braces", () => {
     const original = "{count, plural, one {One for {name}} other {# for {name}}}";
     const parsed = getTolgeeFormat(original, true, false);
     expect(tolgeeFormatGenerateIcu(parsed, false)).toBe(original);
+  });
+});
+
+describe("findPluralParameters", () => {
+  it("finds a plural that is the whole string", () => {
+    expect(findPluralParameters("{count, plural, one {# day} other {# days}}")).toEqual(["count"]);
+  });
+
+  it("finds a plural surrounded by literal text", () => {
+    expect(findPluralParameters("{count, plural, one {# day} other {# days}} left")).toEqual([
+      "count",
+    ]);
+    expect(findPluralParameters("Only {n, plural, other {# x}}!")).toEqual(["n"]);
+  });
+
+  it("finds a plural nested inside another argument", () => {
+    expect(
+      findPluralParameters("{gender, select, other {{count, plural, other {# replies}}}}"),
+    ).toEqual(["count"]);
+  });
+
+  it("ignores a non-plural argument and an escaped literal brace", () => {
+    expect(findPluralParameters("Hello, {name}!")).toEqual([]);
+    expect(findPluralParameters("literal '{'count, plural'}'")).toEqual([]);
+  });
+
+  it("leaves getTolgeeFormat's stricter whole-string semantics alone", () => {
+    // The two answer different questions on purpose: push diffing needs "is
+    // this string ONE plural form?", which must stay false here, while the
+    // render path needs "is there a plural anywhere in it?".
+    const embedded = "{count, plural, one {# day} other {# days}} left";
+    expect(getTolgeeFormat(embedded, true, false).parameter).toBeUndefined();
+    expect(findPluralParameters(embedded)).toEqual(["count"]);
   });
 });

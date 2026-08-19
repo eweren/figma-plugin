@@ -1,6 +1,6 @@
 import { formatIcuMessage } from "$shared/icu";
 import type { NodeInfo } from "$shared/types";
-import { getTolgeeFormat } from "$shared/tolgeeFormat";
+import { findPluralParameters } from "$shared/tolgeeFormat";
 
 /**
  * Port of the published plugin's render/diff core
@@ -46,20 +46,26 @@ function namedPlaceholders(icu: string): string[] {
  * `paramsValues`, plus the plural variable seeded with its sample count when the
  * ICU is a plural and no sample is already provided for it.
  *
- * Whether `icu` IS a plural is decided by its own STRUCTURE (`getTolgeeFormat`
- * parses it and returns a `.parameter` only for a genuine top-level
- * `{name, plural, ...}` form), not by the node's `isPlural` flag — that flag
+ * Whether `icu` HOLDS a plural is decided by its own STRUCTURE
+ * (`findPluralParameters` scans for a `{name, plural, ...}` argument anywhere
+ * in it), not by the node's `isPlural` flag — that flag
  * mirrors Tolgee's KEY setting, which can be stale or simply wrong for a key
  * whose translation was typed as ICU plural syntax without the key itself
  * ever being marked plural. Trusting the flag there meant a correctly-shaped
  * plural silently rendered as its own raw ICU pattern (no sample ever seeded,
  * so `IntlMessageFormat` throws on the missing argument) whenever the two
  * disagreed — this makes the render succeed regardless of which side lied.
+ *
+ * The scan is used instead of `getTolgeeFormat(...).parameter` because that one
+ * only recognises a plural that is the ENTIRE string; `"{count, plural, …} left"`
+ * — a plural with literal text around it, a very ordinary shape — went unseeded
+ * and threw `MISSING_VALUE`, dropping the node in `copyApply` and leaving stale
+ * canvas text on Pull.
  */
 export function renderParams(icu: string, node: RenderNode): Record<string, string> {
   const params: Record<string, string> = { ...(node.paramsValues ?? {}) };
-  const pluralName = getTolgeeFormat(icu, true, false).parameter;
-  if (pluralName) {
+  const pluralNames = findPluralParameters(icu);
+  for (const pluralName of pluralNames) {
     // The plural argument MUST be numeric — IntlMessageFormat doesn't throw
     // on a non-numeric value, it silently coerces it to NaN ("Mám NaN
     // jablek" on the canvas). Old node data can carry the arg NAME (or "")
@@ -72,7 +78,7 @@ export function renderParams(icu: string, node: RenderNode): Record<string, stri
   // "Hello, name!" instead of a literal "{name}" or an ICU throw — the original
   // pull behaviour. A real sample in `paramsValues` always wins.
   for (const name of namedPlaceholders(icu)) {
-    if (name !== pluralName && !(name in params)) params[name] = name;
+    if (!pluralNames.includes(name) && !(name in params)) params[name] = name;
   }
   return params;
 }
@@ -176,7 +182,7 @@ export function inferPluralCount(
   canvas: string,
   language: string,
 ): string | undefined {
-  const name = getTolgeeFormat(icu, true, false).parameter;
+  const name = findPluralParameters(icu)[0];
   if (!name) return undefined;
   const target = canvas.replace(/<[^>]*>/g, "").trim();
   if (!target) return undefined;

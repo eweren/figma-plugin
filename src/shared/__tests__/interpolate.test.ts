@@ -5,6 +5,7 @@ import {
   interpolatedText,
   isSimpleNode,
   renderIcuForNode,
+  renderParams,
   translationDiffersFromNode,
 } from "$shared/interpolate";
 
@@ -140,5 +141,53 @@ describe("interpolatedText", () => {
   it("uses raw characters for a simple node", () => {
     const node = makeNode({ translation: "Hello", characters: "Hello" });
     expect(interpolatedText(node, "en").text).toBe("Hello");
+  });
+});
+
+describe("plural embedded in surrounding text", () => {
+  // Regression: the plural NAME used to come from `getTolgeeFormat`, which only
+  // recognises a plural that is the WHOLE string. A plural with any literal
+  // text around it — a very ordinary shape — left `count` unseeded, so
+  // `IntlMessageFormat` threw MISSING_VALUE: the node was dropped in
+  // `copyApply` and Pull kept the stale canvas text.
+  const TRAILING = "{count, plural, one {# day} other {# days}} left";
+  const LEADING = "Only {count, plural, one {# day} other {# days}}";
+
+  it("renders a plural followed by literal text", () => {
+    const node = makeNode({ isPlural: true, pluralParamValue: "10" });
+    const out = renderIcuForNode(TRAILING, node, "en");
+    expect(out.error).toBeUndefined();
+    expect(out.text).toBe("10 days left");
+  });
+
+  it("renders a plural preceded by literal text", () => {
+    const node = makeNode({ isPlural: true, pluralParamValue: "1" });
+    const out = renderIcuForNode(LEADING, node, "en");
+    expect(out.error).toBeUndefined();
+    expect(out.text).toBe("Only 1 day");
+  });
+
+  it("seeds a plural nested inside another argument", () => {
+    // Asserted on the params rather than a full render: the outer `select`'s
+    // own `gender` argument is NOT seeded (`namedPlaceholders` can't see
+    // through nested braces — a separate, pre-existing gap), so rendering the
+    // whole string would fail for an unrelated reason.
+    const icu = "{gender, select, other {{count, plural, one {# reply} other {# replies}}}}";
+    const node = makeNode({ isPlural: true, pluralParamValue: "5" });
+    expect(renderParams(icu, node).count).toBe("5");
+  });
+
+  it("does not treat an ICU-escaped brace as a plural argument", () => {
+    // `'{'count, plural…` is literal text, not an argument — seeding a sample
+    // for it would be inventing a parameter that isn't there.
+    const node = makeNode({ isPlural: false });
+    const out = renderIcuForNode("literal '{'count, plural'}' here", node, "en");
+    expect(out.error).toBeUndefined();
+    expect(out.text).toBe("literal {count, plural} here");
+  });
+
+  it("infers the sample count for an embedded plural too", () => {
+    expect(inferPluralCount(TRAILING, "3 days left", "en")).toBe("3");
+    expect(inferPluralCount(TRAILING, "1 day left", "en")).toBe("1");
   });
 });

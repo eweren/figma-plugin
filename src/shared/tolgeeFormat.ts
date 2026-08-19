@@ -159,6 +159,69 @@ function findMatchingBrace(input: string, start: number): number {
   return -1;
 }
 
+/** Header of a plural argument: `name, plural,` — the `{` and the variants
+ *  are matched separately by the scanner below. */
+const PLURAL_HEADER_RE = /^\s*([\w.-]+)\s*,\s*plural\s*,/;
+
+/**
+ * Every plural argument NAME in `input`, at any nesting depth.
+ *
+ * Deliberately NOT `getTolgeeFormat(...).parameter`: that one answers "is this
+ * whole string one plural form?" — the right question for push diffing, and it
+ * rejects `"{count, plural, …} left"` because the string doesn't END at the
+ * plural's closing brace. Callers that only need to know "does a plural live
+ * somewhere in here, and what is it called?" (seeding a sample count before a
+ * render) must not reuse that stricter answer: a plural with any literal text
+ * around it would go unseeded and `IntlMessageFormat` would throw
+ * `MISSING_VALUE` on it.
+ */
+export function findPluralParameters(input: string): string[] {
+  const out: string[] = [];
+  collectPluralParameters(input, out);
+  return out;
+}
+
+function collectPluralParameters(input: string, out: string[]): void {
+  let i = 0;
+  while (i < input.length) {
+    const ch = input[i];
+
+    // Same `'`-escape rules `findMatchingBrace` walks by, so an escaped brace
+    // never opens a phantom argument.
+    if (ch === "'") {
+      const next = input[i + 1];
+      if (next === "'") {
+        i += 2;
+        continue;
+      }
+      if (next === "{" || next === "}" || next === "#") {
+        const close = input.indexOf("'", i + 2);
+        if (close < 0) return; // unterminated — nothing parseable left
+        i = close + 1;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (ch === "{") {
+      const close = findMatchingBrace(input, i);
+      if (close > i) {
+        const inner = input.slice(i + 1, close);
+        const name = inner.match(PLURAL_HEADER_RE)?.[1];
+        if (name && !out.includes(name)) out.push(name);
+        // Descend — a variant body (or any other argument) can hold another
+        // plural. `inner` is strictly shorter, so this terminates.
+        collectPluralParameters(inner, out);
+        i = close + 1;
+        continue;
+      }
+    }
+
+    i += 1;
+  }
+}
+
 // ============================================================
 // ICU generator
 // ============================================================
