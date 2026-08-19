@@ -12,7 +12,7 @@ function expectValidIcu(icu: string): void {
   expect(() => {
     if (icu === "") return; // empty string is a valid "no message" sentinel, not ICU
     const formatter = new IntlMessageFormat(icu, "en", undefined, { ignoreTag: true });
-    formatter.format({ value: 1, p: 1, count: 1 });
+    formatter.format({ value: 1, p: 1, count: 1, name: "x" });
   }).not.toThrow();
 }
 
@@ -186,5 +186,61 @@ describe("tolgeeFormatGenerateIcu", () => {
   it("leaves the non-plural passthrough (no parameter) untouched", () => {
     expect(tolgeeFormatGenerateIcu({ variants: { other: "plain text" } }, false)).toBe("plain text");
     expect(tolgeeFormatGenerateIcu({ variants: {} }, false)).toBe("");
+  });
+});
+
+describe("tolgeeFormatGenerateIcu — literal vs. argument braces", () => {
+  it("keeps a nested `{name}` argument interpolating instead of escaping it to text", () => {
+    // Regression: the generator used to escape EVERY brace, so a legitimate
+    // nested argument became literal text — and, because Push regenerates the
+    // whole ICU through this path when merging plural layers, it was uploaded
+    // in that corrupted form.
+    const icu = tolgeeFormatGenerateIcu(
+      { parameter: "count", variants: { one: "One for {name}", other: "# for {name}" } },
+      false,
+    );
+    expect(icu).toBe("{count, plural, one {One for {name}} other {# for {name}}}");
+    expectValidIcu(icu);
+
+    const rendered = new IntlMessageFormat(icu, "en", undefined, { ignoreTag: true }).format({
+      count: 1,
+      name: "Zuzka",
+    });
+    expect(rendered).toBe("One for Zuzka");
+  });
+
+  it("does not re-escape a brace that is already ICU-escaped", () => {
+    // Regression: `a '{' b` used to round-trip to `a ''{'' b` — a literal
+    // apostrophe followed by an unclosed argument, which throws downstream.
+    const icu = tolgeeFormatGenerateIcu(
+      { parameter: "value", variants: { one: "a '{' b", other: "ok" } },
+      false,
+    );
+    expect(icu).toBe("{value, plural, one {a '{' b} other {ok}}");
+    expectValidIcu(icu);
+
+    const rendered = new IntlMessageFormat(icu, "en", undefined, { ignoreTag: true }).format({
+      value: 1,
+    });
+    expect(rendered).toBe("a { b");
+  });
+
+  it("still escapes prose that merely sits between braces", () => {
+    // `{not an argument}` is not a valid ICU argument (the name would have to
+    // be one unbroken token), so it must keep being escaped to literal text.
+    const icu = tolgeeFormatGenerateIcu(
+      { parameter: "value", variants: { one: "{not an argument}", other: "ok" } },
+      false,
+    );
+    expect(icu).toBe("{value, plural, one {'{'not an argument'}'} other {ok}}");
+    expectValidIcu(icu);
+  });
+
+  it("round-trips a variant body through parse → generate unchanged", () => {
+    // The property that actually matters for Push: parsing an ICU string and
+    // regenerating it must not alter it, or a no-op edit reads as a change.
+    const original = "{count, plural, one {One for {name}} other {# for {name}}}";
+    const parsed = getTolgeeFormat(original, true, false);
+    expect(tolgeeFormatGenerateIcu(parsed, false)).toBe(original);
   });
 });

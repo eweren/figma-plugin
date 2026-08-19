@@ -164,15 +164,88 @@ function findMatchingBrace(input: string, start: number): number {
 // ============================================================
 
 /**
- * Escape literal ICU syntax characters (`{` and `}`) inside a plural variant
+ * Does the text between a `{` and its matching `}` read as a real ICU
+ * argument (`{name}`, `{count, plural, …}`) rather than prose that happens to
+ * sit between braces (`{not an argument}`)? An ICU argument name is one
+ * unbroken token, optionally followed by `,` and the rest of the argument.
+ */
+const ICU_ARGUMENT_RE = /^\s*[\w.-]+\s*(?:,[\s\S]*)?$/;
+
+/**
+ * Escape *literal* ICU syntax characters (`{` and `}`) inside a plural variant
  * body so the body can never be misread as starting/ending a nested ICU
  * argument. ICU's own escaping wraps a literal brace in single quotes: `{` →
- * `'{'`, `}` → `'}'`. Mirrors the (raw-body-first, escape-on-parse-failure)
- * behavior of `@tginternal/editor`'s generator closely enough for the plain,
- * non-ICU translator text these bodies actually contain in this app.
+ * `'{'`, `}` → `'}'`.
+ *
+ * Three kinds of brace have to be told apart, which a blind replace cannot do:
+ *
+ *   - a real nested argument (`One for {name}`) — must survive verbatim, or it
+ *     stops interpolating and gets uploaded in that corrupted form;
+ *   - an already-escaped literal (`a '{' b`) — escaping it again yields
+ *     `a ''{'' b`, a literal apostrophe followed by an *unclosed* argument that
+ *     `intl-messageformat` throws on;
+ *   - a genuinely stray brace (`co{unt`) — the only one that needs escaping.
+ *
+ * So walk the string once by the same `'`-escape rules `findMatchingBrace`
+ * uses, skip over both of the first two kinds, and wrap only what is left.
  */
 function escapeIcuBraces(text: string): string {
-  return text.replace(/\{/g, "'{'").replace(/\}/g, "'}'");
+  let out = "";
+  let i = 0;
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    if (ch === "'") {
+      const next = text[i + 1];
+      // `''` is a literal apostrophe, not the start of an escaped run.
+      if (next === "'") {
+        out += "''";
+        i += 2;
+        continue;
+      }
+      if (next === "{" || next === "}" || next === "#") {
+        const close = text.indexOf("'", i + 2);
+        if (close < 0) {
+          // Unterminated escape — copy the rest verbatim. Escaping inside it
+          // would only add a second unbalanced quote on top of the first.
+          return out + text.slice(i);
+        }
+        out += text.slice(i, close + 1);
+        i = close + 1;
+        continue;
+      }
+      // Lone `'` before a non-escapable character is just an apostrophe.
+      out += ch;
+      i += 1;
+      continue;
+    }
+
+    if (ch === "{") {
+      const close = findMatchingBrace(text, i);
+      if (close > i && ICU_ARGUMENT_RE.test(text.slice(i + 1, close))) {
+        out += text.slice(i, close + 1);
+        i = close + 1;
+        continue;
+      }
+      out += "'{'";
+      i += 1;
+      continue;
+    }
+
+    // Every `}` closing a real argument was consumed by the branch above, so
+    // whatever reaches here is stray.
+    if (ch === "}") {
+      out += "'}'";
+      i += 1;
+      continue;
+    }
+
+    out += ch;
+    i += 1;
+  }
+
+  return out;
 }
 
 /**
