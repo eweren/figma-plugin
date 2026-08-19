@@ -216,8 +216,8 @@
    *  keeps transient activation alive well past a 0ms timeout, so execCommand
    *  is still permitted. (Ref: radix-ui/primitives#2676.) */
   function runCopy(text: string, okText: string): void {
-    setTimeout(() => {
-      if (copyToClipboard(text)) {
+    setTimeout(async () => {
+      if (await copyToClipboard(text)) {
         send({ type: "notify", text: okText });
         justCopied = true;
       } else {

@@ -15,10 +15,15 @@
  * actually fired", not execCommand's return value. The async Clipboard API is
  * only a last-resort fallback for environments that expose it.
  *
- * Must be called synchronously from a user gesture (a menu-item click).
+ * Must be called synchronously from a user gesture (a menu-item click) — the
+ * `async` keyword doesn't weaken that: everything up to the first `await` (the
+ * whole `execCommand` path) still runs inside the gesture's own tick. The
+ * promise exists only so the last-resort fallback can be awaited instead of
+ * guessed at.
+ *
  * Returns whether the copy is believed to have succeeded.
  */
-export function copyToClipboard(text: string): boolean {
+export async function copyToClipboard(text: string): Promise<boolean> {
   let copied = false;
 
   const onCopy = (event: Event): void => {
@@ -76,7 +81,11 @@ export function copyToClipboard(text: string): boolean {
   try {
     const clip = navigator.clipboard;
     if (clip && typeof clip.writeText === "function") {
-      void clip.writeText(text);
+      // AWAIT it. Returning `true` on the un-awaited promise reported success
+      // the instant the call was made — but `writeText` rejects whenever the
+      // document lacks focus or clipboard permission, so the caller flashed
+      // its confirmation while the clipboard still held the old value.
+      await clip.writeText(text);
       return true;
     }
   } catch {
