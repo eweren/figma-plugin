@@ -715,3 +715,63 @@ describe("createCopy — rollback of a failed run", () => {
     expect(result.createdPageIds).toEqual([]);
   });
 })
+
+describe("createCopy — layers a missing font blocked", () => {
+  it("reports skipped layers instead of leaving the copy silently incomplete", async () => {
+    // A node with a missing font can't be written, so a keys copy keeps its
+    // ORIGINAL translated text on that layer instead of the key label. Nothing
+    // surfaced that, so the copy looked complete and the layer looked like a
+    // bug in the plugin.
+    const writable = {
+      type: "TEXT" as const,
+      id: "ok",
+      name: "Good layer",
+      characters: "Hello",
+      visible: true,
+      autoRename: true,
+      hasMissingFont: false,
+      fontName: { family: "Inter", style: "Regular" },
+      getRangeAllFontNames: () => [{ family: "Inter", style: "Regular" }],
+      getPluginData: (k: string) =>
+        k === TOLGEE_NODE_INFO ? JSON.stringify({ key: "greeting", connected: true }) : "",
+      setPluginData: () => {},
+    };
+    const blocked = { ...writable, id: "bad", name: "Broken layer", hasMissingFont: true };
+
+    const clone = {
+      type: "PAGE" as const,
+      id: "clone",
+      name: "Home - keys",
+      loadAsync: vi.fn(async () => {}),
+      getPluginData: () => "",
+      setPluginData: vi.fn(),
+      findAllWithCriteria: () => [writable, blocked],
+    };
+    const source = {
+      type: "PAGE" as const,
+      id: "src",
+      name: "Home",
+      loadAsync: vi.fn(async () => {}),
+      getPluginData: () => "",
+      setPluginData: vi.fn(),
+      findAllWithCriteria: () => [],
+      clone: () => clone,
+    };
+    (globalThis as unknown as { figma: unknown }).figma = {
+      currentPage: source,
+      root: { children: [source], appendChild: vi.fn() },
+      getNodeByIdAsync: async (id: string) => (id === "src" ? source : null),
+      setCurrentPageAsync: async () => {},
+      loadFontAsync: async () => {},
+      mixed: Symbol("mixed"),
+    };
+
+    const result = await createCopy({ mode: "keys", correlationId: "c-font" }, {});
+
+    expect(result.ok).toBe(true);
+    expect(result.skippedMissingFont).toEqual(["Broken layer"]);
+    // The writable one still got its key label — one bad layer must not stop
+    // the rest.
+    expect(writable.characters).toBe("greeting");
+  });
+})

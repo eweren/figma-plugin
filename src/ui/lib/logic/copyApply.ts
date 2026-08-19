@@ -122,6 +122,24 @@ export async function applyCopyPages(
 const RECREATE_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 /**
+ * Correlation id of the recreate currently in flight, or `null`.
+ *
+ * MODULE-scoped for the same reason the job itself is: recreating unmounts the
+ * view that started it, so a "busy" flag held in component state dies with the
+ * instance. A second Recreate could then start while the first was still
+ * applying — and since recreating DELETES the existing copy page, the second
+ * run would remove the fresh page the first one was midway through writing.
+ */
+let inFlightRecreate: string | null = null;
+
+/** Whether a recreate is still running — including across the unmount of the
+ *  view that started it. Callers must check this BEFORE sending `create-copy`;
+ *  by the time the job is registered, the main thread is already deleting. */
+export function isCopyRecreateInFlight(): boolean {
+  return inFlightRecreate !== null;
+}
+
+/**
  * MODULE-SCOPED continuation for "Recreate copy": waits for this
  * `create-copy-result`, then renders + applies `translations` onto the fresh
  * clone and toasts "Copy recreated.".
@@ -147,10 +165,14 @@ export function finishCopyRecreate(opts: {
   onProgress?: (current: number, total: number) => void;
   onDone?: (result: { ok: boolean; error?: string }) => void;
 }): void {
+  inFlightRecreate = opts.correlationId;
   const cleanup = (): void => {
     offResult();
     offProgress();
     watchdog.clear();
+    // Only clear if this job is still the current one — a later recreate that
+    // somehow started must not be un-marked by an older job settling.
+    if (inFlightRecreate === opts.correlationId) inFlightRecreate = null;
   };
   // Idle timeout, not wall-clock: create-copy-progress pings keep resetting it,
   // so only a genuinely silent recreate trips it (same shape as the apply
@@ -182,6 +204,15 @@ export function finishCopyRecreate(opts: {
       }
       send({ type: "notify", text: "Copy recreated." });
       opts.onDone?.({ ok: true });
-    })();
+    })().catch((err: unknown) => {
+      // Fire-and-forget, so a throw in here would otherwise surface only as an
+      // unhandled rejection — leaving the view stuck on its "recreating" state
+      // with no message.
+      console.error("[tolgee:ui] copy recreate failed", err);
+      opts.onDone?.({
+        ok: false,
+        error: err instanceof Error ? err.message : "Failed to recreate the copy.",
+      });
+    });
   });
 }

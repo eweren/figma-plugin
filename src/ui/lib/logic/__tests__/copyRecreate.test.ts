@@ -27,7 +27,11 @@ vi.mock("$ui/lib/bus", () => ({
   },
 }));
 
-import { type CopyTranslations, finishCopyRecreate } from "$ui/lib/logic/copyApply";
+import {
+  type CopyTranslations,
+  finishCopyRecreate,
+  isCopyRecreateInFlight,
+} from "$ui/lib/logic/copyApply";
 
 function emit(type: string, msg: Record<string, unknown>): void {
   for (const h of [...(handlers.get(type) ?? [])]) h({ type, ...msg } as MainToUi);
@@ -123,5 +127,41 @@ describe("finishCopyRecreate — survives the initiating view unmounting", () =>
     emit("create-copy-result", { correlationId: "rc4", ok: true, pages: [] });
     await flushAsync();
     expect(done).toHaveBeenCalledWith({ ok: true });
+  });
+});
+
+describe("recreate re-entrancy", () => {
+  it("reports itself in flight until the job settles", () => {
+    // The guard has to live here, not in the view: recreating unmounts
+    // CopyView, so a second click lands on a fresh instance whose own state
+    // says "idle" — and a second run deletes the page the first is writing.
+    expect(isCopyRecreateInFlight()).toBe(false);
+
+    finishCopyRecreate({ correlationId: "r-1", translations: null });
+    expect(isCopyRecreateInFlight()).toBe(true);
+
+    emit("create-copy-result", { correlationId: "r-1", ok: true, pages: [] });
+    expect(isCopyRecreateInFlight()).toBe(false);
+  });
+
+  it("clears the flag when the job fails", () => {
+    finishCopyRecreate({ correlationId: "r-2", translations: null });
+
+    emit("create-copy-result", { correlationId: "r-2", ok: false, error: "nope" });
+
+    expect(isCopyRecreateInFlight()).toBe(false);
+  });
+
+  it("an older job settling does not clear a newer one's flag", () => {
+    finishCopyRecreate({ correlationId: "r-3", translations: null });
+    finishCopyRecreate({ correlationId: "r-4", translations: null });
+
+    // r-3 answers late; r-4 is the current job and must stay marked.
+    emit("create-copy-result", { correlationId: "r-3", ok: true, pages: [] });
+
+    expect(isCopyRecreateInFlight()).toBe(true);
+
+    emit("create-copy-result", { correlationId: "r-4", ok: true, pages: [] });
+    expect(isCopyRecreateInFlight()).toBe(false);
   });
 });

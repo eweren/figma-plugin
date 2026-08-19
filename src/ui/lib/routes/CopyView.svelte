@@ -12,7 +12,11 @@
   import { resolveCopyLanguage } from "$ui/lib/logic/copyLanguage";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
   import { pullDiff, buildApplyUpdates, skippedRenderMessage } from "$ui/lib/logic/pullDiff";
-  import { finishCopyRecreate, type CopyTranslations } from "$ui/lib/logic/copyApply";
+  import {
+    finishCopyRecreate,
+    isCopyRecreateInFlight,
+    type CopyTranslations,
+  } from "$ui/lib/logic/copyApply";
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import { hasRichFormat } from "$ui/lib/logic/icuParams";
   import { computeVirtualWindow } from "$ui/lib/logic/virtualWindow";
@@ -348,6 +352,11 @@
   async function recreateCopy(): Promise<void> {
     const sourcePageId = appState.value.config?.sourcePageId;
     if (!sourcePageId) return;
+    // The in-flight check has to live outside this component: recreating
+    // unmounts it, so a second click lands on a FRESH instance whose own
+    // `stage` says "idle". Starting a second run would delete the page the
+    // first one is still writing into.
+    if (isCopyRecreateInFlight()) return;
 
     lastFailedAction = "recreate";
     stage = "recreating";

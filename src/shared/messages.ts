@@ -173,6 +173,10 @@ export type MainToUi =
       correlationId: string;
       ok: boolean;
       createdPageIds: string[];
+      /** Layer names a missing font prevented writing — they keep their
+       *  ORIGINAL text instead of the key label, so the count is reported
+       *  rather than left to a dev-only console warning. */
+      skippedMissingFont?: string[];
       /**
        * Languages mode only: the connected nodes of each freshly cloned page.
        * The main thread deliberately does NOT write translated text itself —

@@ -44,6 +44,13 @@ export type CreateCopyResult = {
   ok: boolean;
   createdPageIds: string[];
   /**
+   * Names of layers a missing font prevented writing. Keys mode only in
+   * practice — such a layer keeps its ORIGINAL text instead of the key label,
+   * which reads as the copy having quietly not worked there, so the count has
+   * to reach the user rather than stopping at a dev-only console line.
+   */
+  skippedMissingFont?: string[];
+  /**
    * Languages mode only. This handler deliberately does NOT write translated
    * text itself: ICU rendering (plurals, params) needs `Intl`, which doesn't
    * exist in Figma's main-thread sandbox — every render of a `{...}` string
@@ -112,6 +119,9 @@ export async function createCopy(
   );
 
   const createdPageIds: string[] = [];
+  // Layer names a missing font kept us from writing — surfaced in the result
+  // rather than dropped, so "Copy created" doesn't overstate what happened.
+  const skippedMissingFont: string[] = [];
   // Set when a removed copy turned out to be `figma.currentPage` itself (the
   // "Recreate copy" flow, triggered from inside the copy being replaced) —
   // Figma forbids deleting the active page, so we had to step onto
@@ -163,7 +173,8 @@ export async function createCopy(
             // shows plain "key" for that exact node.
             const label =
               info.ns && options.namespacesEnabled ? `${info.ns}.${info.key}` : info.key;
-            await writeTextSafely(node, label, { plainOnly: true });
+            const written = await writeTextSafely(node, label, { plainOnly: true });
+            if (!written) skippedMissingFont.push(node.name);
           }
         }
         processed++;
@@ -244,10 +255,10 @@ export async function createCopy(
         if (switchedAwayFromCurrent) await figma.setCurrentPageAsync(targetPage);
       }
 
-      return { ok: true, createdPageIds, pages };
+      return { ok: true, createdPageIds, pages, skippedMissingFont };
     }
 
-    return { ok: true, createdPageIds };
+    return { ok: true, createdPageIds, skippedMissingFont };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     // Roll back the clones this run appended. A page is only stamped by
@@ -456,8 +467,12 @@ async function writeTextSafely(
   node: TextNode,
   text: string,
   options?: { plainOnly?: boolean },
-): Promise<void> {
-  if (node.hasMissingFont) return;
+): Promise<boolean> {
+  // A node whose font isn't available can't be written at all. Report it so
+  // the caller can tell the user: on a keys copy such a layer silently keeps
+  // its original translated text instead of the key label, which looks like
+  // the copy simply didn't work on those layers.
+  if (node.hasMissingFont) return false;
   // NO bail on `fontName === figma.mixed`: an advanced string rendered with
   // bold/italic ranges IS mixed, and skipping it left the keys copy showing
   // the original text instead of the key for exactly those nodes (the
@@ -465,6 +480,7 @@ async function writeTextSafely(
   // handles mixed safely — it pre-loads every font on the node via
   // `getRangeAllFontNames` before assigning `characters`.
   await applyRichText(node, text, options);
+  return true;
 }
 
 function yieldToEventLoop(): Promise<void> {

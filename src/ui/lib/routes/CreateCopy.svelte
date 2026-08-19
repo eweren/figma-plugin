@@ -150,7 +150,12 @@
       const offResult = on("create-copy-result", (m) => {
         if (m.correlationId !== payload.correlationId) return;
         cleanup();
-        resolve({ ok: m.ok, pages: m.pages, error: m.error });
+        resolve({
+          ok: m.ok,
+          pages: m.pages,
+          error: m.error,
+          skippedMissingFont: m.skippedMissingFont,
+        });
       });
       send({
         type: "create-copy",
@@ -176,7 +181,17 @@
       });
       if (result.ok) {
         stage = "done";
-        send({ type: "notify", text: "Created keys page." });
+        // A layer with a missing font keeps its ORIGINAL text instead of the
+        // key label, which reads as the copy having quietly not worked there —
+        // so say how many rather than letting it look complete.
+        const skipped = result.skippedMissingFont?.length ?? 0;
+        send({
+          type: "notify",
+          text:
+            skipped > 0
+              ? `Created keys page — ${skipped} layer(s) skipped (missing fonts).`
+              : "Created keys page.",
+        });
         appState.navigate({ name: "index" });
       } else {
         stage = "error";

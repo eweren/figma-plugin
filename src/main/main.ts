@@ -450,6 +450,7 @@ on("create-copy", async (msg) => {
     createdPageIds: result.createdPageIds,
     pages: result.pages,
     error: result.error,
+    skippedMissingFont: result.skippedMissingFont,
   });
 });
 
