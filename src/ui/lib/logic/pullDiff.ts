@@ -110,6 +110,17 @@ export function pullDiff(
       // characters have drifted (e.g. someone typed over the layer manually).
       // For non-plural / non-parametric keys we can safely re-apply the
       // remote text so the canvas matches the source of truth again.
+      //
+      // The plural/params exclusion is LOAD-BEARING, not caution — do not
+      // relax it to "rescue" stale nodes. Drift is measured by rendering the
+      // remote text with the node's own sample, and a node migrated from the
+      // published plugin has no usable sample: that plugin stored the argument
+      // NAME in `pluralParamValue` (its own bug, see interpolate.ts), which
+      // `numericCount` rejects, so the sample falls back to 1. A migrated
+      // layer reading "10 days" therefore renders as "1 day", looks drifted,
+      // and re-applying would overwrite the design with the wrong plural form
+      // on every pull. Same for a parametric string with no stored params.
+      //
       // Skip if `characters` is empty — that's not real drift, it just means
       // the node hasn't been rendered yet (typical in tests / fresh syncs).
       node.characters &&

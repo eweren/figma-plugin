@@ -548,3 +548,70 @@ describe("nodes left stale by the published plugin", () => {
     expect(result.unchangedNodes).toHaveLength(1);
   });
 });
+
+describe("the plural exclusion in the drift branch", () => {
+  const PLURAL = "{count, plural, one {# day} other {# days}}";
+
+  it("does NOT re-apply a migrated plural layer whose sample is unusable", () => {
+    // The published plugin stored the argument NAME in `pluralParamValue`
+    // instead of a count. `numericCount` rejects it, so the sample falls back
+    // to 1 — a layer showing "10 days" renders as "1 day" and looks drifted.
+    // Re-applying would overwrite the design with the wrong plural form, on
+    // every single pull. This exclusion is what stops that, so it must not be
+    // "relaxed" to rescue stale nodes.
+    const node = makeNode({
+      key: "trial",
+      isPlural: true,
+      translation: PLURAL,
+      characters: "10 days",
+      pluralParamValue: "count", // the arg name, as the original wrote it
+    });
+    const remote = makeRemoteKey({
+      keyName: "trial",
+      isPlural: true,
+      translations: { en: { text: PLURAL } },
+    });
+
+    const result = pullDiff([node], [remote], "en", false);
+
+    expect(result.changedNodes).toHaveLength(0);
+    expect(result.unchangedNodes).toHaveLength(1);
+  });
+
+  it("does NOT re-apply a parametric layer with no stored params", () => {
+    // Same shape: the render seeds `{name}` with its own name, so the canvas
+    // never matches and the layer would be rewritten to "Hello, name!".
+    const node = makeNode({
+      key: "greet",
+      translation: "Hello, {name}!",
+      characters: "Hello, Alice!",
+      paramsValues: { name: "Alice" },
+    });
+    const remote = makeRemoteKey({
+      keyName: "greet",
+      translations: { en: { text: "Hello, {name}!" } },
+    });
+
+    const result = pullDiff([node], [remote], "en", false);
+
+    expect(result.changedNodes).toHaveLength(0);
+  });
+
+  it("still re-applies a plain layer that genuinely drifted", () => {
+    // The case the branch exists for stays working.
+    const node = makeNode({
+      key: "title",
+      translation: "Welcome",
+      characters: "typed over",
+    });
+    const remote = makeRemoteKey({
+      keyName: "title",
+      translations: { en: { text: "Welcome" } },
+    });
+
+    const result = pullDiff([node], [remote], "en", false);
+
+    expect(result.changedNodes).toHaveLength(1);
+    expect(result.changedNodes[0]?.newText).toBe("Welcome");
+  });
+});
