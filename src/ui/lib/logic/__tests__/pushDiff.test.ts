@@ -340,6 +340,29 @@ describe("pushDiff", () => {
     expect(diff.changedKeys).toHaveLength(1);
   });
 
+  it("does NOT flag missing tags when no tags are configured", () => {
+    // The contract the Push view relies on: with tag sync off it passes an
+    // EMPTY list, and an otherwise-identical key must then come back
+    // unchanged. Reported live — leaving tags configured while turning the
+    // toggle off made every push report changes, because the diff kept
+    // demanding tags the push would never apply.
+    const node = makeNode({ id: "n1", key: "greeting", translation: "Hello" });
+    const remote: RemoteTranslationMap = {
+      "": {
+        greeting: { translation: "Hello", keyIsPlural: false, keyTags: [] },
+      },
+    };
+
+    for (const configuredTags of [[], undefined]) {
+      const diff = pushDiff([node], remote, {
+        hasNamespacesEnabled: false,
+        configuredTags,
+      });
+      expect(diff.changedKeys).toHaveLength(0);
+      expect(diff.unchangedKeys).toHaveLength(1);
+    }
+  });
+
   it("ignores nodes without a key", () => {
     const node = makeNode({ id: "n1", key: "", translation: "Hello" });
     const diff = pushDiff([node], {}, { hasNamespacesEnabled: false });

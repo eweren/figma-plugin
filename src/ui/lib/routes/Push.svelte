@@ -105,7 +105,17 @@
   const branch = $derived(auth.value.branchingEnabled ? cfg.branch : undefined);
   const hasNamespacesEnabled = $derived(auth.value.namespacesEnabled);
   const addTags = $derived(cfg.addTags ?? false);
-  const configuredTags = $derived(cfg.tags ?? []);
+  // Gated on `addTags`, because the diff and the write must ask and answer the
+  // SAME question. `isChanged` reports a key as changed when the remote is
+  // missing one of these tags; the push only applies them when the toggle is
+  // on. Reading `cfg.tags` unconditionally meant that turning the toggle OFF
+  // while tags were still configured left every key permanently "changed" —
+  // the diff kept demanding tags the push would never send.
+  const configuredTags = $derived(addTags ? (cfg.tags ?? []) : []);
+  // Part of the diff cache key: the diff's ANSWER depends on these, so a
+  // settings change has to produce a different key or svelte-query keeps
+  // serving the result computed under the old tag settings.
+  const tagsCacheKey = $derived(configuredTags.join(","));
 
   const selectedNodes = $derived<NodeInfo[]>(appState.value.selectedNodes);
   const connectedNodes = $derived(
@@ -142,6 +152,7 @@
       branch ?? "",
       keyFilterCacheKey,
       nsFilterCacheKey,
+      tagsCacheKey,
     ],
     enabled:
       Boolean(auth.value.client) &&
@@ -490,7 +501,7 @@
     }
 
     // Best-effort: tag failures must not undo the push.
-    if (addTags && configuredTags.length > 0) {
+    if (configuredTags.length > 0) {
       try {
         await applyConfiguredTags({
           ctx,
