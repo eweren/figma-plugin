@@ -19,3 +19,6 @@ e2e/playwright-report/
 playwright/.cache/
 
 .vscode
+
+# Local Claude Code config — machine-specific, never part of a change.
+.claude/
