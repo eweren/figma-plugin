@@ -127,8 +127,12 @@ export async function createCopy(
       // capitalized "Keys") would never find/replace a copy the production
       // plugin created, and vice versa, letting copies pile up instead.
       const targetName = `${sourcePage.name} - keys`;
-      switchedAwayFromCurrent ||= (await removeExistingCopyPages(targetName, sourcePage))
-        .switchedAwayFromCurrent;
+      switchedAwayFromCurrent ||= (
+        await removeExistingCopyPages(
+          { name: targetName, sourcePageId: sourcePage.id },
+          sourcePage,
+        )
+      ).switchedAwayFromCurrent;
       const targetPage = sourcePage.clone();
       targetPage.name = targetName;
       figma.root.appendChild(targetPage);
@@ -188,8 +192,12 @@ export async function createCopy(
 
         // Matches production's naming exactly — see the "keys" branch above.
         const targetName = `${sourcePage.name} - ${lang}`;
-        switchedAwayFromCurrent ||= (await removeExistingCopyPages(targetName, sourcePage))
-          .switchedAwayFromCurrent;
+        switchedAwayFromCurrent ||= (
+          await removeExistingCopyPages(
+            { name: targetName, sourcePageId: sourcePage.id, language: lang },
+            sourcePage,
+          )
+        ).switchedAwayFromCurrent;
         const targetPage = sourcePage.clone();
         targetPage.name = targetName;
         figma.root.appendChild(targetPage);
@@ -242,8 +250,43 @@ export async function createCopy(
     return { ok: true, createdPageIds };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    return { ok: false, createdPageIds, error };
+    // Roll back the clones this run appended. A page is only stamped by
+    // `markPageAsCopy` AFTER its write loop finishes, so one created before the
+    // throw carries no marker at all — which makes it invisible to
+    // `removeExistingCopyPages` forever. Left in place, every retry would add
+    // another half-written orphan the user has to hunt down by hand, and no
+    // later run could ever clean them up.
+    const orphans = await removeCreatedPages(createdPageIds, sourcePage);
+    return { ok: false, createdPageIds: orphans, error };
   }
+}
+
+/**
+ * Delete pages created by a failed run. Returns the ids it could NOT remove,
+ * so the caller reports what actually survived rather than what it attempted.
+ *
+ * Removal is best-effort per page: one page refusing to go must not strand the
+ * rest, and the original error is what the user needs to see, not a rollback
+ * failure on top of it.
+ */
+async function removeCreatedPages(ids: string[], fallback: PageNode): Promise<string[]> {
+  const remaining: string[] = [];
+  for (const id of ids) {
+    try {
+      const node = await figma.getNodeByIdAsync(id);
+      if (node?.type !== "PAGE") continue;
+      const page = node as PageNode;
+      // Figma forbids removing the active page — step onto the source first.
+      if (page === figma.currentPage) {
+        await fallback.loadAsync();
+        await figma.setCurrentPageAsync(fallback);
+      }
+      page.remove();
+    } catch {
+      remaining.push(id);
+    }
+  }
+  return remaining;
 }
 
 /** `sourcePageId` set (the "Recreate copy" flow) resolves that specific page;
@@ -255,16 +298,59 @@ async function resolveSourcePage(sourcePageId?: string): Promise<PageNode | null
   return node?.type === "PAGE" ? node : null;
 }
 
-/** Whether a page is a previously-generated Tolgee copy (marked `pageCopy`). */
-function isCopyPage(page: PageNode): boolean {
+/** The copy marker written by `markPageAsCopy`, or `null` for any page that
+ *  isn't a previously-generated Tolgee copy. */
+function readCopyMarker(
+  page: PageNode,
+): { sourcePageId?: string; language?: string } | null {
   const raw = page.getPluginData(TOLGEE_PLUGIN_CONFIG_NAME);
-  if (!raw) return false;
+  if (!raw) return null;
   try {
-    return (JSON.parse(raw) as { pageCopy?: boolean }).pageCopy === true;
+    const parsed = JSON.parse(raw) as {
+      pageCopy?: boolean;
+      sourcePageId?: string;
+      copyLanguage?: string;
+      language?: string;
+    };
+    if (parsed.pageCopy !== true) return null;
+    return {
+      sourcePageId: parsed.sourcePageId,
+      // `copyLanguage` is the immutable marker; `language` shares the page
+      // scope with the selectable Push/Pull language and can be repointed.
+      language: parsed.copyLanguage ?? parsed.language,
+    };
   } catch {
-    return false;
+    return null;
   }
 }
+
+/**
+ * Identifies the copy a fresh one REPLACES.
+ *
+ * A copy's identity is `(source page, language)` — a keys copy carries no
+ * language, each language copy carries its own — not its name. Matching on the
+ * name alone (which is all this used to do) breaks the moment the naming
+ * format changes: this PR aligned the separator with production, so a copy
+ * made by an earlier v2 build no longer matched, Recreate appended a SECOND
+ * page instead of replacing it, `switchedAwayFromCurrent` never fired, and the
+ * user was left looking at the stale one under a "Copy recreated." toast.
+ *
+ * The name is still accepted as a fallback, because copies made by the
+ * published plugin predate `sourcePageId` and have nothing else to match on.
+ */
+function matchesCopyIdentity(page: PageNode, target: CopyTarget): boolean {
+  const marker = readCopyMarker(page);
+  if (!marker?.sourcePageId) return false; // pre-tracking copy: name is its only handle
+  return marker.sourcePageId === target.sourcePageId && marker.language === target.language;
+}
+
+/** The copy a `createCopy` run is about to write, for replacement lookup. */
+export type CopyTarget = {
+  name: string;
+  sourcePageId: string;
+  /** Absent for a keys copy; the language tag for a language copy. */
+  language?: string;
+};
 
 /**
  * Remove any existing copy page with the given name, so a repeated copy
@@ -281,14 +367,13 @@ function isCopyPage(page: PageNode): boolean {
  * once it exists, instead of stranding the user on the fallback.
  */
 export async function removeExistingCopyPages(
-  name: string,
+  target: CopyTarget,
   preferredFallback?: PageNode,
 ): Promise<{ switchedAwayFromCurrent: boolean }> {
   let switchedAwayFromCurrent = false;
-  for (const page of figma.root.children) {
-    if (page.type !== "PAGE" || page.name !== name) continue;
-    await page.loadAsync();
-    if (!isCopyPage(page)) continue;
+  let removedAny = false;
+
+  const removePage = async (page: PageNode): Promise<void> => {
     if (page === figma.currentPage) {
       const fallback =
         preferredFallback ?? figma.root.children.find((p) => p !== page && p.type === "PAGE");
@@ -301,7 +386,38 @@ export async function removeExistingCopyPages(
       }
     }
     page.remove();
+    removedAny = true;
+  };
+
+  // Pass 1 — by name. Comparing a name needs no page load, so this stays cheap
+  // on a document with many pages, and it is the ONLY handle on copies made by
+  // the published plugin (they predate `sourcePageId`). Snapshot the children:
+  // `remove()` mutates the live array.
+  const others: PageNode[] = [];
+  for (const page of [...figma.root.children]) {
+    if (page.type !== "PAGE") continue;
+    if (page.name !== target.name) {
+      others.push(page);
+      continue;
+    }
+    await page.loadAsync();
+    if (readCopyMarker(page) === null) continue; // a user's own same-named page
+    await removePage(page);
   }
+  if (removedAny) return { switchedAwayFromCurrent };
+
+  // Pass 2 — by identity `(source page, language)`, for a copy whose NAME no
+  // longer matches: this PR aligned the naming with production, so a copy made
+  // by an earlier v2 build would otherwise go unfound and Recreate would append
+  // a duplicate beside it. Reading the marker requires loading each page, which
+  // is why this runs only when pass 1 came up empty — the usual case never pays
+  // for it.
+  for (const page of others) {
+    await page.loadAsync();
+    if (!matchesCopyIdentity(page, target)) continue;
+    await removePage(page);
+  }
+
   return { switchedAwayFromCurrent };
 }
 

@@ -86,7 +86,7 @@ describe("removeExistingCopyPages", () => {
     const oldCopy = page("Home — en", { pageCopy: true });
     setPages([page("Home"), oldCopy]);
 
-    await removeExistingCopyPages("Home — en");
+    await removeExistingCopyPages({ name: "Home — en", sourcePageId: "src" });
 
     expect(oldCopy.remove).toHaveBeenCalledTimes(1);
   });
@@ -95,7 +95,7 @@ describe("removeExistingCopyPages", () => {
     const userPage = page("Home — en"); // no pageCopy marker
     setPages([userPage]);
 
-    await removeExistingCopyPages("Home — en");
+    await removeExistingCopyPages({ name: "Home — en", sourcePageId: "src" });
 
     expect(userPage.remove).not.toHaveBeenCalled();
   });
@@ -104,11 +104,9 @@ describe("removeExistingCopyPages", () => {
     const otherCopy = page("Home — de", { pageCopy: true });
     setPages([otherCopy]);
 
-    await removeExistingCopyPages("Home — en");
+    await removeExistingCopyPages({ name: "Home — en", sourcePageId: "src" });
 
     expect(otherCopy.remove).not.toHaveBeenCalled();
-    // Non-matching pages aren't even loaded.
-    expect(otherCopy.loadAsync).not.toHaveBeenCalled();
   });
 
   describe("when the page being removed is the currently active one", () => {
@@ -117,7 +115,10 @@ describe("removeExistingCopyPages", () => {
       const activeCopy = page("Home — en", { pageCopy: true }, { id: "copy" });
       setPages([source, activeCopy], activeCopy);
 
-      const result = await removeExistingCopyPages("Home — en", source as never);
+      const result = await removeExistingCopyPages(
+        { name: "Home — en", sourcePageId: "src" },
+        source as never,
+      );
 
       expect(result.switchedAwayFromCurrent).toBe(true);
       expect(
@@ -131,7 +132,10 @@ describe("removeExistingCopyPages", () => {
       const oldCopy = page("Home — en", { pageCopy: true }, { id: "copy" });
       setPages([source, oldCopy], source);
 
-      const result = await removeExistingCopyPages("Home — en", source as never);
+      const result = await removeExistingCopyPages(
+        { name: "Home — en", sourcePageId: "src" },
+        source as never,
+      );
 
       expect(result.switchedAwayFromCurrent).toBe(false);
       expect(
@@ -474,3 +478,240 @@ describe("createCopy — ignore settings", () => {
 // to the UI — `$ui/lib/logic/copyApply`'s `buildCopyUpdates` — because ICU
 // rendering needs `Intl`, which Figma's main-thread sandbox doesn't provide.
 // Its regression tests live in `src/ui/lib/logic/__tests__/copyApply.test.ts`.
+
+describe("removeExistingCopyPages — identity fallback", () => {
+  it("replaces a copy of the same (source, language) whose NAME no longer matches", () => {
+    // The reported case: this PR aligned copy naming with production, so a
+    // copy made by an earlier v2 build carries the old name. Matching on the
+    // name alone left it unfound, and Recreate appended a duplicate beside it.
+    const renamed = page(
+      "Home – en", // en dash: an earlier build's separator
+      { pageCopy: true, sourcePageId: "src", copyLanguage: "en" },
+      { id: "old" },
+    );
+    setPages([page("Home", undefined, { id: "src" }), renamed]);
+
+    return removeExistingCopyPages({
+      name: "Home - en",
+      sourcePageId: "src",
+      language: "en",
+    }).then(() => {
+      expect(renamed.remove).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does NOT confuse a keys copy with a language copy of the same source", async () => {
+    // Identity is (source page, language) — a keys copy carries no language,
+    // so recreating it must leave the language copies alone.
+    const keysCopy = page(
+      "Home - keys",
+      { pageCopy: true, sourcePageId: "src" },
+      { id: "keys" },
+    );
+    const enCopy = page(
+      "Home - en",
+      { pageCopy: true, sourcePageId: "src", copyLanguage: "en" },
+      { id: "en" },
+    );
+    setPages([page("Home", undefined, { id: "src" }), keysCopy, enCopy]);
+
+    await removeExistingCopyPages({ name: "Home - keys", sourcePageId: "src" });
+
+    expect(keysCopy.remove).toHaveBeenCalledTimes(1);
+    expect(enCopy.remove).not.toHaveBeenCalled();
+  });
+
+  it("does NOT remove a copy belonging to a DIFFERENT source page", async () => {
+    const otherSourceCopy = page(
+      "Other - en",
+      { pageCopy: true, sourcePageId: "other", copyLanguage: "en" },
+      { id: "other-copy" },
+    );
+    setPages([page("Home", undefined, { id: "src" }), otherSourceCopy]);
+
+    await removeExistingCopyPages({
+      name: "Home - en",
+      sourcePageId: "src",
+      language: "en",
+    });
+
+    expect(otherSourceCopy.remove).not.toHaveBeenCalled();
+  });
+
+  it("leaves a pre-tracking copy (no sourcePageId) alone unless its name matches", async () => {
+    // Copies made by the published plugin have no `sourcePageId`; the name is
+    // their only handle, and guessing beyond it could delete a page the user
+    // still wants.
+    const legacy = page("Something else", { pageCopy: true }, { id: "legacy" });
+    setPages([page("Home", undefined, { id: "src" }), legacy]);
+
+    await removeExistingCopyPages({
+      name: "Home - en",
+      sourcePageId: "src",
+      language: "en",
+    });
+
+    expect(legacy.remove).not.toHaveBeenCalled();
+  });
+
+  it("stops after the name match, so the usual path never loads other pages", async () => {
+    // Performance guard: reading a copy marker requires loading the page, and
+    // a document can have many. The identity pass exists for the migration
+    // case only and must not make every ordinary recreate load the document.
+    const namedCopy = page("Home - en", { pageCopy: true, sourcePageId: "src" }, { id: "c" });
+    const unrelated = page("Sketches", undefined, { id: "u" });
+    setPages([page("Home", undefined, { id: "src" }), namedCopy, unrelated]);
+
+    await removeExistingCopyPages({ name: "Home - en", sourcePageId: "src" });
+
+    expect(namedCopy.remove).toHaveBeenCalledTimes(1);
+    expect(unrelated.loadAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("createCopy — rollback of a failed run", () => {
+  /** A clone that records whether the failed run cleaned it up. */
+  function failingSetup(opts: { cloneIsCurrent?: boolean } = {}) {
+    const exploding = {
+      type: "TEXT" as const,
+      id: "boom",
+      name: "Layer",
+      visible: true,
+      get characters(): string {
+        throw new Error("node write blew up");
+      },
+      getPluginData: () => JSON.stringify({ key: "k", connected: true }),
+      setPluginData: () => {},
+    };
+    const clone = {
+      type: "PAGE" as const,
+      id: "clone-id",
+      name: "Home - keys",
+      loadAsync: vi.fn(async () => {}),
+      getPluginData: () => "",
+      setPluginData: vi.fn(),
+      findAllWithCriteria: () => [exploding],
+      remove: vi.fn(),
+    };
+    const source = {
+      type: "PAGE" as const,
+      id: "src",
+      name: "Home",
+      loadAsync: vi.fn(async () => {}),
+      getPluginData: () => "",
+      setPluginData: vi.fn(),
+      findAllWithCriteria: () => [],
+      clone: () => clone,
+    };
+    const figma = {
+      currentPage: opts.cloneIsCurrent ? clone : source,
+      root: { children: [source], appendChild: vi.fn() },
+      getNodeByIdAsync: async (id: string) =>
+        id === clone.id ? clone : id === source.id ? source : null,
+      setCurrentPageAsync: vi.fn(async (p: unknown) => {
+        figma.currentPage = p as typeof source;
+      }),
+      loadFontAsync: async () => {},
+      mixed: Symbol("mixed"),
+    };
+    (globalThis as unknown as { figma: unknown }).figma = figma;
+    return { clone, source, figma };
+  }
+
+  it("removes the half-written clone instead of leaving an orphan", async () => {
+    // The clone is stamped by `markPageAsCopy` only AFTER the write loop, so a
+    // page created before a throw carries no marker — invisible to
+    // `removeExistingCopyPages` forever, and every retry would add another.
+    const { clone } = failingSetup();
+
+    const result = await createCopy({ mode: "keys", correlationId: "c-fail" }, {});
+
+    expect(result.ok).toBe(false);
+    expect(clone.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports no created pages once they have been rolled back", async () => {
+    // The caller shouldn't be handed ids that no longer exist.
+    failingSetup();
+
+    const result = await createCopy({ mode: "keys", correlationId: "c-fail2" }, {});
+
+    expect(result.createdPageIds).toEqual([]);
+    expect(result.error).toContain("node write blew up");
+  });
+
+  it("steps off an earlier clone before removing it when the run landed on it", async () => {
+    // Reachable in languages mode: recreating from inside a copy makes the run
+    // step onto each finished clone (`switchedAwayFromCurrent`), so when a
+    // LATER language throws, the rollback is deleting the page the user is
+    // standing on. Figma forbids removing the active page, so without the
+    // step-off the rollback itself would throw and leave both orphans behind.
+    const exploding = {
+      type: "TEXT" as const,
+      id: "boom",
+      name: "Layer",
+      visible: true,
+      get characters(): string {
+        throw new Error("scan blew up");
+      },
+      getPluginData: () => JSON.stringify({ key: "k", connected: true }),
+      setPluginData: () => {},
+    };
+    const makeClone = (id: string, nodes: unknown[]) => ({
+      type: "PAGE" as const,
+      id,
+      name: id,
+      loadAsync: vi.fn(async () => {}),
+      getPluginData: () => "",
+      setPluginData: vi.fn(),
+      findAllWithCriteria: () => nodes,
+      remove: vi.fn(),
+    });
+    const enClone = makeClone("clone-en", []); // succeeds
+    const deClone = makeClone("clone-de", [exploding]); // throws
+    const clones = [enClone, deClone];
+    let cloneIndex = 0;
+
+    const source = {
+      type: "PAGE" as const,
+      id: "src",
+      name: "Home",
+      loadAsync: vi.fn(async () => {}),
+      getPluginData: () => "",
+      setPluginData: vi.fn(),
+      findAllWithCriteria: () => [],
+      clone: () => clones[cloneIndex++],
+    };
+    // The copy the user is standing on when they hit Recreate.
+    const activeOldCopy = page(
+      "Home - en",
+      { pageCopy: true, sourcePageId: "src", copyLanguage: "en" },
+      { id: "old-en" },
+    );
+    const figma = {
+      currentPage: activeOldCopy as unknown,
+      root: { children: [source, activeOldCopy], appendChild: vi.fn() },
+      getNodeByIdAsync: async (id: string) =>
+        [source, enClone, deClone, activeOldCopy].find((p) => p.id === id) ?? null,
+      setCurrentPageAsync: vi.fn(async (p: unknown) => {
+        figma.currentPage = p;
+      }),
+      loadFontAsync: async () => {},
+      mixed: Symbol("mixed"),
+    };
+    (globalThis as unknown as { figma: unknown }).figma = figma;
+
+    const result = await createCopy(
+      { mode: "languages", languages: ["en", "de"], correlationId: "c-fail3", sourcePageId: "src" },
+      {},
+    );
+
+    expect(result.ok).toBe(false);
+    // The run had stepped onto the finished `en` clone; rollback must move off
+    // it before removing, and remove BOTH clones it created.
+    expect(figma.setCurrentPageAsync).toHaveBeenCalledWith(source);
+    expect(enClone.remove).toHaveBeenCalledTimes(1);
+    expect(deClone.remove).toHaveBeenCalledTimes(1);
+    expect(result.createdPageIds).toEqual([]);
+  });
+})
