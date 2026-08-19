@@ -775,3 +775,51 @@ describe("createCopy — layers a missing font blocked", () => {
     expect(writable.characters).toBe("greeting");
   });
 })
+
+describe("copy staleness counts key a `|` cannot collide in", () => {
+  it("sees two distinct keys where a `|` join would merge them", async () => {
+    // The main thread had its own `${ns}|${key}` join, missed by the first
+    // sweep because the shared helper lived UI-side, where main can't import
+    // from. Staleness compares per-key COUNTS, so a collision doesn't just
+    // mislabel a key — it cancels a real difference out.
+    //
+    // Source holds (ns "a|b", key "c"); the copy holds (ns "a", key "b|c").
+    // Different keys, but `a|b` + `|` + `c` and `a` + `|` + `b|c` are the same
+    // string — so both sides counted 1 for one merged key and the copy read as
+    // up to date, hiding both a gained and a lost string.
+    const source = page("Home", undefined, {
+      id: "src",
+      textNodes: [textNode({ key: "c", ns: "a|b" })],
+    });
+    const copy = page(
+      "Home - keys",
+      { pageCopy: true, sourcePageId: "src" },
+      { id: "copy", textNodes: [textNode({ key: "b|c", ns: "a" })] },
+    );
+    setPages([source, copy], copy);
+
+    const result = await checkCopyStaleness(copy as never);
+
+    expect(result.ok).toBe(true);
+    expect(result.missingCount).toBe(1); // the source's key the copy lacks
+    expect(result.removedCount).toBe(1); // the copy's key the source lacks
+  });
+
+  it("still reports a genuinely up-to-date copy as up to date", async () => {
+    const source = page("Home", undefined, {
+      id: "src2",
+      textNodes: [textNode({ key: "greeting", ns: "web" })],
+    });
+    const copy = page(
+      "Home - keys",
+      { pageCopy: true, sourcePageId: "src2" },
+      { id: "copy2", textNodes: [textNode({ key: "greeting", ns: "web" })] },
+    );
+    setPages([source, copy], copy);
+
+    const result = await checkCopyStaleness(copy as never);
+
+    expect(result.missingCount).toBe(0);
+    expect(result.removedCount).toBe(0);
+  });
+});

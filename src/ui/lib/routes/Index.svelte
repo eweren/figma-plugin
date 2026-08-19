@@ -12,6 +12,7 @@
     connectInfoFromKey,
     type KeySearchResult,
   } from "$ui/lib/api/keys";
+  import { nsKeyIndex } from "$shared/keyIndex";
   import {
     type ConnectedKey,
     fetchMissingKeys,
@@ -1558,7 +1559,7 @@
           </p>
           <!-- pr-2 so the scrollbar doesn't overlap the trailing (i) icons. -->
           <ul class="max-h-44 space-y-1 overflow-auto pr-2 text-xs">
-            {#each matchResult.notConnected as item (item.ns + "|" + item.text)}
+            {#each matchResult.notConnected as item (nsKeyIndex(item.ns, item.text))}
             <li class="flex items-center gap-1.5">
               <span
                 class="min-w-0 flex-1 truncate text-text-secondary"

@@ -84,7 +84,7 @@
   });
 
   /**
-   * Build the per-language translations map. Keyed by `${ns}|${key}` so each
+   * Build the per-language translations map. Keyed by `nsKeyIndex` so each
    * cloned node (which has a fresh ID) can be matched back to its Tolgee key +
    * namespace. Carries `isPlural` alongside the raw text — a per-KEY Tolgee
    * property, trusted over the copied node's own (possibly stale) flag. The
@@ -222,7 +222,7 @@
 
     let translationsMap: Record<string, Record<string, { text: string; isPlural: boolean }>>;
     try {
-      // All namespaces: the translations map is keyed by `${ns}|${key}` and the
+      // All namespaces: the translations map is keyed by `nsKeyIndex` and the
       // main thread matches each cloned node by its own ns, so a page mixing
       // namespaces is copied correctly. (config.namespace is only a new-key
       // default, not a copy filter.)

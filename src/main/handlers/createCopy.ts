@@ -6,6 +6,7 @@ import { type IgnoreSettings, shouldIgnoreNode } from "$main/nodes/filter";
 import { getNodeInfo } from "$main/nodes/getNodeInfo";
 import { computeAncestorHidden } from "$main/nodes/scan";
 import { applyRichText } from "$main/text/applyRichText";
+import { nsKeyIndex } from "$shared/keyIndex";
 
 /**
  * Options for the `createCopy` handler. The two modes have different payloads
@@ -78,7 +79,7 @@ const PROGRESS_INTERVAL = 10;
  *   Tolgee key (prefixed with the namespace when one is set) so the page can
  *   be used as a debug overlay.
  * - `mode: "languages"` clones the page once per language and writes the
- *   provided translation (looked up by `${ns}|${key}`) into every connected
+ *   provided translation (looked up by `nsKeyIndex`) into every connected
  *   text node. Falls back to the persisted `translation` for any miss so the
  *   page never ends up empty.
  *
@@ -546,7 +547,7 @@ export async function checkCopyStaleness(copyPage: PageNode): Promise<CopyStalen
 }
 
 /**
- * Connected string COUNT per `${ns}|${key}` on `page` — counts, not a set.
+ * Connected string COUNT per `(ns, key)` on `page` — counts, not a set.
  * Node ids differ between a source page and its clone, so nodes can't be
  * matched individually; per-key counts are the closest stable proxy. A set
  * comparison missed the real-world case that surfaced this: connecting an
@@ -564,7 +565,7 @@ async function collectConnectedKeyCounts(page: PageNode): Promise<Map<string, nu
   for (const node of textNodes) {
     const info = getNodeInfo(node);
     if (info.connected && info.key) {
-      const key = `${info.ns ?? ""}|${info.key}`;
+      const key = nsKeyIndex(info.ns, info.key);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     // The staleness check runs TWO of these scans back-to-back on every
