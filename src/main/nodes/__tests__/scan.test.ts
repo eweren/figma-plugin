@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildConnectedNodesInfo } from "$main/nodes/scan";
+import { buildConnectedNodesInfo, scanSelectedTextNodes } from "$main/nodes/scan";
 
 /** Minimal TEXT-node stand-in — just enough for `getNodeInfo`/`shouldIgnoreNode`
  *  to read. `parent` defaults to a bare PAGE stand-in (no hidden ancestors). */
@@ -95,3 +95,53 @@ describe("buildConnectedNodesInfo", () => {
     expect(infos.map((i) => i.id)).toEqual(["1:2"]);
   });
 });
+
+describe("scanSelectedTextNodes — hidden ancestors above the selected root", () => {
+  /** Installs a page whose selection is `selection`. */
+  function installFigma(selection: unknown[]) {
+    (globalThis as unknown as { figma: unknown }).figma = {
+      currentPage: { loadAsync: async () => {}, selection },
+    };
+  }
+
+  it("honours a hidden parent ABOVE the node picked in the Layers panel", async () => {
+    // Selecting a visible text node (or nested frame) through the Layers panel
+    // while one of its parents is hidden used to start the walk with
+    // `ancestorHidden = false` — the walk only ever looks downward, so nothing
+    // above the selected root was ever examined. The text then showed up and
+    // could be synchronised, while a page-wide scan correctly excluded it.
+    const page = { type: "PAGE" };
+    const hiddenFrame = { type: "FRAME", visible: false, parent: page };
+    const node = makeTextNode("t1", { type: "TEXT", parent: hiddenFrame });
+    installFigma([node]);
+
+    const scanned = await scanSelectedTextNodes(true);
+
+    expect(scanned).toHaveLength(1);
+    expect(scanned[0]?.ancestorHidden).toBe(true);
+  });
+
+  it("leaves a node with only visible ancestors alone", async () => {
+    const page = { type: "PAGE" };
+    const frame = { type: "FRAME", visible: true, parent: page };
+    const node = makeTextNode("t2", { type: "TEXT", parent: frame });
+    installFigma([node]);
+
+    const scanned = await scanSelectedTextNodes(true);
+
+    expect(scanned[0]?.ancestorHidden).toBe(false);
+  });
+
+  it("reports no ancestor-hidden state when the filter is off", async () => {
+    // The fast path deliberately skips the walk entirely — the filter isn't
+    // enabled, so nothing should be marked hidden.
+    const page = { type: "PAGE" };
+    const hiddenFrame = { type: "FRAME", visible: false, parent: page };
+    const node = makeTextNode("t3", { type: "TEXT", parent: hiddenFrame });
+    installFigma([node]);
+
+    const scanned = await scanSelectedTextNodes(false);
+
+    expect(scanned[0]?.ancestorHidden).toBe(false);
+  });
+})

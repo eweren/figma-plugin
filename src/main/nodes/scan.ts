@@ -37,7 +37,7 @@ const PROGRESS_MIN_TOTAL = 100;
  *  filter. Unlike a full-document walk, this stays cheap here: it only ever
  *  runs once per node `findAllWithCriteria` already matched (i.e. bounded to
  *  the page's CONNECTED nodes), not once per node on the page. */
-export function computeAncestorHidden(node: TextNode): boolean {
+export function computeAncestorHidden(node: SceneNode): boolean {
   let parent = node.parent;
   while (parent && parent.type !== "PAGE") {
     if ("visible" in parent && parent.visible === false) return true;
@@ -196,7 +196,13 @@ export const scanSelectedTextNodes = async (
   const progress = { visited: 0 };
   for (const node of figma.currentPage.selection) {
     if (isStale()) return out;
-    await collectTextNodes(node, out, false, progress, isStale);
+    // Seed with the SELECTED ROOT's own ancestor state, not `false`. The walk
+    // only ever looks downward, so selecting a visible text node or nested
+    // frame from the Layers panel while one of its parents is hidden used to
+    // start the traversal as if nothing above it were hidden — the text then
+    // showed up and could be synchronised, while a page-wide scan correctly
+    // excluded it via the same `computeAncestorHidden`.
+    await collectTextNodes(node, out, computeAncestorHidden(node), progress, isStale);
   }
   return out;
 };
