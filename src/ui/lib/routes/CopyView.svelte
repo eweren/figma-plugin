@@ -11,7 +11,7 @@
   import { fetchAllTranslations } from "$ui/lib/api/pull";
   import { resolveCopyLanguage } from "$ui/lib/logic/copyLanguage";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
-  import { pullDiff, formatNodeText } from "$ui/lib/logic/pullDiff";
+  import { pullDiff, buildApplyUpdates, skippedRenderMessage } from "$ui/lib/logic/pullDiff";
   import { finishCopyRecreate, type CopyTranslations } from "$ui/lib/logic/copyApply";
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import { hasRichFormat } from "$ui/lib/logic/icuParams";
@@ -116,16 +116,21 @@
   // user gets to see what actually happened instead of relying on a fleeting
   // notification. Cleared by the selection-change watch below, or manually
   // via the message's own close button.
-  let lastResult = $state<{ count: number } | null>(null);
+  let lastResult = $state<{ count: number; skipped: number } | null>(null);
   // Count of nodes an in-flight apply is updating — captured at send time so
   // the result handler can report it once `applyProgress` is cleared.
   let pendingApplyCount = 0;
+  let pendingSkippedCount = 0;
 
   const lastResultText = $derived.by(() => {
     if (!lastResult) return null;
-    if (lastResult.count === 0) return "No changes found.";
+    const skipped =
+      lastResult.skipped > 0
+        ? ` ${lastResult.skipped} skipped — could not be rendered.`
+        : "";
+    if (lastResult.count === 0) return `No changes found.${skipped}`;
     const noun = lastResult.count === 1 ? "string" : "strings";
-    return `Downloaded ${lastResult.count} ${noun}.`;
+    return `Downloaded ${lastResult.count} ${noun}.${skipped}`;
   });
 
   // Not `$state` — plain closure memory for the selection-change watch below,
@@ -226,7 +231,7 @@
         stage = "idle";
         // Just describes THIS check's result — Tolgee can change again a
         // second later, so this is never phrased as an ongoing guarantee.
-        lastResult = { count: 0 };
+        lastResult = { count: 0, skipped: 0 };
         send({ type: "notify", text: "No changes found." });
         return;
       }
@@ -242,9 +247,22 @@
     changedNodes: ReturnType<typeof pullDiff>["changedNodes"],
     lang: string,
   ): void {
+    // Nodes whose ICU won't render are held back rather than written: sending
+    // them would rewrite the canvas text they already have while recording the
+    // remote translation as applied, which makes them look up to date forever
+    // (see `buildApplyUpdates`).
+    const { updates, skipped } = buildApplyUpdates(changedNodes, lang);
+    if (updates.length === 0) {
+      // Everything failed to render — report that instead of a hollow success.
+      stage = "error";
+      errorMessage = skippedRenderMessage(skipped);
+      return;
+    }
+
     stage = "applying";
-    applyProgress = { done: 0, total: changedNodes.length };
-    pendingApplyCount = changedNodes.length;
+    applyProgress = { done: 0, total: updates.length };
+    pendingApplyCount = updates.length;
+    pendingSkippedCount = skipped.length;
     const correlationId = nextCorrelationId();
     applyCorrelationId = correlationId;
     applyWatchdog?.clear();
@@ -254,11 +272,6 @@
       applyProgress = null;
       applyCorrelationId = null;
       applyWatchdog = null;
-    });
-
-    const updates = changedNodes.map(({ node, newText, isPlural }) => {
-      const { text } = formatNodeText(node, newText, lang);
-      return { id: node.id, text, translation: newText, isPlural };
     });
 
     send({ type: "apply-translations", correlationId, updates });
@@ -281,9 +294,14 @@
       applyProgress = null;
       if (msg.ok) {
         stage = "idle";
-        lastResult = { count: pendingApplyCount };
+        lastResult = { count: pendingApplyCount, skipped: pendingSkippedCount };
         const noun = pendingApplyCount === 1 ? "string" : "strings";
-        send({ type: "notify", text: `Downloaded ${pendingApplyCount} ${noun} to Figma.` });
+        const skippedNote =
+          pendingSkippedCount > 0 ? ` ${pendingSkippedCount} skipped.` : "";
+        send({
+          type: "notify",
+          text: `Downloaded ${pendingApplyCount} ${noun} to Figma.${skippedNote}`,
+        });
       } else {
         stage = "error";
         errorMessage = msg.errors[0] ?? "Failed to apply translations to one or more nodes.";

@@ -1,6 +1,11 @@
 import type { NodeInfo } from "$shared/types";
 import type { PulledKey } from "$ui/lib/api/pull";
-import { formatNodeText, pullDiff } from "$ui/lib/logic/pullDiff";
+import {
+  buildApplyUpdates,
+  formatNodeText,
+  pullDiff,
+  skippedRenderMessage,
+} from "$ui/lib/logic/pullDiff";
 import { describe, expect, it } from "vitest";
 
 function makeNode(overrides: Partial<NodeInfo> = {}): NodeInfo {
@@ -421,5 +426,70 @@ describe("pullDiff — filtered vs. full remote payload equivalence", () => {
     expect(filteredDiff.missingKeys.map((n) => n.id)).toEqual(["c"]);
     expect(filteredDiff.changedNodes.map((c) => c.node.id)).toEqual(["a"]);
     expect(filteredDiff.unchangedNodes.map((n) => n.id)).toEqual(["b"]);
+  });
+});
+
+describe("buildApplyUpdates", () => {
+  // A node whose ICU cannot render. `formatNodeText` deliberately falls back to
+  // the node's CURRENT canvas text so raw ICU never lands on the design — which
+  // is exactly why the update must not be sent: it would rewrite the text
+  // already there while recording `translation` as applied, leaving the node
+  // permanently "up to date" and unable to retry.
+  const BROKEN_ICU = "Hello {name";
+
+  it("keeps a renderable node in the updates", () => {
+    const node = makeNode({ id: "n1", key: "greet", paramsValues: { name: "Alice" } });
+    const { updates, skipped } = buildApplyUpdates(
+      [{ node, newText: "Hello, {name}!", isPlural: false }],
+      "en",
+    );
+    expect(skipped).toEqual([]);
+    expect(updates).toEqual([
+      { id: "n1", text: "Hello, Alice!", translation: "Hello, {name}!", isPlural: false },
+    ]);
+  });
+
+  it("holds a failed render OUT of the updates instead of persisting it", () => {
+    const node = makeNode({
+      id: "n2",
+      key: "broken",
+      characters: "current canvas text",
+      paramsValues: { name: "Alice" },
+    });
+    const { updates, skipped } = buildApplyUpdates(
+      [{ node, newText: BROKEN_ICU, isPlural: false }],
+      "en",
+    );
+    expect(updates).toEqual([]);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]?.node.id).toBe("n2");
+    expect(skipped[0]?.error).toBeInstanceOf(Error);
+  });
+
+  it("applies the good nodes of a mixed batch and reports only the bad ones", () => {
+    const ok = makeNode({ id: "ok", key: "greet", paramsValues: { name: "Alice" } });
+    const bad = makeNode({ id: "bad", key: "broken", characters: "untouched" });
+    const { updates, skipped } = buildApplyUpdates(
+      [
+        { node: ok, newText: "Hello, {name}!", isPlural: false },
+        { node: bad, newText: BROKEN_ICU, isPlural: false },
+      ],
+      "en",
+    );
+    expect(updates.map((u) => u.id)).toEqual(["ok"]);
+    expect(skipped.map((s) => s.node.id)).toEqual(["bad"]);
+  });
+
+  it("summarises the skipped nodes for the user", () => {
+    const skipped = ["a", "b", "c", "d"].map((k) => ({
+      node: makeNode({ id: k, key: k }),
+      error: new Error("boom"),
+    }));
+    expect(skippedRenderMessage(skipped.slice(0, 1))).toBe(
+      "1 string could not be rendered and was left unchanged (a).",
+    );
+    expect(skippedRenderMessage(skipped)).toBe(
+      "4 strings could not be rendered and were left unchanged (a, b, c, +1 more).",
+    );
   });
 });

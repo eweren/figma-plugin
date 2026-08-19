@@ -10,7 +10,7 @@
   import PullSummary from "$ui/lib/components/domain/PullSummary.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
-  import { pullDiff, formatNodeText } from "$ui/lib/logic/pullDiff";
+  import { pullDiff, buildApplyUpdates, skippedRenderMessage } from "$ui/lib/logic/pullDiff";
   import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
   import { settleQuery, type QueryOutcome } from "$ui/lib/logic/queryResult";
 
@@ -51,6 +51,8 @@
   // starts `null` because the total isn't known until the scan begins) so the
   // bar shows `0/total` immediately instead of a misleading `N/N`.
   let applyProgress = $state<{ done: number; total: number } | null>(null);
+  let pendingApplyCount = 0;
+  let pendingSkippedCount = 0;
   // Not `$state` — it's a plain plumbing handle, never read from the
   // template. The main thread reports progress via
   // `apply-translations-progress` for large writes (>100 nodes — see
@@ -241,26 +243,6 @@
     void qc.invalidateQueries({ queryKey: ["translations"] });
   }
 
-  // Build the apply payload from the current diff. We format each node's text
-  // up-front so the main thread never has to deal with ICU.
-  function buildApplyUpdates(d: Diff): Array<{
-    id: string;
-    text: string;
-    translation: string;
-    isPlural: boolean;
-  }> {
-    const lang = language;
-    return d.changedNodes.map(({ node, newText, isPlural }) => {
-      const { text } = formatNodeText(node, newText, lang);
-      return {
-        id: node.id,
-        text,
-        translation: newText,
-        isPlural,
-      };
-    });
-  }
-
   function applyChanges(): void {
     const d = diff;
     if (!d) return;
@@ -277,9 +259,22 @@
       return;
     }
 
+    // Nodes whose ICU won't render are held back rather than written: sending
+    // them would rewrite the canvas text they already have while recording the
+    // remote translation as applied, which makes them look up to date forever
+    // (see `buildApplyUpdates`).
+    const { updates, skipped } = buildApplyUpdates(d.changedNodes, language);
+    if (updates.length === 0) {
+      // Everything failed to render — report that instead of a hollow success.
+      applyError = skippedRenderMessage(skipped);
+      return;
+    }
+    pendingApplyCount = updates.length;
+    pendingSkippedCount = skipped.length;
+
     applying = true;
     applyError = null;
-    applyProgress = { done: 0, total: d.changedNodes.length };
+    applyProgress = { done: 0, total: updates.length };
     const correlationId = nextCorrelationId();
     applyCorrelationId = correlationId;
     // Defensive: a previous request should already have cleared its own
@@ -295,11 +290,7 @@
       applyCorrelationId = null;
       applyWatchdog = null;
     });
-    send({
-      type: "apply-translations",
-      correlationId,
-      updates: buildApplyUpdates(d),
-    });
+    send({ type: "apply-translations", correlationId, updates });
   }
 
   // Live progress for an in-flight apply — same correlationId guard as the
@@ -325,7 +316,11 @@
       if (msg.ok) {
         send({
           type: "notify",
-          text: `Downloaded ${diff?.changedNodes.length ?? 0} translation(s) for ${language}.`,
+          text: `Downloaded ${pendingApplyCount} translation(s) for ${language}.${
+            pendingSkippedCount > 0
+              ? ` ${pendingSkippedCount} skipped — could not be rendered.`
+              : ""
+          }`,
         });
         // Drop cached page nodes so a follow-up Pull starts from the
         // post-apply state instead of the pre-apply snapshot.

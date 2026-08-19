@@ -150,3 +150,61 @@ export function formatNodeText(
   const out = renderIcuForNode(remoteText, node, language);
   return out.error ? { text: node.characters, error: out.error } : out;
 }
+
+/** One node's payload for the `apply-translations` message. */
+export type ApplyUpdate = {
+  id: string;
+  text: string;
+  translation: string;
+  isPlural: boolean;
+};
+
+/**
+ * Split a pull diff into the updates that can actually be written and the
+ * nodes whose ICU wouldn't render.
+ *
+ * A failed render must NOT travel on: `formatNodeText` falls back to the
+ * node's CURRENT canvas text (deliberately — raw ICU never gets dumped onto
+ * the design), so sending it would rewrite the text that is already there
+ * while persisting `translation` as the new remote value. The node then looks
+ * up to date FOREVER — the next diff finds the cached translation matching the
+ * remote, and `canvasDrifted` reports no drift because it trips over the very
+ * same render error — so the copy can never retry it, and the download claims
+ * a success it did not deliver.
+ *
+ * Callers are expected to surface `skipped`; silently dropping those nodes
+ * would just be the old bug with fewer writes.
+ */
+export function buildApplyUpdates(
+  changedNodes: PullDiffResult["changedNodes"],
+  language: string,
+): { updates: ApplyUpdate[]; skipped: Array<{ node: NodeInfo; error: Error }> } {
+  const updates: ApplyUpdate[] = [];
+  const skipped: Array<{ node: NodeInfo; error: Error }> = [];
+
+  for (const { node, newText, isPlural } of changedNodes) {
+    const { text, error } = formatNodeText(node, newText, language);
+    if (error) {
+      skipped.push({ node, error });
+      continue;
+    }
+    updates.push({ id: node.id, text, translation: newText, isPlural });
+  }
+
+  return { updates, skipped };
+}
+
+/** User-facing summary of the nodes a render failure kept out of the write. */
+export function skippedRenderMessage(
+  skipped: Array<{ node: NodeInfo; error: Error }>,
+): string {
+  const noun = skipped.length === 1 ? "string" : "strings";
+  const names = skipped
+    .slice(0, 3)
+    .map((s) => s.node.key || s.node.name)
+    .join(", ");
+  const more = skipped.length > 3 ? `, +${skipped.length - 3} more` : "";
+  return `${skipped.length} ${noun} could not be rendered and ${
+    skipped.length === 1 ? "was" : "were"
+  } left unchanged (${names}${more}).`;
+}
