@@ -7,6 +7,7 @@ import {
 } from "$ui/lib/logic/pushDiff";
 import type { RemoteTranslationMap } from "$ui/lib/logic/pushDiff";
 import { describe, expect, it } from "vitest";
+import IntlMessageFormat from "intl-messageformat";
 
 function makeNode(overrides: Partial<NodeInfo> = {}): NodeInfo {
   return {
@@ -497,5 +498,102 @@ describe("textOfNode — authoritative text (shared with String details)", () =>
     expect(textOfNode(makeNode({ translation: "", characters: "<b>bold</b>" }))).toBe(
       "<b>bold</b>",
     );
+  });
+});
+
+describe("two layers of one plural key that disagree WITHIN a category", () => {
+  // The headline trade-off in this PR's own description, and the one thing in
+  // the plural merge path with no test: the original plugin raised a conflict
+  // on any plural-form difference, which drowned the legitimate case (each
+  // layer pluralised from its own sample carries only the form its count
+  // selects). Suppressing that was a product decision — but it means a REAL
+  // disagreement inside one category now resolves first-wins, silently.
+  //
+  // Pinning it matters because `mergePluralForms` regenerates the whole ICU,
+  // which is exactly where the escaping bug in 7bc393e lived.
+  const FIRST = "{count, plural, one {# apple} other {# apples}}";
+  const SECOND = "{count, plural, one {# pear} other {# pears}}";
+
+  function twoLayers() {
+    return [
+      // Unconnected: with an empty remote map, connected nodes read as "the
+      // key was deleted on the platform" and land in `missingKeys` instead.
+      makeNode({ id: "a", key: "fruit", isPlural: true, translation: FIRST, connected: false }),
+      makeNode({ id: "b", key: "fruit", isPlural: true, translation: SECOND, connected: false }),
+    ];
+  }
+
+  it("does NOT report them as conflicting", () => {
+    const diff = pushDiff(twoLayers(), {}, { hasNamespacesEnabled: false });
+    expect(diff.conflictingNodes).toHaveLength(0);
+  });
+
+  it("uploads the FIRST layer's body for every category they both define", () => {
+    // First-wins, per category. The second layer's text is dropped without a
+    // word — that is the accepted behaviour, not an oversight, so assert it
+    // rather than leaving it to be rediscovered.
+    const diff = pushDiff(twoLayers(), {}, { hasNamespacesEnabled: false });
+
+    expect(diff.newKeys).toHaveLength(1);
+    const uploaded = diff.newKeys[0]?.translation ?? "";
+    expect(uploaded).toContain("# apple");
+    expect(uploaded).toContain("# apples");
+    expect(uploaded).not.toContain("pear");
+  });
+
+  it("still unions categories the layers do NOT share", () => {
+    // The case the merge exists for: each layer pluralised from its own sample
+    // holds only the form its count selected, and the push must carry both.
+    const one = makeNode({
+      id: "a",
+      key: "fruit",
+      isPlural: true,
+      connected: false,
+      translation: "{count, plural, one {# apple}}",
+    });
+    const other = makeNode({
+      id: "b",
+      key: "fruit",
+      isPlural: true,
+      connected: false,
+      translation: "{count, plural, other {# apples}}",
+    });
+
+    const diff = pushDiff([one, other], {}, { hasNamespacesEnabled: false });
+    const uploaded = diff.newKeys[0]?.translation ?? "";
+
+    expect(uploaded).toContain("# apple}");
+    expect(uploaded).toContain("# apples");
+  });
+
+  it("produces ICU that still parses after the merge", () => {
+    // The merge regenerates the whole string through `tolgeeFormatGenerateIcu`
+    // — the path that used to corrupt nested arguments and double-escape.
+    const withArg = makeNode({
+      id: "a",
+      key: "fruit",
+      isPlural: true,
+      connected: false,
+      translation: "{count, plural, one {# apple for {name}} other {# apples}}",
+    });
+    const partial = makeNode({
+      id: "b",
+      key: "fruit",
+      isPlural: true,
+      connected: false,
+      translation: "{count, plural, other {# pears}}",
+    });
+
+    const diff = pushDiff([withArg, partial], {}, { hasNamespacesEnabled: false });
+    const uploaded = diff.newKeys[0]?.translation ?? "";
+
+    // The nested argument must survive the regeneration, not become literal.
+    expect(uploaded).toContain("{name}");
+    expect(() => {
+      new IntlMessageFormat(uploaded, "en", undefined, { ignoreTag: true }).format({
+        count: 1,
+        name: "Zuzka",
+      });
+    }).not.toThrow();
   });
 });
