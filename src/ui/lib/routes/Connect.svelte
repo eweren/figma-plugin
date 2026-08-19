@@ -27,7 +27,9 @@
     if (route.name !== "connect") return null;
     const sel = appState.value.selectedNodes;
     const anchor = route.node;
-    return sel.find((n) => n.id === anchor.id) ?? (sel.length === 1 ? sel[0] : anchor);
+    // `sel[0]` is guaranteed by the length check; the `?? anchor` only
+    // satisfies `noUncheckedIndexedAccess` and never runs.
+    return sel.find((n) => n.id === anchor.id) ?? (sel.length === 1 ? (sel[0] ?? anchor) : anchor);
   });
   // Bulk mode: connecting several (identical) strings at once. `targets` is the
   // full set the chosen key gets applied to — either the bulk list or just the

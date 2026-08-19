@@ -35,7 +35,9 @@
     if (route.name !== "stringDetails") return null;
     const sel = appState.value.selectedNodes;
     const anchor = route.node;
-    return sel.find((n) => n.id === anchor.id) ?? (sel.length === 1 ? sel[0] : anchor);
+    // `sel[0]` is guaranteed by the length check; the `?? anchor` only
+    // satisfies `noUncheckedIndexedAccess` and never runs.
+    return sel.find((n) => n.id === anchor.id) ?? (sel.length === 1 ? (sel[0] ?? anchor) : anchor);
   });
 
   let translation = $state("");

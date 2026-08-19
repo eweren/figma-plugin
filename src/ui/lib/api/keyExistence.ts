@@ -1,4 +1,5 @@
 import type { TolgeeClient } from "$ui/lib/api/client";
+import { nsKeyIndex } from "$ui/lib/logic/namespaces";
 
 /** A connected key to verify against the server. `ns` undefined = default namespace. */
 export type ConnectedKey = { name: string; ns: string | undefined };
@@ -10,7 +11,9 @@ export type ConnectedKey = { name: string; ns: string | undefined };
  * (both "no namespace" / Tolgee's "<none>") map to the same signature.
  */
 export function connectedKeySig(ns: string | undefined, name: string): string {
-  return `${ns || ""} ${name}`;
+  // Delegates to the shared join so this identity and the `(ns, key)` map
+  // indexes elsewhere can never drift apart — they answer the same question.
+  return nsKeyIndex(ns, name);
 }
 
 /**

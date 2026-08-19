@@ -29,6 +29,12 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
+      # `tsc` does not look at .svelte files and biome doesn't process them, so
+      # without this step every component in src/ui is unchecked — an `await`
+      # in a non-async function passed CI as green.
+      - name: Typecheck Svelte
+        run: pnpm run typecheck:svelte
+
       - name: Lint
         run: pnpm run lint
 

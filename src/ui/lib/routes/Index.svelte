@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createQuery } from "@tanstack/svelte-query";
-  import type { NodeInfo, Route, TolgeeConfig } from "$shared/types";
+  import type { NodeInfo, Route } from "$shared/types";
   import { send, nextCorrelationId } from "$ui/lib/bus";
   import { ICON } from "$shared/iconSizes";
   import { appState } from "$ui/lib/stores/app.svelte";
@@ -13,6 +13,7 @@
     type KeySearchResult,
   } from "$ui/lib/api/keys";
   import {
+    type ConnectedKey,
     fetchMissingKeys,
     connectedKeySig,
     effectiveNs,
@@ -315,7 +316,11 @@
   // Connecting/disconnecting keys one by one changes the raw signature on
   // every step, and since it sits in the query key that meant a refetch per
   // click. Snapshotting keys + signature together keeps them consistent.
-  let checkedKeys = $state<{ keys: { name: string; ns?: string }[]; signature: string }>({
+  // `ConnectedKey`, not a structurally similar shape: its `ns` is REQUIRED but
+  // nullable, and an optional `ns?` isn't assignable to that. Same values at
+  // runtime — `connectedKeySig` normalises undefined and "" to one signature —
+  // so this is about the two declarations agreeing, not about behaviour.
+  let checkedKeys = $state<{ keys: ConnectedKey[]; signature: string }>({
     keys: [],
     signature: "",
   });
@@ -346,7 +351,7 @@
     enabled: auth.value.authenticated && checkedKeys.keys.length > 0,
     // Keep showing the previous result while the re-keyed query loads, so the
     // stale-link markers don't blink out on every connect.
-    placeholderData: (prev: ReadonlySet<string> | undefined) => prev,
+    placeholderData: (prev: Set<string> | undefined) => prev,
     // Warm window so a key deleted in Tolgee still shows up reasonably quickly,
     // but window-focus flapping (switching to the Tolgee tab and back) doesn't
     // re-hit the API every time. `refetchOnWindowFocus` below still exists for

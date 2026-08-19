@@ -12,6 +12,10 @@
     onChange?: (v: string) => void;
     class?: string;
     id?: string;
+    /** Forwarded to the `<select>`. A disabled select showing a single fixed
+     *  option (the branch pickers) has no visible label of its own, so the
+     *  accessible name has to come from here. */
+    "aria-label"?: string;
   };
   let {
     value = $bindable(""),
@@ -21,6 +25,7 @@
     onChange,
     class: className,
     id,
+    "aria-label": ariaLabel,
   }: Props = $props();
 </script>
 
@@ -29,6 +34,7 @@
     {id}
     bind:value
     {disabled}
+    aria-label={ariaLabel}
     onchange={(e) => onChange?.((e.currentTarget as HTMLSelectElement).value)}
     class={cn(
       "h-7 w-full appearance-none rounded border border-border bg-bg pl-2 pr-7 text-text text-xs transition-colors hover:border-text/30 focus:outline-none focus:border-border-brand disabled:opacity-50",

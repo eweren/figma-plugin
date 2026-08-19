@@ -15,6 +15,7 @@
     "gallery": "vite --config vite.config.gallery.ts",
     "schema": "openapi-typescript 'https://app.tolgee.io/v3/api-docs/Accessible with Project API key (All)' --output ./src/ui/lib/api/schema.generated.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck:svelte": "svelte-check --tsconfig ./tsconfig.json --threshold error",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "biome format --write src",
