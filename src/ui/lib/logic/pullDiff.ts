@@ -2,6 +2,7 @@ import type { NodeInfo } from "$shared/types";
 import type { PulledKey } from "$ui/lib/api/pull";
 import { renderIcuForNode } from "$shared/interpolate";
 import { plainCanvasText } from "$shared/richText";
+import { nsKeyIndex } from "$ui/lib/logic/namespaces";
 
 export type PullDiffResult = {
   /** Nodes whose remote translation differs from the local `translation`. */
@@ -23,7 +24,7 @@ function indexRemote(remoteKeys: PulledKey[]): Map<string, PulledKey> {
   const map = new Map<string, PulledKey>();
   for (const k of remoteKeys) {
     const ns = k.keyNamespace ?? "";
-    map.set(`${ns}|${k.keyName}`, k);
+    map.set(nsKeyIndex(ns, k.keyName), k);
   }
   return map;
 }
@@ -79,7 +80,7 @@ export function pullDiff(
     // `missingKeys` and silently skip its update. Mirrors push + the
     // stale-link check (`effectiveNs`).
     const ns = namespacesEnabled ? (node.ns ?? "") : "";
-    const remoteKey = remote.get(`${ns}|${node.key}`);
+    const remoteKey = remote.get(nsKeyIndex(ns, node.key));
 
     if (!remoteKey) {
       missingKeys.push(node);

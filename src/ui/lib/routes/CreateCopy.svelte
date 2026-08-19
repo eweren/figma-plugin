@@ -11,6 +11,7 @@
   import { fetchAllTranslations } from "$ui/lib/api/pull";
   import { applyCopyPages, type CopyTranslations } from "$ui/lib/logic/copyApply";
   import type { MainToUi } from "$shared/messages";
+  import { nsKeyIndex } from "$ui/lib/logic/namespaces";
 
   type Mode = "keys" | "languages";
   type CreatedPages = NonNullable<
@@ -99,7 +100,7 @@
     for (const lang of languages) {
       const perLang: CopyTranslations = {};
       for (const k of keys) {
-        const idx = `${k.keyNamespace ?? ""}|${k.keyName}`;
+        const idx = nsKeyIndex(k.keyNamespace, k.keyName);
         const text = k.translations[lang]?.text;
         if (text) {
           perLang[idx] = { text, isPlural: k.isPlural };
@@ -128,7 +129,14 @@
     correlationId: string;
     mode: Mode;
     languages?: string[];
-  }): Promise<{ ok: boolean; pages?: CreatedPages; error?: string }> {
+  }): Promise<{
+    ok: boolean;
+    pages?: CreatedPages;
+    error?: string;
+    /** Layers a missing font prevented writing — counted in the completion
+     *  notice so the copy isn't presented as complete when it isn't. */
+    skippedMissingFont?: string[];
+  }> {
     return new Promise((resolve) => {
       const cleanup = (): void => {
         offProgress();

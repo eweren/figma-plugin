@@ -27,6 +27,7 @@ vi.mock("$ui/lib/bus", () => ({
   },
 }));
 
+import { nsKeyIndex } from "$ui/lib/logic/namespaces";
 import {
   type CopyTranslations,
   finishCopyRecreate,
@@ -63,7 +64,7 @@ afterEach(() => {
 describe("finishCopyRecreate — survives the initiating view unmounting", () => {
   it("applies the fetched language onto the clone and toasts, with no component alive", async () => {
     const translations: Record<string, CopyTranslations> = {
-      cs: { "|greeting": { text: "Ahoj", isPlural: false } },
+      cs: { [nsKeyIndex(undefined, "greeting")]: { text: "Ahoj", isPlural: false } },
     };
     const done = vi.fn();
     finishCopyRecreate({ correlationId: "rc1", translations, onDone: done });

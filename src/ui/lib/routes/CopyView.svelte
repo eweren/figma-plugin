@@ -17,7 +17,7 @@
     isCopyRecreateInFlight,
     type CopyTranslations,
   } from "$ui/lib/logic/copyApply";
-  import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
+  import { namespacedKeyLabel, nsKeyIndex } from "$ui/lib/logic/namespaces";
   import { hasRichFormat } from "$ui/lib/logic/icuParams";
   import { computeVirtualWindow } from "$ui/lib/logic/virtualWindow";
   import Target from "lucide-svelte/icons/target";
@@ -419,7 +419,7 @@
       });
       const translationsForLang: CopyTranslations = {};
       for (const k of keys) {
-        const idx = `${k.keyNamespace ?? ""}|${k.keyName}`;
+        const idx = nsKeyIndex(k.keyNamespace, k.keyName);
         const text = k.translations[language]?.text;
         if (text) translationsForLang[idx] = { text, isPlural: k.isPlural };
       }

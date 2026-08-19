@@ -5,6 +5,7 @@ import { isAdvancedString } from "./manualChange";
 // The upstream package transitively pulls in `@codemirror/{state,view}`
 // (~500 kB raw / ~125 kB gzip) — see `$shared/tolgeeFormat.ts` for the rationale.
 import { getTolgeeFormat, tolgeeFormatGenerateIcu } from "$shared/tolgeeFormat";
+import { nsKeyIndex } from "$ui/lib/logic/namespaces";
 
 /**
  * Subset of `KeyWithTranslationsModel` we depend on for diffing. Kept narrow
@@ -90,7 +91,7 @@ export function pushDiff(
   for (const node of nodes) {
     if (!node.key) continue;
     const nsKey = hasNamespacesEnabled ? (node.ns ?? "") : "";
-    const groupKey = `${node.key}|${nsKey}`;
+    const groupKey = nsKeyIndex(nsKey, node.key);
     let list = groups.get(groupKey);
     if (!list) {
       list = [];

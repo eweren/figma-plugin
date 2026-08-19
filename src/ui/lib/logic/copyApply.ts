@@ -3,6 +3,7 @@ import type { UiToMain } from "$shared/messages";
 import type { NodeInfo } from "$shared/types";
 import { nextCorrelationId, on, send } from "$ui/lib/bus";
 import { createIdleTimeout } from "$ui/lib/busRequest";
+import { nsKeyIndex } from "$ui/lib/logic/namespaces";
 
 /**
  * UI half of the language-copy flow. The main thread only CLONES the page and
@@ -41,7 +42,7 @@ export function buildCopyUpdates(
   const updates: ApplyUpdate[] = [];
   for (const node of nodes) {
     if (!node.connected || !node.key) continue;
-    const remote = translationsForLang[`${node.ns ?? ""}|${node.key}`];
+    const remote = translationsForLang[nsKeyIndex(node.ns, node.key)];
     const rawText = remote?.text ?? node.translation;
     if (!rawText) continue;
     const isPlural = remote?.isPlural ?? node.isPlural;

@@ -14,6 +14,7 @@ import type { components } from "$ui/lib/api/schema.generated";
 import { uploadScreenshot } from "$ui/lib/api/screenshots";
 import { applyTags } from "$ui/lib/api/tags";
 import { type PushDiff, droppedConflictNodeIds, textOfNode } from "./pushDiff";
+import { nsKeyIndex } from "$ui/lib/logic/namespaces";
 
 /**
  * How the user resolved a translation conflict. Lives here (not in the
@@ -52,7 +53,7 @@ export type CanonicalKeyState = {
  * is a passthrough, so behaviour there is unchanged.
  */
 export function canonicalKey(n: NodeInfo, hasNamespacesEnabled: boolean): string {
-  return `${effectiveNs(n.ns, hasNamespacesEnabled) ?? ""}|${n.key}`;
+  return nsKeyIndex(effectiveNs(n.ns, hasNamespacesEnabled), n.key);
 }
 
 export function resolutionKey(
@@ -60,7 +61,7 @@ export function resolutionKey(
   keyNamespace: string | undefined,
   hasNamespacesEnabled: boolean,
 ): string {
-  return `${effectiveNs(keyNamespace, hasNamespacesEnabled) ?? ""}|${keyName}`;
+  return nsKeyIndex(effectiveNs(keyNamespace, hasNamespacesEnabled), keyName);
 }
 
 /**

@@ -4,6 +4,7 @@ import { buildCopyUpdates, type CopyTranslations } from "$ui/lib/logic/copyApply
 import { pullDiff } from "$ui/lib/logic/pullDiff";
 import type { PulledKey } from "$ui/lib/api/pull";
 import { describe, expect, it } from "vitest";
+import { nsKeyIndex } from "$ui/lib/logic/namespaces";
 
 // Ported from the former main-thread `resolveCopyNodeText` tests — the render
 // moved here (the UI) because Figma's main-thread sandbox has no `Intl`, so
@@ -30,7 +31,9 @@ function resolvedText(
   remote: { text: string; isPlural: boolean } | undefined,
   language: string,
 ): string | null {
-  const translations: CopyTranslations = remote ? { [`${node.ns ?? ""}|${node.key}`]: remote } : {};
+  const translations: CopyTranslations = remote
+    ? { [nsKeyIndex(node.ns, node.key)]: remote }
+    : {};
   const updates = buildCopyUpdates([node], translations, language);
   return updates[0]?.text ?? null;
 }
@@ -98,7 +101,7 @@ describe("buildCopyUpdates", () => {
     const node = makeNode({ paramsValues: { name: "Zuzana" } });
     const updates = buildCopyUpdates(
       [node],
-      { "|k": { text: "¡Hola {name}!", isPlural: false } },
+      { [nsKeyIndex(undefined, "k")]: { text: "¡Hola {name}!", isPlural: false } },
       "es",
     );
     expect(updates).toEqual([
@@ -113,8 +116,8 @@ describe("buildCopyUpdates", () => {
     const updates = buildCopyUpdates(
       [inNs, noNs, unconnected],
       {
-        "web|greet": { text: "Hola web", isPlural: false },
-        "|greet": { text: "Hola", isPlural: false },
+        [nsKeyIndex("web", "greet")]: { text: "Hola web", isPlural: false },
+        [nsKeyIndex(undefined, "greet")]: { text: "Hola", isPlural: false },
       },
       "es",
     );
@@ -139,7 +142,7 @@ describe("recreate -> immediate Download round trip", () => {
     language: string,
   ): ReturnType<typeof pullDiff> {
     const translations: CopyTranslations = {
-      [`${node.ns ?? ""}|${node.key}`]: {
+      [nsKeyIndex(node.ns, node.key)]: {
         text: remoteKey.translations[language]?.text ?? "",
         isPlural: remoteKey.isPlural,
       },
