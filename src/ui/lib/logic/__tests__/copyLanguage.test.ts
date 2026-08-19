@@ -64,3 +64,52 @@ describe("resolveCopyLanguage — page name wins (self-healing, poison-proof)", 
     expect(resolveCopyLanguage(cfg({}), "Page 1 - keys", TAGS)).toBeUndefined();
   });
 });
+
+describe("name suffix vs the project's language list", () => {
+  it("rejects a rename that merely LOOKS like a tag, once the list has loaded", () => {
+    // "wip" matches the BCP-47 shape, so renaming "Home - cs" to "Home - wip"
+    // used to be read as a language — silently overriding the immutable
+    // `copyLanguage` marker and breaking Download for that page.
+    const known = new Set(["en", "cs", "de"]);
+    expect(copyLanguageFromPageName("Home - wip", known)).toBeUndefined();
+    expect(copyLanguageFromPageName("Home - cs", known)).toBe("cs");
+  });
+
+  it("still accepts a well-shaped tag while the list is still loading", () => {
+    // The regression this must not reintroduce: on a copy page the language
+    // list is usually still in flight when Recreate/Download runs. Requiring
+    // membership there rejected a legitimate "cs" and fell back to the main
+    // language — the exact bug the name-first order was introduced to fix.
+    const loading = new Set<string>();
+    expect(copyLanguageFromPageName("Home - cs", loading)).toBe("cs");
+    expect(copyLanguageFromPageName("Home - pt-BR", loading)).toBe("pt-BR");
+  });
+
+  it("falls through to the marker for a renamed copy instead of guessing", () => {
+    const known = new Set(["en", "cs"]);
+    expect(
+      resolveCopyLanguage({ copyLanguage: "cs", language: "en" }, "Home - wip", known),
+    ).toBe("cs");
+  });
+
+  it("prefers the name over a marker poisoned to the main language", () => {
+    // Self-healing: copies made before the resolution was fixed carry
+    // `copyLanguage: "en"`. Marker-first would keep them broken forever.
+    const known = new Set(["en", "cs"]);
+    expect(
+      resolveCopyLanguage({ copyLanguage: "en", language: "en" }, "Home - cs", known),
+    ).toBe("cs");
+  });
+
+  it("reads a copy made by the published plugin, which writes no marker", () => {
+    // `copyPage.ts` stores `{pageCopy, pageInfo, language}` and nothing else,
+    // so the name is the only stable signal such a copy leaves.
+    const known = new Set(["en", "cs"]);
+    expect(resolveCopyLanguage({ language: "en" }, "Home - cs", known)).toBe("cs");
+  });
+
+  it("still treats a keys copy as having no language", () => {
+    const known = new Set(["en", "cs"]);
+    expect(resolveCopyLanguage({}, "Home - keys", known)).toBeUndefined();
+  });
+});

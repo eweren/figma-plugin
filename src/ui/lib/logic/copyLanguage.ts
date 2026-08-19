@@ -1,11 +1,9 @@
 import type { TolgeeConfig } from "$shared/types";
 
 // A BCP-47-ish language tag shape: `cs`, `en`, `pt-BR`, `zh-Hans`, `en-US`.
-// Used to recognise the copy's name suffix as a language WITHOUT needing the
-// project's language list to have loaded yet — critical, because on a copy page
-// that list is often still in flight when Recreate/Download runs. A "keys" copy
-// (named "…- keys") and a source name ending in "…- API" don't match, so they're
-// never misread as a language.
+// Only consulted while the project's language list hasn't loaded — see
+// `copyLanguageFromPageName`. A "keys" copy (named "…- keys") and a source name
+// ending in "…- API" don't match, so they're never misread as a language.
 const LANG_TAG_RE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 
 /**
@@ -15,9 +13,18 @@ const LANG_TAG_RE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
  * (and a keys copy `${sourceName} - keys`), so the suffix is a backward-compatible
  * signal that survives even when the stored/merged config language gets repointed
  * to the main/default. The last " - " segment is always the copy's language (any
- * " - " inside the source name stays to its left). Accepted when it's a KNOWN
- * project tag OR simply looks like a language tag — so it works before the
- * language list loads.
+ * " - " inside the source name stays to its left).
+ *
+ * The suffix is accepted when it is a KNOWN project tag. Only while that list
+ * is still empty does the shape check stand in for it — which is the common
+ * case on a copy page, where the list is usually still in flight when
+ * Recreate/Download runs, and where requiring a loaded list meant a legitimate
+ * "cs" got rejected and the copy fell back to the main language.
+ *
+ * Requiring membership ONCE the list has loaded is what stops an unrelated
+ * rename from being read as a language: "Home - cs" renamed to "Home - wip"
+ * matches the tag SHAPE, and treating it as a language silently overrides the
+ * immutable `copyLanguage` marker and breaks Download for that page.
  */
 export function copyLanguageFromPageName(
   pageName: string | undefined,
@@ -28,7 +35,8 @@ export function copyLanguageFromPageName(
   if (i < 0) return undefined;
   const suffix = pageName.slice(i + 3).trim();
   if (!suffix) return undefined;
-  return knownTags.has(suffix) || LANG_TAG_RE.test(suffix) ? suffix : undefined;
+  const accepted = knownTags.size > 0 ? knownTags.has(suffix) : LANG_TAG_RE.test(suffix);
+  return accepted ? suffix : undefined;
 }
 
 /**

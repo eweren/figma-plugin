@@ -37,12 +37,20 @@
    */
 
   // The copy's language, resolved most-reliable first (see `resolveCopyLanguage`):
-  // the immutable `copyLanguage` marker (new copies) → the "…- cs" page-name
-  // suffix (backward-compatible with the original plugin + pre-marker copies) →
-  // the selectable `language` as a last resort. The last is why the bug existed:
-  // it shares the page scope and can get repointed to the main/default, which
-  // made Recreate/Download revert a `cs` copy to `en`. Undefined ⇒ a "keys" copy
-  // (shows Tolgee keys, never a Download button — matching production).
+  // the "…- cs" page-name suffix → the immutable `copyLanguage` marker → the
+  // selectable `language` as a last resort.
+  //
+  // The NAME comes first, not the marker. A copy made by the published plugin
+  // has no marker at all — `copyPage.ts` stores only `{pageCopy, pageInfo,
+  // language}`, and that `language` is the repointable one — so its name is the
+  // only stable signal it leaves. The name is also self-healing: a copy whose
+  // marker was poisoned to the main language before that bug was fixed
+  // recovers as soon as its name is read, which marker-first would never do.
+  //
+  // `language` last is why the bug existed at all: it shares the page scope and
+  // can get repointed to the main/default, which made Recreate/Download revert
+  // a `cs` copy to `en`. Undefined ⇒ a "keys" copy (shows Tolgee keys, never a
+  // Download button — matching production).
   const language = $derived(
     resolveCopyLanguage(
       appState.value.config,
