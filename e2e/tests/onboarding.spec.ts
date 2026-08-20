@@ -17,8 +17,13 @@ test.describe("Onboarding (first-run wizard)", () => {
     await page.goto(hostUrl({ apiUrl: DEFAULT_CREDENTIALS.apiUrl }));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("Set up Tolgee")).toBeVisible({ timeout: 30_000 });
-    await expect(ui.getByText(/1\/3/)).toBeVisible();
+    // The wizard opens on its Connection step; the stepper lists what follows.
+    // (Was "Set up Tolgee" + "1/3" — neither exists; the wizard is a numbered
+    // stepper mirroring the Settings tabs now.)
+    await expect(ui.getByRole("heading", { name: "Connection" })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(ui.getByText("Strings & Keys")).toBeVisible();
     // The old dead-end is gone.
     await expect(
       ui.getByText("Sign in to connect this document with Tolgee."),
@@ -32,7 +37,9 @@ test.describe("Onboarding (first-run wizard)", () => {
   }) => {
     await page.goto(hostUrl({ apiUrl: DEFAULT_CREDENTIALS.apiUrl }));
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("Set up Tolgee")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByRole("heading", { name: "Connection" })).toBeVisible({
+      timeout: 30_000,
+    });
 
     await ui.getByPlaceholder("tgpak_...").fill(DEFAULT_CREDENTIALS.apiKey);
     await ui.getByRole("button", { name: "Connect" }).click();
@@ -43,12 +50,20 @@ test.describe("Onboarding (first-run wizard)", () => {
     });
     await expect(ui.getByRole("button", { name: /Next/ })).toBeEnabled();
 
-    await ui.getByRole("button", { name: /Next/ }).click(); // → Strings and keys
-    await ui.getByRole("button", { name: /Next/ }).click(); // → Upload to Tolgee
+    // Advance until the last step offers Save. Counting Nexts is brittle: the
+    // wizard has four steps now (Connection → Project → Strings & Keys →
+    // Upload options), and where it starts depends on how much of the config
+    // already validated.
+    const next = ui.getByRole("button", { name: /Next/ });
+    for (let i = 0; i < 5 && (await next.count()) > 0; i++) {
+      await next.click();
+    }
     await ui.getByRole("button", { name: "Save" }).click();
 
     // Wizard gone, Index shown.
-    await expect(ui.getByText("Set up Tolgee")).not.toBeVisible();
+    await expect(
+      ui.getByRole("heading", { name: "Connection" }),
+    ).not.toBeVisible();
     await expect(
       ui.getByText("Select strings for translation"),
     ).toBeVisible({ timeout: 10_000 });
