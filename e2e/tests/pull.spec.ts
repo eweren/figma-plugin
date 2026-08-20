@@ -127,7 +127,7 @@ test.describe("Pull view", () => {
     ).toBeVisible({ timeout: 5_000 });
 
     // Click the Cancel button in the header (not the footer Cancel)
-    await ui.locator("header").getByRole("button", { name: "Cancel" }).click();
+    await ui.locator("header").getByRole("button", { name: "Back" }).click();
 
     // Should be back at the Index view
     await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });

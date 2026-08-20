@@ -124,11 +124,16 @@ test.describe("Push view", () => {
   test("Push to Tolgee button is enabled when new keys exist", async ({
     page,
   }) => {
-    // A node with a key not yet in Tolgee shows up as "New" in the diff.
+    // A key not yet in Tolgee counts as NEW only when the node is UNconnected.
+    // A CONNECTED node whose key is absent remotely means the opposite — the
+    // key was deleted on the platform — and `pushDiff` deliberately withholds
+    // those rather than silently re-creating what someone removed. This
+    // fixture said `connected: true`, so the diff was right to report nothing
+    // to push and the button was right to stay disabled.
     const node = createTestNode({
       text: "Brand new unique text for e2e",
       key: `e2e-brand-new-key-${Date.now()}`,
-      connected: true,
+      connected: false,
       translation: "Brand new unique text for e2e",
     });
 
@@ -182,8 +187,15 @@ test.describe("Push view", () => {
     // Wait for the diff summary to appear (diff query settled)
     await expect(ui.getByText("Unchanged")).toBeVisible({ timeout: 20_000 });
 
-    // The "Upload to Tolgee" footer button should be disabled because there are
-    // no new or changed keys to push.
+    // With "Upload screenshots" on (the default) and unchanged keys present,
+    // the button stays ENABLED by design — screenshots can be re-uploaded for
+    // existing keys even when no text changed, matching the old plugin
+    // (`screenshotOnlyUpload` in Push.svelte). Turn the toggle off to get the
+    // genuinely-nothing-to-do state this test is about.
+    // `CheckboxField` renders a plain <button> with the label inside (not a
+    // checkbox role), so this is a click, not `.uncheck()`.
+    await ui.getByRole("button", { name: "Upload screenshots" }).click();
+
     const pushButton = ui.getByRole("button", { name: "Upload to Tolgee" });
     await expect(pushButton).toBeDisabled();
   });
@@ -264,7 +276,9 @@ test.describe("Push view", () => {
     const node = createTestNode({
       text: "E2E push success test",
       key: uniqueKey,
-      connected: true,
+      // Unconnected: a connected node whose key is absent remotely reads as
+      // "deleted on the platform" and is deliberately withheld from the push.
+      connected: false,
       translation: "E2E push success test",
     });
 

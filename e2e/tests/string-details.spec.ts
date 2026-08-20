@@ -47,7 +47,10 @@ test.describe("StringDetails view", () => {
   test("shows key name in StringDetails", async ({ page }) => {
     const ui = await openStringDetails(page);
     // The key is rendered as plain text inside a <p> element.
-    await expect(ui.getByText("on-the-road-title")).toBeVisible();
+    // The key is the VALUE of the Key textbox now, not free-standing text.
+    await expect(ui.getByRole("textbox", { name: "Key" })).toHaveValue(
+      "on-the-road-title",
+    );
   });
 
   test("shows translation textarea", async ({ page }) => {
@@ -155,11 +158,11 @@ test.describe("StringDetails view", () => {
     // field above is still dirty.
     await selectOnHost(page, [nodeB]);
 
-    await expect(ui.getByText("Unsaved changes")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({ timeout: 5_000 });
     await ui.getByRole("button", { name: "Save" }).click();
 
     // Dialog closes; StringDetails follows the live selection to nodeB.
-    await expect(ui.getByText("Unsaved changes")).not.toBeVisible();
+    await expect(ui.getByRole("heading", { name: "Unsaved changes" })).not.toBeVisible();
     await expect(textarea).toHaveValue("Second string");
 
     // The edit to nodeA was actually persisted (not silently dropped).
@@ -201,11 +204,11 @@ test.describe("StringDetails view", () => {
 
     await ui.locator("#string-details-translation").fill("Never saved");
     await selectOnHost(page, [nodeB]);
-    await expect(ui.getByText("Unsaved changes")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({ timeout: 5_000 });
 
     await ui.getByRole("button", { name: "Discard" }).click();
 
-    await expect(ui.getByText("Unsaved changes")).not.toBeVisible();
+    await expect(ui.getByRole("heading", { name: "Unsaved changes" })).not.toBeVisible();
     const characters = await page.evaluate(
       () =>
         (window as unknown as { __e2e: { state: { allNodes: NodeInfo[] } } }).__e2e.state.allNodes.find(
