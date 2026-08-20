@@ -843,15 +843,26 @@
                     <Badge>ns:{entry.node.ns || "<none>"}</Badge>
                   {/if}
                 </div>
-                <div
-                  class="truncate text-[11px] text-text-secondary line-through"
-                  title={entry.remoteText}
-                >
-                  {entry.remoteText}
-                </div>
-                <div class="truncate text-[11px] text-text">
-                  {textOfNode(entry.node)}
-                </div>
+                {#if entry.reason === "text"}
+                  <div
+                    class="truncate text-[11px] text-text-secondary line-through"
+                    title={entry.remoteText}
+                  >
+                    {entry.remoteText}
+                  </div>
+                  <div class="truncate text-[11px] text-text">
+                    {textOfNode(entry.node)}
+                  </div>
+                {:else}
+                  <!-- The text is IDENTICAL on both sides here — rendering the
+                       usual strike-through diff would show the same string
+                       twice and read as a bug. Say what actually changes. -->
+                  <div class="truncate text-[11px] text-text-secondary">
+                    {entry.reason === "tags"
+                      ? "Text unchanged — the configured tag will be added."
+                      : "Text unchanged — the plural setting will be updated."}
+                  </div>
+                {/if}
               </li>
             {/each}
           </ul>

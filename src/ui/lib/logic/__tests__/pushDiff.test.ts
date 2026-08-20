@@ -597,3 +597,68 @@ describe("two layers of one plural key that disagree WITHIN a category", () => {
     }).not.toThrow();
   });
 });
+
+describe("why a key is reported as changed", () => {
+  // Without a reason on the entry, a key changed only by tags or by the plural
+  // flag renders as a diff whose two halves are the same string — which reads
+  // as a broken diff. That ambiguity was reported as "push always shows
+  // changes" with the cause guessed wrong, so the reason is part of the data.
+  const node = () => makeNode({ id: "n1", key: "greeting", translation: "Hello" });
+
+  function remote(over: Partial<{ translation: string; keyIsPlural: boolean; keyTags: string[] }> = {}) {
+    return {
+      "": {
+        greeting: {
+          translation: over.translation ?? "Hello",
+          keyIsPlural: over.keyIsPlural ?? false,
+          keyTags: over.keyTags ?? [],
+        },
+      },
+    } as RemoteTranslationMap;
+  }
+
+  it("reports `text` when the translation itself differs", () => {
+    const diff = pushDiff([node()], remote({ translation: "Bonjour" }), {
+      hasNamespacesEnabled: false,
+    });
+    expect(diff.changedKeys[0]?.reason).toBe("text");
+  });
+
+  it("reports `tags` when only a configured tag is missing", () => {
+    const diff = pushDiff([node()], remote(), {
+      hasNamespacesEnabled: false,
+      configuredTags: ["needs-this"],
+    });
+    expect(diff.changedKeys).toHaveLength(1);
+    expect(diff.changedKeys[0]?.reason).toBe("tags");
+    // The text is identical on both sides — which is exactly why the row can't
+    // render a strike-through diff for this case.
+    expect(diff.changedKeys[0]?.remoteText).toBe(textOfNode(node()));
+  });
+
+  it("reports `plural` when only the plural flag differs", () => {
+    const diff = pushDiff([node()], remote({ keyIsPlural: true }), {
+      hasNamespacesEnabled: false,
+    });
+    expect(diff.changedKeys[0]?.reason).toBe("plural");
+  });
+
+  it("prefers `text` when the text differs AND a tag is missing", () => {
+    // Text is the informative one — a strike-through diff shows real content,
+    // whereas the tag note would hide it.
+    const diff = pushDiff([node()], remote({ translation: "Bonjour" }), {
+      hasNamespacesEnabled: false,
+      configuredTags: ["needs-this"],
+    });
+    expect(diff.changedKeys[0]?.reason).toBe("text");
+  });
+
+  it("reports nothing changed when text, plural and tags all match", () => {
+    const diff = pushDiff([node()], remote({ keyTags: ["already"] }), {
+      hasNamespacesEnabled: false,
+      configuredTags: ["already"],
+    });
+    expect(diff.changedKeys).toHaveLength(0);
+    expect(diff.unchangedKeys).toHaveLength(1);
+  });
+});

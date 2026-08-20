@@ -34,10 +34,21 @@ export type PushDiffOptions = {
   configuredTags?: string[];
 };
 
+/**
+ * WHY a key counts as changed. Reported so the UI can say so: a key changed
+ * only by tags or by the plural flag renders as a text diff whose two halves
+ * are IDENTICAL, which reads as a bug. That ambiguity is not hypothetical —
+ * it was reported as "push always shows changes" with the cause guessed wrong,
+ * and cost a round of manual testing to tell correct behaviour from a defect.
+ */
+export type ChangeReason = "text" | "plural" | "tags";
+
 export type ChangedKey = {
   node: NodeInfo;
   /** Existing translation text in Tolgee. */
   remoteText: string;
+  /** What made this key changed — see `ChangeReason`. */
+  reason: ChangeReason;
 };
 
 export type ConflictingNodes = {
@@ -150,8 +161,13 @@ export function pushDiff(
       continue;
     }
 
-    if (isChanged(representative, remoteEntry, configuredTags)) {
-      changedKeys.push({ node: representative, remoteText: remoteEntry.translation ?? "" });
+    const reason = changeReason(representative, remoteEntry, configuredTags);
+    if (reason) {
+      changedKeys.push({
+        node: representative,
+        remoteText: remoteEntry.translation ?? "",
+        reason,
+      });
     } else {
       unchangedKeys.push(representative);
     }
@@ -259,15 +275,19 @@ function mergePluralForms(nodes: NodeInfo[]): string | null {
 }
 
 /**
- * Returns true when the Figma node differs from the remote translation in a
- * way that warrants a push: text differs (after ICU normalization), plural
- * flag flipped, or one of the configured `tagFiltered` tags is missing.
+ * Why the Figma node differs from the remote translation in a way that
+ * warrants a push — text (after ICU normalization), plural flag flipped, or a
+ * configured `tagFiltered` tag missing. `null` when nothing differs.
+ *
+ * Returns the REASON rather than a boolean so the diff can be explained: the
+ * two non-text reasons produce a row whose before and after are the same
+ * string, and without a label there is no way to tell that from a broken diff.
  */
-function isChanged(
+function changeReason(
   node: NodeInfo,
   remote: RemoteTranslation,
   configuredTags: string[] | undefined,
-): boolean {
+): ChangeReason | null {
   const text = textOfNode(node);
   const remoteText = remote.translation ?? "";
 
@@ -295,20 +315,20 @@ function isChanged(
     if ((node.isPlural || remote.keyIsPlural) && pluralRendersAreEqual(text, remoteText)) {
       // fall through to other checks (plural-flag, tags) below
     } else {
-      return true;
+      return "text";
     }
   }
 
-  if (remote.keyIsPlural !== node.isPlural) return true;
+  if (remote.keyIsPlural !== node.isPlural) return "plural";
 
   if (configuredTags?.length) {
     const remoteTags = new Set(remote.keyTags);
     if (configuredTags.some((t) => !remoteTags.has(t))) {
-      return true;
+      return "tags";
     }
   }
 
-  return false;
+  return null;
 }
 
 /**
