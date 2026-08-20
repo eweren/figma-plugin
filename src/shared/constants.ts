@@ -2,14 +2,12 @@ export const TOLGEE_PLUGIN_CONFIG_NAME = "tolgee_config";
 
 export const TOLGEE_NODE_INFO = "tolgee_info";
 
-/** Pluginiata cache key for the annotation category ID. */
-export const TOLGEE_ANNOTATION_CATEGORY_KEY = "tolgee_annotation_category";
-
 export const TOLGEE_KEY_FORMAT_PLACEHOLDERS = {
   elementName: "{elementName}",
   elementText: "{elementText}",
   group: "{group}",
   component: "{component}",
+  instance: "{instance}",
   frame: "{frame}",
   artboard: "{artboard}",
   section: "{section}",
@@ -22,6 +20,7 @@ export const TOLGEE_KEY_FORMAT_PLACEHOLDERS_EXAMPLES: {
   elementText: "My element text",
   group: "My group",
   component: "My Component",
+  instance: "My Instance",
   section: "My Section",
   artboard: "My Artboard",
   frame: "My Frame",
@@ -29,6 +28,6 @@ export const TOLGEE_KEY_FORMAT_PLACEHOLDERS_EXAMPLES: {
 
 export const UI_SIZES = {
   MINIMUM: { width: 400, height: 160 },
-  DEFAULT: { width: 500, height: 400 },
+  DEFAULT: { width: 500, height: 600 },
   EXPANDED: { width: 500, height: 800 },
 } as const;

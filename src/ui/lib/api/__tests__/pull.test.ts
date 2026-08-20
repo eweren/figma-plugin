@@ -385,3 +385,135 @@ describe("fetchAllTranslations", () => {
     expect(requestArg.headers.get("X-API-Key")).toBe(API_KEY);
   });
 });
+
+// ---------------------------------------------------------------------------
+// fetchAllTranslations — keyNames (task 59: filtered fetch, not full-project)
+// ---------------------------------------------------------------------------
+
+describe("fetchAllTranslations with keyNames", () => {
+  it("returns [] and never touches the network when keyNames is an empty array", async () => {
+    const mock = installFetchMock(async () =>
+      okResponse(translationsResponse([], { totalElements: 0 })),
+    );
+
+    const client = makeClient();
+    const result = await fetchAllTranslations(client, { languages: ["en"], keyNames: [] });
+
+    expect(result).toEqual([]);
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  it("sends filterKeyName and no filterNamespace, merging batch results", async () => {
+    const mock = installFetchMock(async () =>
+      okResponse(
+        translationsResponse([
+          { keyName: "a", translations: { en: { text: "A" } } },
+          { keyName: "b", keyNamespace: "ns1", translations: { en: { text: "B" } } },
+        ]),
+      ),
+    );
+
+    const client = makeClient();
+    const result = await fetchAllTranslations(client, {
+      languages: ["en"],
+      keyNames: ["a", "b"],
+    });
+
+    expect(mock).toHaveBeenCalledTimes(1);
+    const url = calledUrl(mock);
+    expect(queryAll(url, "filterKeyName")).toEqual(["a", "b"]);
+    expect(queryAll(url, "filterNamespace")).toEqual([]);
+    expect(result.map((k) => k.keyName).sort()).toEqual(["a", "b"]);
+  });
+
+  it("splits into multiple batches by cumulative name length, one request each", async () => {
+    // Long names force chunkByLength (MAX_BATCH_CHARS = 3000) to split.
+    const longName = "x".repeat(1600);
+    const names = [longName, `${longName}-2`, `${longName}-3`];
+
+    const mock = installFetchMock(async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      const requested = url.searchParams.getAll("filterKeyName");
+      return okResponse(
+        translationsResponse(
+          requested.map((keyName) => ({ keyName, translations: { en: { text: keyName } } })),
+        ),
+      );
+    });
+
+    const client = makeClient();
+    const result = await fetchAllTranslations(client, { languages: ["en"], keyNames: names });
+
+    // 1600 + 1602 > 3000 -> splits after the first name each time = 3 batches.
+    expect(mock).toHaveBeenCalledTimes(3);
+    expect(result.map((k) => k.keyName).sort()).toEqual([...names].sort());
+  });
+
+  it("aggregates onProgress across batches as done key-names / total key-names", async () => {
+    const longName = "y".repeat(1600);
+    const names = [longName, `${longName}-2`];
+
+    installFetchMock(async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      const requested = url.searchParams.getAll("filterKeyName");
+      return okResponse(
+        translationsResponse(
+          requested.map((keyName) => ({ keyName, translations: { en: { text: keyName } } })),
+        ),
+      );
+    });
+
+    const progressCalls: Array<[number, number | null]> = [];
+    const client = makeClient();
+    await fetchAllTranslations(client, {
+      languages: ["en"],
+      keyNames: names,
+      onProgress: (done, total) => progressCalls.push([done, total]),
+    });
+
+    expect(progressCalls).toHaveLength(2);
+    expect(progressCalls.every(([, total]) => total === 2)).toBe(true);
+    expect(progressCalls.map(([done]) => done).sort((a, b) => a - b)).toEqual([1, 2]);
+  });
+
+  it("paginates a single batch via cursor when the server returns one", async () => {
+    let callCount = 0;
+    const mock = installFetchMock(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return okResponse(
+          translationsResponse([{ keyName: "a", translations: { en: { text: "A" } } }], {
+            nextCursor: "c1",
+          }),
+        );
+      }
+      return okResponse(
+        translationsResponse([{ keyName: "b", translations: { en: { text: "B" } } }]),
+      );
+    });
+
+    const client = makeClient();
+    const result = await fetchAllTranslations(client, {
+      languages: ["en"],
+      keyNames: ["a", "b"],
+    });
+
+    expect(mock).toHaveBeenCalledTimes(2);
+    expect(result.map((k) => k.keyName).sort()).toEqual(["a", "b"]);
+  });
+
+  it("a failing batch fails the whole call", async () => {
+    installFetchMock(
+      async () =>
+        new Response(JSON.stringify({ code: "invalid_project_api_key" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    const client = makeClient();
+    await expect(
+      fetchAllTranslations(client, { languages: ["en"], keyNames: ["a"] }),
+    ).rejects.toBe("invalid_project_api_key");
+  });
+});

@@ -23,6 +23,11 @@ const HIGHLIGHT_FILL: SolidPaint = {
 const PULSE_MS = 500;
 
 type Pending = {
+  /** The node reference itself — cleanup must reuse this, not look it up by
+   *  id: `figma.getNodeById` is sync and throws under `documentAccess:
+   *  "dynamic-page"` (this manifest's setting), which would silently abort
+   *  the close-time restore and leave the layer stuck pink. */
+  node: TextNode;
   /** The fills array we captured before applying the highlight. */
   originalFills: ReadonlyArray<Paint>;
   /** Timer id so we can clear it on re-pulse / cleanup. */
@@ -65,7 +70,7 @@ export async function highlightNode(id: string): Promise<void> {
     }
   }, PULSE_MS);
 
-  pending.set(id, { originalFills, timer });
+  pending.set(id, { node, originalFills, timer });
 }
 
 /**
@@ -73,12 +78,11 @@ export async function highlightNode(id: string): Promise<void> {
  * `close` hook so an unexpected exit doesn't leave layers stuck pink.
  */
 export function cleanUpHighlights(): void {
-  for (const [id, entry] of pending) {
+  for (const [, entry] of pending) {
     clearTimeout(entry.timer);
     try {
-      const node = figma.getNodeById(id);
-      if (node && node.type === "TEXT" && !node.removed) {
-        node.fills = entry.originalFills as Paint[];
+      if (!entry.node.removed) {
+        entry.node.fills = entry.originalFills as Paint[];
       }
     } catch {
       /* swallow — best-effort cleanup */

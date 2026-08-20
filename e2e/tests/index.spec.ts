@@ -26,7 +26,7 @@ test.describe("Index view", () => {
     // Wait for the Index view to bootstrap. The auth bootstrap is async
     // (validateApiKey + project meta + languages), so we anchor on the
     // post-auth selection counter rather than racing it.
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     // The connected key is rendered verbatim. We avoid asserting on the
     // English translation text because the Pull-on-init flow may overwrite
@@ -48,7 +48,7 @@ test.describe("Index view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     // The unconnected row shows the raw text as a clickable preview and a
     // key-name input next to it.
@@ -91,7 +91,7 @@ test.describe("Index view", () => {
     });
   });
 
-  test("shows page-wide node count when nothing is selected", async ({
+  test("asks for a selection when nothing is selected", async ({
     page,
   }) => {
     const node1 = createTestNode({
@@ -116,8 +116,11 @@ test.describe("Index view", () => {
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    // Auth bootstrap and the page-connected-nodes query must both settle.
-    await expect(ui.getByText("2 on this page")).toBeVisible({
+    // The page-wide count that used to read "N on this page" is gone: with no
+    // selection the Index now asks for one instead of listing the whole page
+    // (the same scoping change Download got). Assert THAT, which is the
+    // behaviour there is to assert.
+    await expect(ui.getByText("Select strings for translation")).toBeVisible({
       timeout: 30_000,
     });
   });
@@ -134,10 +137,11 @@ test.describe("Index view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    // "0 on this page" and the empty-state message are both visible simultaneously;
-    // assert the empty-state message specifically to avoid strict-mode violations.
-    await expect(
-      ui.getByText("No connected nodes on this page"),
-    ).toBeVisible({ timeout: 30_000 });
+    // The empty state is the "pick something" prompt now — "No connected nodes
+    // on this page" belonged to the page-wide listing that was removed.
+    await expect(ui.getByText("Select strings for translation")).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(ui.getByText("Pick frames or texts. Fewer runs smoother.")).toBeVisible();
   });
 });

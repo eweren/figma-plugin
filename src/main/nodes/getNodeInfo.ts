@@ -4,10 +4,23 @@ import type { NodeInfo } from "$shared/types";
 /**
  * The subset of `NodeInfo` fields that we persist into `setPluginData`.
  *
- * `id`, `name`, `characters` and `visible` come from the live Figma node and
- * must NOT be written into plugin data — they would only ever drift.
+ * `id`, `name`, `characters`, `visible` and the resolved parent names
+ * (`component`/`frame`/`artboard`/`section`/`group`) come from the live Figma
+ * node/tree and must NOT be written into plugin data — they would only ever
+ * drift.
  */
-type PersistedNodeInfo = Omit<NodeInfo, "id" | "name" | "characters" | "visible">;
+type PersistedNodeInfo = Omit<
+  NodeInfo,
+  | "id"
+  | "name"
+  | "characters"
+  | "visible"
+  | "component"
+  | "frame"
+  | "artboard"
+  | "section"
+  | "group"
+>;
 
 const readPersisted = (node: TextNode): Partial<PersistedNodeInfo> => {
   const raw = node.getPluginData(TOLGEE_NODE_INFO);
@@ -27,12 +40,14 @@ const readPersisted = (node: TextNode): Partial<PersistedNodeInfo> => {
  * persisted field is normalised to its safe default so the UI can rely on
  * shape-stable records.
  */
-export const getNodeInfo = (node: TextNode): NodeInfo => {
+export const getNodeInfo = (node: TextNode, characters?: string): NodeInfo => {
   const pluginData = readPersisted(node);
   return {
     id: node.id,
     name: node.name,
-    characters: node.characters,
+    // Optional passthrough: the selection scan already copied the string
+    // across the bridge for the ignore filter — don't copy it twice.
+    characters: characters ?? node.characters,
     visible: node.visible,
     key: pluginData.key ?? "",
     ns: pluginData.ns,
@@ -41,6 +56,7 @@ export const getNodeInfo = (node: TextNode): NodeInfo => {
     pluralParamValue: pluginData.pluralParamValue,
     paramsValues: pluginData.paramsValues,
     connected: Boolean(pluginData.connected),
+    prefilledKey: pluginData.prefilledKey,
   };
 };
 
@@ -61,6 +77,9 @@ export const setNodeInfo = (node: TextNode, partial: Partial<NodeInfo>): NodeInf
       "pluralParamValue" in partial ? partial.pluralParamValue : current.pluralParamValue,
     paramsValues: "paramsValues" in partial ? partial.paramsValues : current.paramsValues,
     connected: Boolean(partial.connected ?? current.connected),
+    // Only the prefill write sets this; a manual key edit omits it, leaving the
+    // stale marker so `key !== prefilledKey` and the key is preserved on clear.
+    prefilledKey: "prefilledKey" in partial ? partial.prefilledKey : current.prefilledKey,
   };
 
   // Strip explicit `undefined` values so the serialized form stays compact and

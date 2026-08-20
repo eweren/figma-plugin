@@ -1,3 +1,4 @@
+import type { KeyParentNames } from "./keyFormat";
 import type { FrameScreenshot, NodeInfo, TolgeeConfig, WindowSize } from "./types";
 
 /**
@@ -5,12 +6,29 @@ import type { FrameScreenshot, NodeInfo, TolgeeConfig, WindowSize } from "./type
  */
 export type MainToUi =
   | {
+      /**
+       * A main-thread handler threw. Sent by the bus's error boundary so the
+       * UI can settle whatever it armed for this request instead of waiting
+       * out a multi-minute idle timeout (or, where there is no watchdog,
+       * forever).
+       */
+      type: "handler-error";
+      /** The UI→main message type whose handler failed. */
+      forType: string;
+      /** Present when the failed request carried one. */
+      correlationId?: string;
+    }
+  | {
       type: "init";
       config: Partial<TolgeeConfig> | null;
       selectedNodes: NodeInfo[];
       /** See `selection-changed.hasUserSelection`. */
       hasUserSelection: boolean;
       editorType: "figma" | "dev";
+      /** `figma.currentPage.name` — CopyView's header shows it directly
+          (the page name already carries the language, e.g. "Home - cs"),
+          so the UI never needs a page-content round trip just for a title. */
+      pageName: string;
       /** Optional: navigate to this route immediately after init (used by E2E tests). */
       initialRoute?: string;
     }
@@ -25,35 +43,123 @@ export type MainToUi =
        */
       hasUserSelection: boolean;
     }
-  | { type: "page-changed"; config: Partial<TolgeeConfig> }
+  | {
+      /**
+       * Emitted the instant `selectionchange` fires, BEFORE the (potentially
+       * slow) selection scan. Lets the UI show a loader during the scan instead
+       * of only after `selection-changed` arrives. Carries no data — the UI
+       * just flips into a "scanning" state until the matching
+       * `selection-changed` lands.
+       */
+      type: "selection-pending";
+    }
+  | {
+      /** One chunk of a STREAMED selection scan. Large selections used to
+          arrive as a single `selection-changed` only after every node's info
+          was built — thousands of nodes meant many seconds of built-up work
+          before the UI showed anything. Batches let the list render within
+          the first ~100 nodes and fill in progressively; a superseding
+          selection simply stops the remaining batches. `first: true`
+          replaces the list, subsequent batches append. Closed by
+          `selection-done`. (`selection-changed` remains for non-streamed
+          senders: empty selections, init, and the e2e host.) */
+      type: "selection-batch";
+      nodes: NodeInfo[];
+      first: boolean;
+    }
+  | {
+      /** Terminal marker of a streamed selection scan. `total` lets the UI
+          clear the list when the scan yielded zero usable text nodes (no
+          `selection-batch` was sent at all). */
+      type: "selection-done";
+      hasUserSelection: boolean;
+      total: number;
+    }
+  | { type: "page-changed"; config: Partial<TolgeeConfig>; pageName: string }
   | { type: "config-changed"; config: Partial<TolgeeConfig> }
   | {
-      type: "screenshots-result";
+      /** One exported frame. Screenshots stream one message per frame — a
+          single message carrying every PNG serialized tens of MB on the
+          canvas thread and held all buffers in memory at once. */
+      type: "screenshot-frame";
       correlationId: string;
-      screenshots: FrameScreenshot[];
+      screenshot: FrameScreenshot;
+      index: number;
     }
-  | { type: "nodes-set-result"; correlationId: string; ok: boolean }
+  | {
+      /** Terminal marker for a `request-screenshots` stream. `total` is the
+          number of `screenshot-frame` messages that were sent. */
+      type: "screenshots-done";
+      correlationId: string;
+      /** Frames actually delivered. */
+      total: number;
+      /** Frames whose export failed and were skipped, so the push summary can
+       *  report the gap instead of presenting `total` as the whole set. */
+      failed: number;
+    }
+  | {
+      /** Progress for an in-flight `set-nodes-data` write. Same `total > 100`
+          guard as `page-connected-nodes-progress`/`apply-translations-progress`
+          — see `setNodesData` in `selection.ts`. The UI intentionally does NOT
+          pair this by `correlationId`: the write-progress bar represents ANY
+          in-flight large write (bulk actions in Index, auto-connect, and the
+          save-queue's prefill/regen flush alike), not one specific request. */
+      type: "nodes-set-progress";
+      correlationId: string;
+      done: number;
+      total: number;
+    }
+  | {
+      type: "nodes-set-result";
+      correlationId: string;
+      ok: boolean;
+      /** Fresh post-write snapshots of the updated nodes. The UI patches its
+          selection in place from these — the main thread deliberately does
+          NOT re-scan the whole selection after a write (that full re-scan
+          per write is what froze large selections). */
+      nodes: NodeInfo[];
+    }
+  | {
+      /** Parent placeholder names resolved on demand — see the matching
+          `resolve-parent-names` request. Keyed by node id; a missing id (or
+          missing field) means the node has no such ancestor. */
+      type: "parent-names-result";
+      correlationId: string;
+      parents: Record<string, KeyParentNames>;
+    }
+  | {
+      /** Progress for a `request-page-connected-nodes` scan. Only sent when
+          `total > 100` (small pages resolve fast enough that the message
+          traffic would just be noise) — see `getNodeInfo` loop in
+          `scan.ts:buildConnectedNodesInfo`. Also doubles as an idle-timeout
+          "still alive" signal for `pageNodes.ts`'s watchdog. */
+      type: "page-connected-nodes-progress";
+      correlationId: string;
+      done: number;
+      total: number;
+    }
   | {
       type: "page-connected-nodes-result";
       correlationId: string;
       nodes: NodeInfo[];
     }
   | {
+      /** Progress for an in-flight `apply-translations` write. Same `total >
+          100` guard and idle-timeout role as `page-connected-nodes-progress`
+          — see `applyTranslations` in `selection.ts`. */
+      type: "apply-translations-progress";
+      correlationId: string;
+      done: number;
+      total: number;
+    }
+  | {
       type: "apply-translations-result";
       correlationId: string;
       ok: boolean;
       errors: string[];
-    }
-  | {
-      type: "annotation-sync-result";
-      correlationId: string;
-      updated: number;
-    }
-  | {
-      type: "annotations-state";
-      correlationId: string;
-      enabled: boolean;
-      available: boolean;
+      /** See `nodes-set-result.nodes` — post-write snapshots for in-place
+          patching instead of a full selection re-scan. */
+      nodes: NodeInfo[];
     }
   | {
       type: "create-copy-progress";
@@ -67,11 +173,32 @@ export type MainToUi =
       correlationId: string;
       ok: boolean;
       createdPageIds: string[];
+      /** Layer names a missing font prevented writing — they keep their
+       *  ORIGINAL text instead of the key label, so the count is reported
+       *  rather than left to a dev-only console warning. */
+      skippedMissingFont?: string[];
+      /**
+       * Languages mode only: the connected nodes of each freshly cloned page.
+       * The main thread deliberately does NOT write translated text itself —
+       * ICU rendering needs `Intl` (plural rules), which doesn't exist in
+       * Figma's main-thread sandbox; every `{param}`/plural render silently
+       * failed there and the copy kept the source-language text. The UI takes
+       * these nodes, renders each one exactly like the Download flow, and
+       * writes them back via the ordinary `apply-translations` request — so a
+       * fresh copy is BY CONSTRUCTION identical to clone + Download all.
+       */
+      pages?: Array<{ pageId: string; language: string; nodes: NodeInfo[] }>;
       error?: string;
     }
   | {
-      type: "command";
-      command: "open" | "open-on-node";
+      type: "copy-staleness-result";
+      correlationId: string;
+      ok: boolean;
+      /** Connected strings on the source page this copy doesn't have yet. */
+      missingCount?: number;
+      /** Connected strings the source page lost since the copy was made. */
+      removedCount?: number;
+      error?: string;
     };
 
 /**
@@ -105,6 +232,13 @@ export type UiToMain =
       correlationId: string;
       nodes: Array<{ id: string; info: Partial<NodeInfo> }>;
     }
+  /**
+   * Resolve the parent placeholder names ({component}/{frame}/…) for specific
+   * nodes on demand. The selection scan only fills these when the SAVED format
+   * uses them; the bulk "Generate key names" action lets the user type an
+   * ad-hoc template, so it asks for them here right before formatting.
+   */
+  | { type: "resolve-parent-names"; correlationId: string; nodeIds: string[] }
   | {
       type: "apply-translations";
       correlationId: string;
@@ -133,28 +267,30 @@ export type UiToMain =
       nodeIds: string[];
     }
   | { type: "scroll-to-node"; id: string }
-  | { type: "sync-annotations"; correlationId: string; all?: boolean }
-  | { type: "toggle-annotations"; enabled: boolean }
-  | { type: "get-annotations-state"; correlationId: string }
   | {
       type: "create-copy";
       correlationId: string;
       mode: "keys" | "languages";
-      /** Required when `mode === "languages"`. List of language tags to copy. */
+      /** Required when `mode === "languages"`. List of language tags to copy.
+       *  The translations themselves never cross the bridge: the main thread
+       *  only clones and returns the clones' connected nodes (see
+       *  `create-copy-result.pages`); the UI renders and applies the text via
+       *  `apply-translations` — ICU rendering needs `Intl`, which Figma's
+       *  main-thread sandbox doesn't have. */
       languages?: string[];
       /**
-       * Required when `mode === "languages"`. Map of language tag -> map of
-       * `${ns}|${key}` -> translation text. The UI builds this from the
-       * Tolgee API so the main thread doesn't need to refetch.
+       * Only set by CopyView's "Recreate copy" — `figma.currentPage` there is
+       * the copy itself, not the page to clone from. Omitted for the normal
+       * Index-invoked "Create page" flow (defaults to `figma.currentPage`).
        */
-      translations?: Record<string, Record<string, string>>;
-    };
-
-/**
- * Helper type to extract the message variant that carries a `correlationId`.
- * Useful for building request/response pairing in the message bus.
- */
-export type WithCorrelationId<T> = T extends { correlationId: string } ? T : never;
-
-export type MainToUiResponse = WithCorrelationId<MainToUi>;
-export type UiToMainRequest = WithCorrelationId<UiToMain>;
+      sourcePageId?: string;
+      /**
+       * `mode: "keys"` only — whether to prefix the written key label with its
+       * namespace (`ns.key` vs plain `key`), matching `namespacedKeyLabel`'s
+       * gate everywhere else in the app. The main thread has no access to
+       * `auth.value.namespacesEnabled` (a UI-side, API-derived flag, not a
+       * persisted setting `readMergedConfig` can see), so the UI sends it.
+       */
+      namespacesEnabled?: boolean;
+    }
+  | { type: "request-copy-staleness"; correlationId: string };

@@ -22,8 +22,9 @@
  * (which is Tolgee's default plural / rich-text convention).
  */
 
+import { LINE_BREAK_TAG_REGEX, stripMarkupTags } from "$shared/richText";
+
 const STRIPPED_TAGS = ["strong", "b", "em", "i", "u"] as const;
-const BR_REGEX = /<br\s*\/?>\s*<\/br>|<br\s*\/?>|<\/br>/gi;
 
 type Range = { start: number; end: number };
 
@@ -78,8 +79,35 @@ const ITALIC_STYLE_CANDIDATES = [
   "Regular Oblique",
 ] as const;
 
-async function loadAvailableFontsOnce(): Promise<Font[]> {
-  return figma.listAvailableFontsAsync();
+// `listAvailableFontsAsync` serialises the entire system font list across the
+// plugin bridge — one of the most expensive Figma API calls. The list can't
+// change while the plugin is running, so one in-flight-deduped fetch serves
+// every node of a bulk pull instead of one call per formatted node.
+let availableFontsPromise: Promise<Font[]> | null = null;
+
+function loadAvailableFontsOnce(): Promise<Font[]> {
+  if (!availableFontsPromise) {
+    availableFontsPromise = figma.listAvailableFontsAsync();
+    // Never cache a rejection — one transient failure must not poison every
+    // formatted-text apply for the rest of the session.
+    availableFontsPromise.catch(() => {
+      availableFontsPromise = null;
+    });
+  }
+  return availableFontsPromise;
+}
+
+// Fonts stay loaded for the plugin's lifetime, so skip the async hop for any
+// (family, style) we've already loaded — a 150-node pull typically reuses a
+// handful of fonts across every node. Shared with `createCopy`, whose
+// language pages rewrite the same font set page after page.
+const loadedFonts = new Set<string>();
+
+async function loadFontCached(font: FontName): Promise<void> {
+  const key = `${font.family}\0${font.style}`;
+  if (loadedFonts.has(key)) return;
+  await figma.loadFontAsync(font);
+  loadedFonts.add(key);
 }
 
 /**
@@ -93,7 +121,7 @@ async function findBestBoldStyle(family: string, available: Font[]): Promise<str
     );
     if (!exists) continue;
     try {
-      await figma.loadFontAsync({ family, style });
+      await loadFontCached({ family, style });
       return style;
     } catch {
       // Some fonts list a style we can't actually load (licensing, missing
@@ -105,7 +133,7 @@ async function findBestBoldStyle(family: string, available: Font[]): Promise<str
   );
   if (fallback) {
     try {
-      await figma.loadFontAsync(fallback.fontName);
+      await loadFontCached(fallback.fontName);
       return fallback.fontName.style;
     } catch {
       return null;
@@ -121,7 +149,7 @@ async function findBestItalicStyle(family: string, available: Font[]): Promise<s
     );
     if (!exists) continue;
     try {
-      await figma.loadFontAsync({ family, style });
+      await loadFontCached({ family, style });
       return style;
     } catch {
       // skip
@@ -135,7 +163,7 @@ async function findBestItalicStyle(family: string, available: Font[]): Promise<s
   );
   if (fallback) {
     try {
-      await figma.loadFontAsync(fallback.fontName);
+      await loadFontCached(fallback.fontName);
       return fallback.fontName.style;
     } catch {
       return null;
@@ -191,12 +219,24 @@ export async function applyRichText(
   node.autoRename = false;
 
   // Pre-load every font already used on the node — required before we can
-  // assign `characters` or call any of the `setRange*` methods.
-  const existingFonts = node.getRangeAllFontNames(0, node.characters.length);
-  await Promise.all(existingFonts.map((f) => figma.loadFontAsync(f)));
+  // assign `characters` or call any of the `setRange*` methods. The range
+  // APIs throw on an empty node ((0,0) is out of bounds, same as (0,1)), so
+  // a never-rendered node loads its single `fontName` directly instead.
+  const length = node.characters.length;
+  if (length === 0) {
+    const font = node.fontName;
+    if (font !== figma.mixed) await loadFontCached(font);
+  } else {
+    const existingFonts = node.getRangeAllFontNames(0, length);
+    await Promise.all(existingFonts.map((f) => loadFontCached(f)));
+  }
 
-  const withoutBreaks = formatted.replace(BR_REGEX, "\n");
-  const plainText = withoutBreaks.replace(/<[^>]*>/g, "");
+  // The BR replace + tag strip MUST stay the shared `plainCanvasText`
+  // transform (see $shared/richText) — pullDiff compares canvas characters
+  // against it to detect drift. `withoutBreaks` is kept separately because
+  // the range finder below needs the tags still in place.
+  const withoutBreaks = formatted.replace(LINE_BREAK_TAG_REGEX, "\n");
+  const plainText = stripMarkupTags(withoutBreaks);
   node.characters = plainText;
 
   if (options.plainOnly) return;
@@ -252,4 +292,4 @@ export async function applyRichText(
 }
 
 // Exported for tests.
-export const __test__ = { findRanges, BR_REGEX };
+export const __test__ = { findRanges, BR_REGEX: LINE_BREAK_TAG_REGEX };

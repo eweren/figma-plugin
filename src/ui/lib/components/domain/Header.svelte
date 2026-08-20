@@ -1,40 +1,33 @@
 <script lang="ts">
+  import { ICON } from "$shared/iconSizes";
   import { appState } from "$ui/lib/stores/app.svelte";
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { send } from "$ui/lib/bus";
-  import Button from "$ui/lib/components/ui/button.svelte";
+  import IconButton from "$ui/lib/components/ui/iconButton.svelte";
   import Select from "$ui/lib/components/ui/select.svelte";
   import * as Tooltip from "$ui/lib/components/ui/tooltip";
   import SettingsIcon from "lucide-svelte/icons/settings";
-  import CopyIcon from "lucide-svelte/icons/copy-plus";
+  import CopyIcon from "lucide-svelte/icons/files";
 
   type LanguageOption = { value: string; label: string };
-  type NamespaceOption = { value: string; label: string };
   type BranchOption = { value: string; label: string };
 
   type Props = {
     /** Optional languages list (from API). When unset, header shows current value only. */
     languages?: LanguageOption[];
-    /** Optional namespaces list (from API + local nodes). */
-    namespaces?: NamespaceOption[];
     /** Optional branches list (only used when branching is enabled). */
     branches?: BranchOption[];
-    /** Whether namespaces are enabled for this project. */
-    namespacesEnabled?: boolean;
     /** Whether branching is enabled for this project/document. */
     branchingEnabled?: boolean;
   };
 
   let {
     languages = [],
-    namespaces = [],
     branches = [],
-    namespacesEnabled = false,
     branchingEnabled = false,
   }: Props = $props();
 
   const language = $derived(appState.value.config?.language ?? "");
-  const namespace = $derived(appState.value.config?.namespace ?? "");
   const branch = $derived(appState.value.config?.branch ?? "");
 
   function handleLanguageChange(v: string): void {
@@ -44,10 +37,6 @@
     // the user clicks Apply in Pull — cancelling there leaves the saved
     // language untouched.
     appState.navigate({ name: "pull", lang: v });
-  }
-
-  function handleNamespaceChange(v: string): void {
-    send({ type: "save-config", config: { namespace: v } });
   }
 
   function handleBranchChange(v: string): void {
@@ -71,11 +60,13 @@
       : languages,
   );
 
-  const namespaceOptions = $derived<NamespaceOption[]>(
-    namespace && !namespaces.some((o) => o.value === namespace)
-      ? [{ value: namespace, label: namespace }, ...namespaces]
-      : namespaces,
-  );
+  // Dev Mode hides design-changing entry points (cosmetic layer — the
+  // navigation gate in appState.navigate and the bus guard are the real
+  // defence): language select navigates to Pull, the copy button to
+  // CreateCopy. Matches production (Index.tsx hides its language select and
+  // Copy there). Branch select STAYS — set-branch is metadata-classed, and
+  // a developer reading strings off a branch is a legitimate dev-mode need.
+  const isDev = $derived(appState.value.editorType === "dev");
 
   const branchOptions = $derived<BranchOption[]>(
     branch && !branches.some((o) => o.value === branch)
@@ -84,14 +75,14 @@
   );
 </script>
 
-<header
-  class="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-bg px-3 py-2"
->
-  <span class="text-sm font-bold tracking-tight text-text-brand"> Tolgee </span>
+<header class="flex items-center gap-2 px-3 py-2">
+  <h1 class="shrink-0 text-sm font-semibold text-text">Strings</h1>
 
   {#if auth.value.authenticated}
     <div class="flex flex-1 items-center gap-2">
-      {#if languageOptions.length > 0}
+      {#if isDev}
+        <!-- Language select opens Pull (design-only); nothing to pick here. -->
+      {:else if languageOptions.length > 0}
         <Select
           value={language}
           options={languageOptions}
@@ -105,16 +96,6 @@
         </span>
       {/if}
 
-      {#if namespacesEnabled && namespaceOptions.length > 0}
-        <Select
-          value={namespace}
-          options={namespaceOptions}
-          placeholder="Namespace"
-          onChange={handleNamespaceChange}
-          class="min-w-[80px]"
-        />
-      {/if}
-
       {#if branchingEnabled && branchOptions.length > 0}
         <Select
           value={branch}
@@ -126,23 +107,21 @@
       {/if}
     </div>
   {:else}
-    <span class="flex-1 text-xs text-text-secondary"> Not connected </span>
+    <span class="flex-1 text-xs text-text-secondary">Not connected</span>
   {/if}
 
   <Tooltip.Provider delayDuration={200}>
-    {#if auth.value.authenticated}
+    {#if auth.value.authenticated && !isDev}
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
-            <Button
+            <IconButton
               {...props}
-              variant="ghost"
-              size="sm"
               onclick={openCreateCopy}
               aria-label="Create page copy"
             >
-              <CopyIcon size={14} />
-            </Button>
+              <CopyIcon size={ICON.action} />
+            </IconButton>
           {/snippet}
         </Tooltip.Trigger>
         <Tooltip.Content side="bottom" align="end">
@@ -153,15 +132,13 @@
     <Tooltip.Root>
       <Tooltip.Trigger>
         {#snippet child({ props })}
-          <Button
+          <IconButton
             {...props}
-            variant="ghost"
-            size="sm"
             onclick={openSettings}
             aria-label="Open settings"
           >
-            <SettingsIcon size={14} />
-          </Button>
+            <SettingsIcon size={ICON.action} />
+          </IconButton>
         {/snippet}
       </Tooltip.Trigger>
       <Tooltip.Content side="bottom" align="end">

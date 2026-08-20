@@ -24,8 +24,7 @@
     "paths": {
       "$shared/*": ["src/shared/*"],
       "$main/*": ["src/main/*"],
-      "$ui/*": ["src/ui/*"],
-      "$inspect/*": ["src/ui-inspect/*"]
+      "$ui/*": ["src/ui/*"]
     }
   },
   "include": [

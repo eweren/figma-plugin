@@ -1,7 +1,9 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
+	import { getContext } from "svelte";
 	import type { HTMLButtonAttributes } from "svelte/elements";
 	import { cn } from "$ui/lib/utils";
+	import { BUTTON_SIZE_CTX } from "./buttonContext";
 
 	// Variants kept inline as plain string maps so we don't have to ship
 	// `tailwind-variants` (which transitively drags in `tailwind-merge`,
@@ -43,18 +45,25 @@
 	};
 	let {
 		variant = "default",
-		size = "md",
+		size,
 		class: className,
 		children,
 		type = "button",
 		...rest
 	}: Props = $props();
+
+	// An explicit `size` prop always wins. Otherwise inherit a default from the
+	// nearest container that sets one (e.g. ViewFooter pins its action buttons
+	// to a single size), falling back to "md". Keeps a row of buttons uniform
+	// without each call site repeating the size.
+	const ctxSize = getContext<Size | undefined>(BUTTON_SIZE_CTX);
+	const resolvedSize = $derived<Size>(size ?? ctxSize ?? "md");
 </script>
 
 <button
 	{...rest}
 	{type}
-	class={cn(BASE, VARIANT_CLASSES[variant], SIZE_CLASSES[size], className)}
+	class={cn(BASE, VARIANT_CLASSES[variant], SIZE_CLASSES[resolvedSize], className)}
 >
 	{@render children?.()}
 </button>

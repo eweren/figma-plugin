@@ -53,8 +53,10 @@ test.describe("PageSetup view", () => {
     await expect(confirmButton).toBeEnabled();
     await confirmButton.click();
 
-    // After confirming, routing moves to Index. Show "X on this page" (no nodes configured).
-    await expect(ui.getByText(/\d+ (on this page|selected)/).first()).toBeVisible({
+    // After confirming, routing moves to Index. This fixture configures no
+    // nodes, so Index renders its EMPTY state — there is no count to match.
+    // Assert the view instead: the heading is present either way.
+    await expect(ui.getByRole("heading", { name: "Strings" })).toBeVisible({
       timeout: 5_000,
     });
   });
@@ -72,7 +74,7 @@ test.describe("PageSetup view", () => {
       timeout: 5_000,
     });
     // Auth bootstrap may take a moment; await the push/pull buttons as proof.
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
   });

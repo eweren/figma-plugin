@@ -29,6 +29,13 @@ describe("applyCasing", () => {
     expect(applyCasing("My Frame Title", "noSpaces")).toBe("MyFrameTitle");
   });
 
+  it("keeps the original format for \"\" / undefined (no transformation)", () => {
+    // "keep original format" — the default, matching the original plugin. Must
+    // NOT snake_case, or configs that kept the original would be transformed.
+    expect(applyCasing("My Frame Title", "")).toBe("My Frame Title");
+    expect(applyCasing("My Frame Title", undefined)).toBe("My Frame Title");
+  });
+
   it("returns empty string for empty input", () => {
     const casings: Casing[] = [
       "snake_case",
@@ -111,10 +118,59 @@ describe("formatKey", () => {
     expect(formatKey("", { frame: "Anything", elementName: "Whatever" }, "snake_case")).toBe("");
   });
 
-  it("leaves placeholder positions empty when value is missing", () => {
-    // No values supplied — placeholders should still be replaced (with "")
-    // so the separator survives but values disappear.
-    expect(formatKey("{frame}_{elementName}", {}, "snake_case")).toBe("_");
+  it("collapses to empty when every placeholder value is missing", () => {
+    // Both empty → the placeholders AND the separator between them are removed,
+    // rather than leaving a bare "_".
+    expect(formatKey("{frame}_{elementName}", {}, "snake_case")).toBe("");
+  });
+
+  it("drops the separator BEFORE an empty middle placeholder", () => {
+    expect(
+      formatKey(
+        "{frame}.{component}.{elementName}",
+        { frame: "Hero", elementName: "title" },
+        "snake_case",
+      ),
+    ).toBe("hero.title");
+  });
+
+  it("drops the separator AFTER a leading empty placeholder", () => {
+    // No component → no dangling leading dot.
+    expect(
+      formatKey("{component}.{elementName}", { elementName: "log in" }, "snake_case"),
+    ).toBe("log_in");
+  });
+
+  it("drops the separator BEFORE a trailing empty placeholder", () => {
+    expect(
+      formatKey("{elementName}.{component}", { elementName: "log in" }, "snake_case"),
+    ).toBe("log_in");
+  });
+
+  it("collapses consecutive empty placeholders and their separators", () => {
+    expect(
+      formatKey(
+        "{component}.{instance}.{elementName}",
+        { elementName: "title" },
+        "snake_case",
+      ),
+    ).toBe("title");
+  });
+
+  it("keeps a literal prefix when the following placeholder is empty", () => {
+    expect(
+      formatKey("app.{component}.{elementName}", { elementName: "title" }, "snake_case"),
+    ).toBe("app.title");
+  });
+
+  it("substitutes the {instance} placeholder", () => {
+    expect(
+      formatKey(
+        "{component}.{instance}.{elementName}",
+        { component: "Button", instance: "Primary Button", elementName: "label" },
+        "snake_case",
+      ),
+    ).toBe("button.primary_button.label");
   });
 
   it("preserves special chars '/', '.', '-' in placeholder values", () => {
@@ -137,5 +193,56 @@ describe("formatKey", () => {
     // The implementation only knows the documented placeholders; an unknown
     // `{unknown}` must pass through verbatim.
     expect(formatKey("{unknown}_{frame}", { frame: "Hero" }, "snake_case")).toBe("{unknown}_hero");
+  });
+});
+
+describe("formatKey — an empty placeholder trims a separator, not a literal", () => {
+  it("keeps fixed text that sits between two placeholders", () => {
+    // The reported bug: the whole adjacent literal was dropped, so `bar`
+    // vanished from a key that then got persisted and uploaded. Only the
+    // separator should go — and `bar` isn't one.
+    expect(
+      formatKey("foo{component}bar{elementName}", { elementName: "Name" }, "snake_case"),
+    ).toBe("foobarname");
+  });
+
+  it("keeps a fixed prefix ahead of the empty placeholder", () => {
+    // `app.` is the user's own prefix, not a separator to be eaten.
+    expect(
+      formatKey("app.{component}.{elementName}", { elementName: "Title" }, "snake_case"),
+    ).toBe("app.title");
+  });
+
+  it("still drops a leading separator so the key can't start with one", () => {
+    expect(
+      formatKey("{component}.{elementName}", { elementName: "my element" }, "snake_case"),
+    ).toBe("my_element");
+  });
+
+  it("still collapses a separator between two present placeholders", () => {
+    expect(
+      formatKey(
+        "{frame}.{component}.{elementName}",
+        { frame: "Web", elementName: "Title" },
+        "snake_case",
+      ),
+    ).toBe("web.title");
+  });
+
+  it("treats an underscore as a separator, not as word content", () => {
+    // `\w` would keep `_`, which is exactly the separator most templates use.
+    expect(formatKey("{component}_{elementName}", { elementName: "Title" }, "snake_case")).toBe(
+      "title",
+    );
+  });
+
+  it("handles consecutive empty placeholders without eating extra characters", () => {
+    expect(
+      formatKey("{frame}.{component}.{elementName}", { elementName: "Title" }, "snake_case"),
+    ).toBe("title");
+  });
+
+  it("leaves a trailing empty placeholder's separator off the end", () => {
+    expect(formatKey("{frame}.{component}", { frame: "Home" }, "snake_case")).toBe("home");
   });
 });

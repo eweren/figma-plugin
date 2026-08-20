@@ -2,12 +2,16 @@
 *.log
 *.log.*
 node_modules
+.DS_Store
 
 out/
 dist/
 build
 code.js
 manifest.json
+# …but the shippable delivery package keeps its own manifest (the bare
+# `manifest.json` rule above is only meant for the generated root/dist one).
+!delivery/tolgee-plugin/manifest.json
 
 # Playwright (v2 e2e)
 e2e/test-results/
@@ -15,3 +19,6 @@ e2e/playwright-report/
 playwright/.cache/
 
 .vscode
+
+# Local Claude Code config — machine-specific, never part of a change.
+.claude/

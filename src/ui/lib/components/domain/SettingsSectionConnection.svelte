@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { TolgeeConfig } from "$shared/types";
+  import { ICON } from "$shared/iconSizes";
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { send } from "$ui/lib/bus";
   import {
@@ -8,25 +9,31 @@
     REQUIRED_SCOPES,
   } from "$ui/lib/api/auth";
   import { createTolgeeClient } from "$ui/lib/api/client";
+  import { getProjectMeta } from "$ui/lib/api/projectMeta";
+  import { hydratePickers, hydrateBranches } from "$ui/lib/api/pickers";
   import Button from "$ui/lib/components/ui/button.svelte";
+  import IconButton from "$ui/lib/components/ui/iconButton.svelte";
   import Input from "$ui/lib/components/ui/input.svelte";
   import Label from "$ui/lib/components/ui/label.svelte";
+  import Message from "$ui/lib/components/ui/message.svelte";
+  import TruncatedText from "$ui/lib/components/ui/truncatedText.svelte";
   import Eye from "lucide-svelte/icons/eye";
   import EyeOff from "lucide-svelte/icons/eye-off";
-  import CheckCircle2 from "lucide-svelte/icons/check-circle-2";
-  import AlertTriangle from "lucide-svelte/icons/alert-triangle";
 
-  type Props = { form: Partial<TolgeeConfig> };
-  let { form = $bindable() }: Props = $props();
+  type Props = {
+    form: Partial<TolgeeConfig>;
+    /** Settings persists the cleared key on disconnect so it sticks without a
+     *  Save. The onboarding wizard persists nothing until its final Save — and
+     *  a `save-config` here would stamp `documentInfo`, closing the onboarding
+     *  gate and dumping the user onto the Index "Sign in" screen — so there
+     *  disconnect only resets the in-memory auth and stays on step 1. */
+    persistDisconnect?: boolean;
+  };
+  let { form = $bindable(), persistDisconnect = true }: Props = $props();
 
   let showKey = $state(false);
-  let testing = $state(false);
-  let testResult = $state<null | {
-    ok: boolean;
-    message: string;
-    projectId?: number;
-    scopes?: string[];
-  }>(null);
+  let connecting = $state(false);
+  let errorMsg = $state<string | null>(null);
 
   const apiUrl = $derived(form.apiUrl ?? "");
 
@@ -37,9 +44,15 @@
   );
 
   const missingPullScope = $derived(
-    testResult?.ok &&
-      testResult.scopes &&
-      !hasRequiredScopes(testResult.scopes, [...REQUIRED_SCOPES.pull]),
+    auth.value.authenticated &&
+      !hasRequiredScopes(auth.value.scopes, [...REQUIRED_SCOPES.pull]),
+  );
+
+  // Link straight to the connected project's dashboard in Tolgee.
+  const projectLink = $derived(
+    auth.value.projectId != null
+      ? `${auth.value.apiUrl.replace(/\/$/, "")}/projects/${auth.value.projectId}`
+      : null,
   );
 
   function handleUrlBlur(): void {
@@ -47,59 +60,72 @@
     form.apiUrl = trimmed;
   }
 
-  async function testConnection(): Promise<void> {
+  async function connect(): Promise<void> {
     if (!form.apiUrl || !form.apiKey) {
-      testResult = {
-        ok: false,
-        message: "Please enter API URL and API key.",
-      };
+      errorMsg = "Please enter the Tolgee URL and project API key.";
       return;
     }
-    testing = true;
-    testResult = null;
+    connecting = true;
+    errorMsg = null;
     try {
       const result = await validateApiKey(form.apiUrl, form.apiKey);
-      if (result.ok) {
-        testResult = {
-          ok: true,
-          message: `Connected to project #${result.projectId}${
-            result.userFullName ? ` (${result.userFullName})` : ""
-          }`,
-          projectId: result.projectId,
-          scopes: result.scopes,
-        };
-        // Update global auth store so the rest of the app reacts immediately.
-        auth.setAuth({
-          client: createTolgeeClient(form.apiUrl, form.apiKey),
-          apiUrl: form.apiUrl,
-          apiKey: form.apiKey,
-          projectId: result.projectId,
-          scopes: result.scopes,
+      if (!result.ok) {
+        errorMsg = errorToHuman(result.error);
+        return;
+      }
+      const client = createTolgeeClient(form.apiUrl, form.apiKey);
+      auth.setAuth({
+        client,
+        apiUrl: form.apiUrl,
+        apiKey: form.apiKey,
+        projectId: result.projectId,
+        scopes: result.scopes,
+      });
+      send({ type: "persist-project-id", projectId: result.projectId });
+      // Populate the language + namespace pickers now — a manual connect
+      // (onboarding, or Settings on a fresh document) otherwise leaves the
+      // "Current language" / namespace selects empty, since the startup
+      // bootstrap is the only other place that hydrates them. Best-effort.
+      void hydratePickers(client);
+      // Fetch the project name (and feature flags) so we can show a friendly
+      // "<project> was successfully connected" with a link to it.
+      try {
+        const meta = await getProjectMeta(
+          form.apiUrl,
+          form.apiKey,
+          result.projectId,
+        );
+        auth.setProjectFeatures({
+          branchingEnabled: meta.branchingEnabled,
+          namespacesEnabled: meta.namespacesFeaturesEnabled,
+          projectName: meta.name,
         });
-        // Persist projectId on the document so the dev-mode inspect panel can
-        // build project-aware Tolgee deep-links without re-validating the key.
-        send({ type: "persist-project-id", projectId: result.projectId });
-      } else {
-        testResult = {
-          ok: false,
-          message: errorToHuman(result.error),
-        };
+        // Load branches only when the project uses branching, so the setup can
+        // pre-fill the default branch (main) instead of leaving it empty.
+        if (meta.branchingEnabled) void hydrateBranches(client);
+      } catch {
+        auth.setProjectFeatures({
+          branchingEnabled: false,
+          namespacesEnabled: false,
+          projectName: `Project #${result.projectId}`,
+        });
       }
     } catch (e) {
-      testResult = {
-        ok: false,
-        message: e instanceof Error ? e.message : String(e),
-      };
+      errorMsg = e instanceof Error ? e.message : String(e);
     } finally {
-      testing = false;
+      connecting = false;
     }
   }
 
   function disconnect(): void {
     auth.clear();
     form.apiKey = "";
-    testResult = null;
-    send({ type: "save-config", config: { apiKey: "" } });
+    errorMsg = null;
+    if (persistDisconnect) send({ type: "save-config", config: { apiKey: "" } });
+  }
+
+  function openProject(): void {
+    if (projectLink) send({ type: "open-external", url: projectLink });
   }
 
   function errorToHuman(key: string): string {
@@ -107,7 +133,7 @@
       case "auth.invalid_api_key":
         return "Invalid API key.";
       case "auth.request_failed":
-        return "Request failed. Please check the API URL.";
+        return "Request failed. Please check the Tolgee URL.";
       case "auth.missing_project_id":
         return "API key is not bound to a project.";
       case "auth.network_error":
@@ -118,9 +144,12 @@
   }
 </script>
 
-<div class="space-y-3">
+<section class="space-y-2.5">
+  <h2 class="text-xs font-semibold uppercase tracking-wide text-primary">
+    Connection
+  </h2>
   <div class="space-y-1">
-    <Label for="settings-api-url">API URL</Label>
+    <Label for="settings-api-url">Tolgee URL</Label>
     <Input
       id="settings-api-url"
       type="url"
@@ -137,68 +166,73 @@
   </div>
 
   <div class="space-y-1">
-    <Label for="settings-api-key">API Key</Label>
+    <Label for="settings-api-key">Tolgee Project API key</Label>
     <div class="flex items-center gap-1">
       <Input
         id="settings-api-key"
         type={showKey ? "text" : "password"}
-        placeholder="tgpat_..."
+        placeholder="tgpak_..."
         bind:value={form.apiKey}
         class="flex-1"
       />
-      <button
-        type="button"
+      <IconButton
+        size="md"
         onclick={() => (showKey = !showKey)}
-        class="h-7 w-7 inline-flex items-center justify-center rounded text-text-secondary hover:bg-(--figma-color-bg-hover)"
         aria-label={showKey ? "Hide API key" : "Show API key"}
       >
         {#if showKey}
-          <EyeOff size={14} />
+          <EyeOff size={ICON.action} />
         {:else}
-          <Eye size={14} />
+          <Eye size={ICON.action} />
         {/if}
-      </button>
+      </IconButton>
     </div>
   </div>
 
-  <div class="flex items-center gap-2">
+  {#if auth.value.authenticated}
+    <!-- Connected: a secondary/teal state message (connected = teal, our state
+         colour), project name links straight to Tolgee. -->
+    <Message variant="secondary">
+      <div class="flex items-center justify-between gap-2">
+        <span class="flex min-w-0 items-center gap-1">
+          <!-- Project name truncates (full name in a tooltip via TruncatedText);
+               the suffix stays. Always-underlined secondary-dark link → reads as
+               the actionable "open project" link, distinct from the app's other
+               links (which only underline on hover). -->
+          <TruncatedText
+            text={auth.value.projectName ?? "Project"}
+            onclick={openProject}
+            class="font-semibold text-secondary-dark underline underline-offset-2 transition-opacity hover:opacity-80"
+          />
+          <span class="shrink-0">was successfully connected</span>
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          class="bg-bg"
+          onclick={disconnect}
+        >
+          Disconnect
+        </Button>
+      </div>
+    </Message>
+  {:else}
     <Button
-      variant="secondary"
-      size="sm"
-      onclick={testConnection}
-      disabled={testing || !form.apiUrl || !form.apiKey}
+      onclick={connect}
+      disabled={connecting || !form.apiUrl || !form.apiKey}
     >
-      {testing ? "Testing…" : "Test Connection"}
+      {connecting ? "Connecting…" : "Connect"}
     </Button>
-    {#if auth.value.authenticated}
-      <Button variant="ghost" size="sm" onclick={disconnect}>Disconnect</Button>
-    {/if}
-  </div>
+  {/if}
 
-  {#if testResult}
-    <div
-      class={testResult.ok
-        ? "flex items-start gap-2 rounded border border-green-300 bg-green-50 p-2 text-xs text-green-900"
-        : "flex items-start gap-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-900"}
-    >
-      {#if testResult.ok}
-        <CheckCircle2 size={14} class="mt-0.5 shrink-0" />
-      {:else}
-        <AlertTriangle size={14} class="mt-0.5 shrink-0" />
-      {/if}
-      <span>{testResult.message}</span>
-    </div>
+  {#if errorMsg}
+    <Message variant="error">{errorMsg}</Message>
   {/if}
 
   {#if missingPullScope}
-    <div
-      class="flex items-start gap-2 rounded border border-yellow-300 bg-yellow-50 p-2 text-xs text-yellow-900"
-    >
-      <AlertTriangle size={14} class="mt-0.5 shrink-0" />
-      <span>
-        API key is missing required scope:
-        <code>{REQUIRED_SCOPES.pull.join(", ")}</code>
-      </span>
-    </div>
+    <Message variant="error">
+      API key is missing required scope:
+      <code>{REQUIRED_SCOPES.pull.join(", ")}</code>
+    </Message>
   {/if}
-</div>
+</section>

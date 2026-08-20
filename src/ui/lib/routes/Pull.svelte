@@ -3,14 +3,20 @@
   import { appState } from "$ui/lib/stores/app.svelte";
   import { auth } from "$ui/lib/stores/auth.svelte";
   import { nextCorrelationId, on, send } from "$ui/lib/bus";
-  import { Button } from "$ui/lib/components/ui";
+  import { createIdleTimeout, type RequestWatchdog } from "$ui/lib/busRequest";
+  import { Button, ProgressBar } from "$ui/lib/components/ui";
+  import ViewHeader from "$ui/lib/components/domain/ViewHeader.svelte";
+  import ViewFooter from "$ui/lib/components/domain/ViewFooter.svelte";
   import PullSummary from "$ui/lib/components/domain/PullSummary.svelte";
-  import PullProgress from "$ui/lib/components/domain/PullProgress.svelte";
   import { fetchAllTranslations } from "$ui/lib/api/pull";
   import { requestPageConnectedNodes } from "$ui/lib/api/pageNodes";
-  import { pullDiff, formatNodeText } from "$ui/lib/logic/pullDiff";
+  import { pullDiff, buildApplyUpdates, skippedRenderMessage } from "$ui/lib/logic/pullDiff";
+  import { namespacedKeyLabel } from "$ui/lib/logic/namespaces";
+  import { settleQuery, type QueryOutcome } from "$ui/lib/logic/queryResult";
 
   type Diff = ReturnType<typeof pullDiff>;
+  type PageNodes = Awaited<ReturnType<typeof requestPageConnectedNodes>>;
+  type Translations = Awaited<ReturnType<typeof fetchAllTranslations>>;
 
   // Derive the requested language from the current route. We fall back to the
   // config language so the route still works when navigated to without `lang`
@@ -23,7 +29,6 @@
       : (appState.value.config?.language ?? ""),
   );
 
-  const namespace = $derived(appState.value.config?.namespace ?? "");
   // Only forward `branch` when branching is enabled; the API rejects with
   // feature_not_enabled_for_project otherwise.
   const branch = $derived(
@@ -34,53 +39,156 @@
     loaded: 0,
     total: null,
   });
+  // Progress for the page-wide connected-nodes scan (query 1). Only populated
+  // when the main thread actually sends `page-connected-nodes-progress`
+  // (pages with >100 connected nodes) — see `pageNodes.ts`.
+  let pageScanProgress = $state<{ done: number; total: number } | null>(null);
   let applying = $state(false);
   let applyError = $state<string | null>(null);
   let applyCorrelationId = $state<string | null>(null);
+  // Progress for an in-flight `apply-translations` write. Seeded with the
+  // known total as soon as the write starts (unlike `pageScanProgress`, which
+  // starts `null` because the total isn't known until the scan begins) so the
+  // bar shows `0/total` immediately instead of a misleading `N/N`.
+  let applyProgress = $state<{ done: number; total: number } | null>(null);
+  let pendingApplyCount = 0;
+  let pendingSkippedCount = 0;
+  // Not `$state` — it's a plain plumbing handle, never read from the
+  // template. The main thread reports progress via
+  // `apply-translations-progress` for large writes (>100 nodes — see
+  // `selection.ts`), and each message touches this watchdog, so it's a TRUE
+  // idle timeout now: a big-but-alive write keeps resetting the clock. 5
+  // minutes (not 30s) because each update is a real canvas mutation (font
+  // load + relayout) and a large diff can cover thousands of nodes.
+  let applyWatchdog: RequestWatchdog | null = null;
+  const APPLY_TRANSLATIONS_TIMEOUT_MS = 5 * 60_000;
 
   const qc = useQueryClient();
+
+  // SCOPE — matches the original plugin: pull the user's SELECTION when there
+  // is one (so changing the language affects ONLY the selected screen/frame),
+  // and fall back to the whole page only when nothing is selected. `getConnected
+  // Nodes({ ignoreSelection: false })` did exactly this: `selection.length > 0 ?
+  // currentPage.selection : currentPage.children`.
+  const hasSelection = $derived(appState.value.hasUserSelection);
+  // The already-scanned selection, narrowed to connected keys — no main-thread
+  // round-trip needed, unlike the page scan.
+  const selectionNodes = $derived(
+    appState.value.selectedNodes.filter((n) => n.connected && n.key),
+  );
 
   // Query 1: page-wide connected text nodes. Re-fetched when the user
   // navigates back into Pull, but cached across the conflict-resolution
   // round-trip so we don't bug the main thread for each render.
+  // Both queries resolve with an OUTCOME instead of rejecting — see
+  // `settleQuery`: the svelte-query runes adapter doesn't reliably surface a
+  // query's terminal error, which used to hang the Pull loader forever on any
+  // API failure. The view derives its error/diff state from `.data` below.
   const pageNodesQuery = createQuery(() => ({
     queryKey: ["page-connected-nodes"],
-    queryFn: () => requestPageConnectedNodes(),
-    enabled: Boolean(language) && auth.value.authenticated,
+    queryFn: (): Promise<QueryOutcome<PageNodes>> =>
+      settleQuery(
+        () => {
+          pageScanProgress = null;
+          return requestPageConnectedNodes(undefined, (done, total) => {
+            pageScanProgress = { done, total };
+          });
+        },
+        { toMessage: (err) => formatQueryError(err) ?? "Cannot scan the page." },
+      ),
+    // Only scan the whole page when nothing is selected — with a selection the
+    // scope is `selectionNodes`, already in hand.
+    enabled: Boolean(language) && auth.value.authenticated && !hasSelection,
     staleTime: 5 * 1000,
   }));
 
-  // Query 2: remote translations. Cached per (language, namespace, branch).
-  // The signal propagates to fetch — switching language mid-load cancels the
-  // in-flight request via openapi-fetch.
+  // Unwrapped page nodes ([] on failure, so downstream deriveds stay array-shaped).
+  const pageNodesOutcome = $derived(pageNodesQuery.data ?? null);
+  const pageNodes = $derived(pageNodesOutcome?.ok ? pageNodesOutcome.value : []);
+
+  // The connected nodes this pull acts on: the selection, or the whole page.
+  const scopeNodes = $derived(hasSelection ? selectionNodes : pageNodes);
+  // Ready to diff: the selection is always ready; the page scan must have run.
+  const scopeReady = $derived(hasSelection ? true : (pageNodesOutcome?.ok ?? false));
+
+  // The scope's connected key names — query 2 filters the server fetch down to
+  // exactly these instead of paginating the whole project. Sorted + joined
+  // into a stable string so svelte-query's cache key doesn't churn on every
+  // re-render (same trick as Push.svelte's `keyFilterCacheKey`).
+  const connectedKeyNames = $derived(
+    Array.from(
+      new Set(
+        scopeNodes
+          .map((n) => n.key)
+          .filter((k): k is string => Boolean(k)),
+      ),
+    ).sort(),
+  );
+  const keyFilterCacheKey = $derived(connectedKeyNames.join(","));
+
+  // Query 2: remote translations, filtered to the page's connected keys.
+  // Cached per (language, branch, key set). The signal propagates to fetch —
+  // switching language mid-load cancels the in-flight request via
+  // openapi-fetch. Depends on query 1's result (`pageNodesQuery.data`) being
+  // ready — trading the old "both queries run in parallel" for "only fetch
+  // the keys we actually need", which matters far more on large projects
+  // (was: full project pagination regardless of how few keys the page uses).
+  //
+  // No `namespaces`/`filterNamespace` needed: each node is matched to its
+  // remote key by its OWN `ns` in `pullDiff`, and the key-name filter already
+  // scopes the fetch tightly.
   const translationsQuery = createQuery(() => ({
-    queryKey: ["translations", language, namespace, branch],
-    queryFn: async ({ signal }) => {
-      progress = { loaded: 0, total: null };
-      const client = auth.value.client;
-      if (!client) throw new Error("Not connected to Tolgee.");
-      return fetchAllTranslations(client, {
-        languages: [language],
-        namespaces: namespace ? [namespace] : undefined,
-        branch: branch || undefined,
-        signal,
-        onProgress: (loaded, total) => {
-          progress = { loaded, total };
+    queryKey: ["translations", language, branch, keyFilterCacheKey],
+    queryFn: ({ signal }): Promise<QueryOutcome<Translations>> =>
+      settleQuery(
+        () => {
+          progress = { loaded: 0, total: null };
+          const client = auth.value.client;
+          if (!client) throw new Error("Not connected to Tolgee.");
+          return fetchAllTranslations(client, {
+            languages: [language],
+            branch: branch || undefined,
+            keyNames: connectedKeyNames,
+            signal,
+            onProgress: (loaded, total) => {
+              progress = { loaded, total };
+            },
+          });
         },
-      });
-    },
-    enabled: Boolean(language) && auth.value.authenticated,
+        { signal, toMessage: (err) => formatQueryError(err) ?? "Cannot load translations." },
+      ),
+    // Gated on the scope being READY — with a selection that's immediate; with
+    // none, the page scan must have succeeded first (its error wins the stage).
+    enabled: Boolean(language) && auth.value.authenticated && scopeReady,
     // Translations rarely change during a session and are expensive to fetch;
     // keep them fresh for 30s so toggling Pull off and back on is instant.
     staleTime: 30 * 1000,
   }));
 
-  // Pure derivation: diff is a function of the two queries, so we never have
-  // to imperatively recompute or worry about double-evaluation.
+  const translationsOutcome = $derived(translationsQuery.data ?? null);
+
+  // Pure derivation: diff over the SCOPE (selection or page) + remote translations.
   const diff = $derived<Diff | null>(
-    pageNodesQuery.data && translationsQuery.data
-      ? pullDiff(pageNodesQuery.data, translationsQuery.data, language)
+    scopeReady && translationsOutcome?.ok
+      ? pullDiff(
+          scopeNodes,
+          translationsOutcome.value,
+          language,
+          auth.value.namespacesEnabled,
+        )
       : null,
+  );
+
+  // A load failure from either query, surfaced from `.data` (not the adapter's
+  // `.error`). The page-scan error only counts when we actually scan (no
+  // selection); it runs first, so it takes precedence.
+  const loadError = $derived<string | null>(
+    (!hasSelection && pageNodesOutcome && !pageNodesOutcome.ok
+      ? pageNodesOutcome.error
+      : null) ??
+      (translationsOutcome && !translationsOutcome.ok
+        ? translationsOutcome.error
+        : null),
   );
 
   type Stage = "loading" | "diff" | "applying" | "done" | "error";
@@ -88,11 +196,11 @@
   const stage = $derived<Stage>(
     applying
       ? "applying"
-      : applyError || pageNodesQuery.error || translationsQuery.error
+      : applyError || loadError
         ? "error"
         : !language
           ? "error"
-          : pageNodesQuery.isPending || translationsQuery.isPending
+          : (!hasSelection && pageNodesQuery.isPending) || translationsQuery.isPending
             ? "loading"
             : "diff",
   );
@@ -102,10 +210,7 @@
       ? "No language selected."
       : !auth.value.client
         ? "Not connected to Tolgee."
-        : (applyError ??
-          formatQueryError(translationsQuery.error) ??
-          formatQueryError(pageNodesQuery.error) ??
-          null),
+        : (applyError ?? loadError ?? null),
   );
 
   function formatQueryError(err: unknown): string | null {
@@ -138,28 +243,6 @@
     void qc.invalidateQueries({ queryKey: ["translations"] });
   }
 
-  const pageNodes = $derived(pageNodesQuery.data ?? []);
-
-  // Build the apply payload from the current diff. We format each node's text
-  // up-front so the main thread never has to deal with ICU.
-  function buildApplyUpdates(d: Diff): Array<{
-    id: string;
-    text: string;
-    translation: string;
-    isPlural: boolean;
-  }> {
-    const lang = language;
-    return d.changedNodes.map(({ node, newText, isPlural }) => {
-      const { text } = formatNodeText(node, newText, lang);
-      return {
-        id: node.id,
-        text,
-        translation: newText,
-        isPlural,
-      };
-    });
-  }
-
   function applyChanges(): void {
     const d = diff;
     if (!d) return;
@@ -176,26 +259,68 @@
       return;
     }
 
+    // Nodes whose ICU won't render are held back rather than written: sending
+    // them would rewrite the canvas text they already have while recording the
+    // remote translation as applied, which makes them look up to date forever
+    // (see `buildApplyUpdates`).
+    const { updates, skipped } = buildApplyUpdates(d.changedNodes, language);
+    if (updates.length === 0) {
+      // Everything failed to render — report that instead of a hollow success.
+      applyError = skippedRenderMessage(skipped);
+      return;
+    }
+    pendingApplyCount = updates.length;
+    pendingSkippedCount = skipped.length;
+
     applying = true;
     applyError = null;
+    applyProgress = { done: 0, total: updates.length };
     const correlationId = nextCorrelationId();
     applyCorrelationId = correlationId;
-    send({
-      type: "apply-translations",
-      correlationId,
-      updates: buildApplyUpdates(d),
+    // Defensive: a previous request should already have cleared its own
+    // watchdog (success or timeout), but never leave two timers armed.
+    applyWatchdog?.clear();
+    applyWatchdog = createIdleTimeout(APPLY_TRANSLATIONS_TIMEOUT_MS, () => {
+      applying = false;
+      applyError = "Timed out waiting for the translations to apply.";
+      applyProgress = null;
+      // Invalidate the correlation id so that if a stale response for THIS
+      // request does eventually arrive, the effect below ignores it instead
+      // of resurrecting now-unrelated UI state.
+      applyCorrelationId = null;
+      applyWatchdog = null;
     });
+    send({ type: "apply-translations", correlationId, updates });
   }
+
+  // Live progress for an in-flight apply — same correlationId guard as the
+  // result listener below, so a stale/superseded request's progress can never
+  // resurrect UI state after it's been abandoned.
+  $effect(() => {
+    const off = on("apply-translations-progress", (msg) => {
+      if (msg.correlationId !== applyCorrelationId) return;
+      applyWatchdog?.touch();
+      applyProgress = { done: msg.done, total: msg.total };
+    });
+    return off;
+  });
 
   // Listen for the apply result and finalize the workflow.
   $effect(() => {
     const off = on("apply-translations-result", (msg) => {
       if (msg.correlationId !== applyCorrelationId) return;
+      applyWatchdog?.clear();
+      applyWatchdog = null;
       applying = false;
+      applyProgress = null;
       if (msg.ok) {
         send({
           type: "notify",
-          text: `Pulled ${diff?.changedNodes.length ?? 0} translation(s) for ${language}.`,
+          text: `Downloaded ${pendingApplyCount} translation(s) for ${language}.${
+            pendingSkippedCount > 0
+              ? ` ${pendingSkippedCount} skipped — could not be rendered.`
+              : ""
+          }`,
         });
         // Drop cached page nodes so a follow-up Pull starts from the
         // post-apply state instead of the pre-apply snapshot.
@@ -208,13 +333,6 @@
     });
     return off;
   });
-
-  // Whether to warn the user that pull is page-wide. Only relevant when the
-  // user actually picked a selection on the canvas — without a selection,
-  // page-wide behaviour matches what they expect.
-  const showPageWideHint = $derived(
-    appState.value.hasUserSelection && pageNodes.length > 0,
-  );
 
   // Cap the visible lists to keep the iframe responsive for large diffs.
   const VISIBLE_LIMIT = 50;
@@ -233,36 +351,32 @@
 
   function formatKeyLabel(ns: string | undefined, key: string): string {
     if (!key) return "(no key)";
-    return ns ? `${ns}.${key}` : key;
+    return namespacedKeyLabel(ns, key, auth.value.namespacesEnabled);
   }
 </script>
 
 <div class="flex h-full flex-col">
-  <header
-    class="flex items-center justify-between border-b border-border px-3 py-2"
-  >
-    <h1 class="text-sm font-semibold">
-      Pull translations
-      <span class="text-text-secondary font-normal">
-        ({language || "—"})
-      </span>
-    </h1>
-    <button
-      type="button"
-      onclick={goBack}
-      class="text-xs text-text-secondary hover:text-text"
-    >
-      Cancel
-    </button>
-  </header>
+  <ViewHeader
+    title="Download to Figma"
+    subtitle={`(${language || "—"})`}
+    onBack={goBack}
+  />
 
   <div class="flex-1 overflow-auto p-3 space-y-3">
     {#if stage === "loading"}
-      <PullProgress
-        loaded={progress.loaded}
-        total={progress.total}
-        label="Loading translations from Tolgee"
-      />
+      {#if pageNodesQuery.isPending}
+        <ProgressBar
+          loaded={pageScanProgress?.done ?? 0}
+          total={pageScanProgress?.total ?? null}
+          label="Scanning page for connected keys…"
+        />
+      {:else}
+        <ProgressBar
+          loaded={progress.loaded}
+          total={progress.total}
+          label="Loading translations from Tolgee"
+        />
+      {/if}
     {:else if stage === "error"}
       <div
         class="rounded border border-(--figma-color-border-danger) bg-(--figma-color-bg-danger-tertiary) p-2 text-xs text-(--figma-color-text-danger)"
@@ -271,24 +385,13 @@
       </div>
       <Button variant="secondary" onclick={retry}>Try again</Button>
     {:else if stage === "applying"}
-      <PullProgress
-        loaded={diff?.changedNodes.length ?? 0}
-        total={diff?.changedNodes.length ?? null}
+      <ProgressBar
+        loaded={applyProgress?.done ?? 0}
+        total={applyProgress?.total ?? diff?.changedNodes.length ?? null}
         label="Applying translations"
       />
     {:else if stage === "diff"}
       {#if diff}
-        {#if showPageWideHint}
-          <div
-            class="rounded border border-(--figma-color-border-brand) bg-(--figma-color-bg-brand-tertiary) p-2 text-[11px] text-text"
-            role="status"
-          >
-            Pull applies to every connected text on this page, not just your
-            selection. All {pageNodes.length} layer{pageNodes.length === 1
-              ? ""
-              : "s"} will be set to <strong>{language}</strong>.
-          </div>
-        {/if}
         <PullSummary
           changedCount={diff.changedNodes.length}
           missingCount={diff.missingKeys.length}
@@ -360,9 +463,7 @@
     {/if}
   </div>
 
-  <footer
-    class="flex items-center justify-end gap-2 border-t border-border p-2"
-  >
+  <ViewFooter>
     <Button variant="ghost" onclick={goBack}>Cancel</Button>
     {#if stage === "diff" && diff && diff.changedNodes.length > 0}
       <Button onclick={applyChanges}>
@@ -373,5 +474,5 @@
     {:else}
       <Button disabled>Apply</Button>
     {/if}
-  </footer>
+  </ViewFooter>
 </div>

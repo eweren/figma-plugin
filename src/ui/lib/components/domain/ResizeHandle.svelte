@@ -51,17 +51,23 @@
 
 <div
   role="none"
-  class="absolute bottom-0 right-0 z-50 h-4 w-4 cursor-se-resize"
+  class="group absolute bottom-0 right-0 z-50 h-4 w-4 cursor-se-resize"
   onmousedown={onMouseDown}
 >
+  <!-- Classic diagonal "grip" affordance: three short parallel strokes nested
+       into the corner. Subtle by default, fully opaque on hover. -->
   <svg
-    width="10"
-    height="10"
-    viewBox="0 0 10 10"
-    class="absolute bottom-1 right-1 text-text-secondary opacity-50"
-    fill="currentColor"
+    width="14"
+    height="14"
+    viewBox="0 0 14 14"
+    class="absolute bottom-0.5 right-0.5 text-icon-secondary transition-colors group-hover:text-text"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.5"
+    stroke-linecap="round"
   >
-    <rect x="6" y="0" width="2" height="10" rx="1" />
-    <rect x="0" y="6" width="10" height="2" rx="1" />
+    <path d="M13 4 L4 13" />
+    <path d="M13 8 L8 13" />
+    <path d="M13 12 L12 13" />
   </svg>
 </div>

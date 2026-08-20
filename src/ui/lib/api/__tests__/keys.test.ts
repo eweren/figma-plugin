@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { NodeInfo } from "$shared/types";
 import { createTolgeeClient } from "../client";
-import { searchKeys } from "../keys";
+import { connectInfoFromKey, searchKeys, type KeySearchResult } from "../keys";
 
 type FetchMock = ReturnType<typeof vi.fn>;
 
@@ -115,6 +116,34 @@ describe("searchKeys", () => {
     expect(calledUrl).toContain("size=10");
   });
 
+  it("passes the branch as a query param when set", async () => {
+    const mock = installFetchMock(async () => okResponse({ _embedded: { keys: [] } }));
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+
+    await searchKeys(client, "term", "en", 20, "feature-x");
+
+    const calledUrl: string =
+      mock.mock.calls[0]?.[0] instanceof Request
+        ? mock.mock.calls[0][0].url
+        : String(mock.mock.calls[0]?.[0] ?? "");
+
+    expect(calledUrl).toContain("branch=feature-x");
+  });
+
+  it("omits the branch param when empty (no-branching projects)", async () => {
+    const mock = installFetchMock(async () => okResponse({ _embedded: { keys: [] } }));
+    const client = createTolgeeClient("https://app.tolgee.io", "test-key");
+
+    await searchKeys(client, "term", "en", 20, "");
+
+    const calledUrl: string =
+      mock.mock.calls[0]?.[0] instanceof Request
+        ? mock.mock.calls[0][0].url
+        : String(mock.mock.calls[0]?.[0] ?? "");
+
+    expect(calledUrl).not.toContain("branch=");
+  });
+
   it("handles missing optional fields (namespace, description, translation)", async () => {
     const keys = [
       {
@@ -138,5 +167,95 @@ describe("searchKeys", () => {
       baseTranslation: undefined,
       plural: undefined,
     });
+  });
+});
+
+describe("connectInfoFromKey", () => {
+  function node(overrides: Partial<NodeInfo> = {}): NodeInfo {
+    return {
+      id: "1",
+      name: "Layer",
+      characters: "Figma text",
+      key: "",
+      ns: undefined,
+      connected: false,
+      isPlural: false,
+      ...overrides,
+    } as NodeInfo;
+  }
+
+  function result(overrides: Partial<KeySearchResult> = {}): KeySearchResult {
+    return { id: 1, name: "greeting", namespace: "common", ...overrides };
+  }
+
+  it("adopts the key's translation instead of keeping the Figma text", () => {
+    const info = connectInfoFromKey(
+      result({ translation: "Ahoj" }),
+      node({ characters: "Figma text" }),
+      "en",
+    );
+    expect(info.translation).toBe("Ahoj");
+    expect(info).toMatchObject({
+      key: "greeting",
+      ns: "common",
+      connected: true,
+      isPlural: false,
+    });
+    expect(info.pluralParamValue).toBeUndefined();
+  });
+
+  it("falls back to the node's characters when the key has no translation yet", () => {
+    const info = connectInfoFromKey(
+      result({ translation: undefined, baseTranslation: undefined }),
+      node({ characters: "Figma text" }),
+      "en",
+    );
+    expect(info.translation).toBe("Figma text");
+  });
+
+  it("uses '' (not undefined) for a no-namespace key", () => {
+    const info = connectInfoFromKey(result({ namespace: null }), node(), "en");
+    expect(info.ns).toBe("");
+  });
+
+  it("infers the plural sample COUNT from the layer's current text", () => {
+    const icu = "{count, plural, one {# item} other {# items}}";
+    const info = connectInfoFromKey(
+      result({ plural: true, translation: icu }),
+      node({ characters: "5 items" }),
+      "en",
+    );
+    expect(info.isPlural).toBe(true);
+    expect(info.pluralParamValue).toBe("5");
+  });
+
+  it("infers the count from baseTranslation when the working-language translation is empty", () => {
+    const info = connectInfoFromKey(
+      result({
+        plural: true,
+        translation: undefined,
+        baseTranslation: "{n, plural, one {# item} other {# items}}",
+      }),
+      node({ characters: "10 items" }),
+      "en",
+    );
+    expect(info.pluralParamValue).toBe("10");
+  });
+
+  it("keeps a numeric stored count when the canvas can't be matched, else '1'", () => {
+    const icu = "{count, plural, one {# item} other {# items}}";
+    const withStored = connectInfoFromKey(
+      result({ plural: true, translation: icu }),
+      node({ characters: "no match", pluralParamValue: "7" }),
+      "en",
+    );
+    expect(withStored.pluralParamValue).toBe("7");
+
+    const bare = connectInfoFromKey(
+      result({ plural: true, translation: icu }),
+      node({ characters: "no match" }),
+      "en",
+    );
+    expect(bare.pluralParamValue).toBe("1");
   });
 });

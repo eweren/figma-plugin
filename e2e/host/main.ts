@@ -7,7 +7,7 @@
  *
  * This lets the UI bundle run unmodified — every HTTP call still hits the
  * real Tolgee platform started by `e2e/docker-compose.yml` — while we
- * inject selection / config / annotations behaviour from the test harness.
+ * inject selection / config behaviour from the test harness.
  *
  * Initial state is read from `?state=<URL-encoded JSON>` so tests can
  * construct deep-link URLs (mirroring the v1 `createShortcutUrl` pattern).
@@ -21,7 +21,7 @@ type HostState = {
   selectedNodes: NodeInfo[];
   hasUserSelection: boolean;
   editorType: "figma" | "dev";
-  annotationsEnabled: boolean;
+  pageName: string;
   route?: string;
 };
 
@@ -32,7 +32,7 @@ function defaultState(): HostState {
     selectedNodes: [],
     hasUserSelection: false,
     editorType: "figma",
-    annotationsEnabled: false,
+    pageName: "Page 1",
     route: undefined,
   };
 }
@@ -75,6 +75,18 @@ function applyNodeUpdates(
   if (s) Object.assign(s, patch);
 }
 
+/** Post-write snapshots for a write result, like the real main thread's
+ *  `setNodesData`/`applyTranslations` return values. */
+function collectUpdated(ids: string[]): NodeInfo[] {
+  const out: NodeInfo[] = [];
+  for (const id of ids) {
+    const n =
+      state.selectedNodes.find((x) => x.id === id) ?? state.allNodes.find((x) => x.id === id);
+    if (n) out.push({ ...n });
+  }
+  return out;
+}
+
 window.addEventListener("message", (event) => {
   const msg = event.data?.pluginMessage as UiToMain | undefined;
   if (!msg) return;
@@ -87,6 +99,7 @@ window.addEventListener("message", (event) => {
         selectedNodes: state.selectedNodes,
         hasUserSelection: state.hasUserSelection,
         editorType: state.editorType,
+        pageName: state.pageName,
         ...(state.route ? { initialRoute: state.route } : {}),
       });
       return;
@@ -97,7 +110,15 @@ window.addEventListener("message", (event) => {
       return;
     }
     case "save-config": {
-      state.config = { ...(state.config ?? {}), ...msg.config };
+      // Mirror the real main thread: every save stamps documentInfo/pageInfo
+      // (see main.ts). Without this the first-run onboarding gate would never
+      // clear after Save in tests.
+      state.config = {
+        ...(state.config ?? {}),
+        ...msg.config,
+        documentInfo: true,
+        pageInfo: true,
+      };
       send({ type: "config-changed", config: state.config });
       return;
     }
@@ -131,12 +152,15 @@ window.addEventListener("message", (event) => {
     }
     case "set-nodes-data": {
       for (const { id, info } of msg.nodes) applyNodeUpdates(id, info);
+      // Mirrors the real main thread: the result carries fresh snapshots of
+      // just the written nodes and there is NO selection re-emit — the UI
+      // patches its list in place from `nodes`.
       send({
         type: "nodes-set-result",
         correlationId: msg.correlationId,
         ok: true,
+        nodes: collectUpdated(msg.nodes.map((n) => n.id)),
       });
-      emitSelectionChanged();
       return;
     }
     case "apply-translations": {
@@ -159,17 +183,19 @@ window.addEventListener("message", (event) => {
         correlationId: msg.correlationId,
         ok: true,
         errors: [],
+        nodes: collectUpdated(msg.updates.map((u) => u.id)),
       });
-      emitSelectionChanged();
       return;
     }
     case "request-screenshots": {
       // Stub: no real screenshots in the host shim. Pull/push flows that
-      // upload screenshots will simply skip them.
+      // upload screenshots will simply skip them. Mirrors the streamed
+      // protocol: zero frames, immediate terminal marker.
       send({
-        type: "screenshots-result",
+        type: "screenshots-done",
         correlationId: msg.correlationId,
-        screenshots: [],
+        total: 0,
+        failed: 0,
       });
       return;
     }
@@ -181,33 +207,26 @@ window.addEventListener("message", (event) => {
       // postMessage from the page level if needed.
       return;
     }
-    case "sync-annotations": {
-      send({
-        type: "annotation-sync-result",
-        correlationId: msg.correlationId,
-        updated: 0,
-      });
-      return;
-    }
-    case "toggle-annotations": {
-      state.annotationsEnabled = msg.enabled;
-      return;
-    }
-    case "get-annotations-state": {
-      send({
-        type: "annotations-state",
-        correlationId: msg.correlationId,
-        enabled: state.annotationsEnabled,
-        available: state.editorType !== "dev",
-      });
-      return;
-    }
     case "create-copy": {
+      // No pages → the UI's apply phase is a no-op (mirrors an empty page).
       send({
         type: "create-copy-result",
         correlationId: msg.correlationId,
         ok: true,
         createdPageIds: [],
+        pages: [],
+      });
+      return;
+    }
+    case "request-copy-staleness": {
+      // No staleness by default — power-tests can push a different result
+      // via `window.__e2e.send(...)` if a spec needs to exercise the banner.
+      send({
+        type: "copy-staleness-result",
+        correlationId: msg.correlationId,
+        ok: true,
+        missingCount: 0,
+        removedCount: 0,
       });
       return;
     }

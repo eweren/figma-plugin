@@ -1,4 +1,5 @@
 export type ProjectMeta = {
+  name: string;
   namespacesFeaturesEnabled: boolean;
   branchingEnabled: boolean;
 };
@@ -32,11 +33,13 @@ export async function getProjectMeta(
   }
 
   const body = (await response.json()) as {
+    name?: string;
     useNamespaces?: boolean;
     useBranching?: boolean;
   };
 
   return {
+    name: body.name ?? `Project #${projectId}`,
     namespacesFeaturesEnabled: Boolean(body.useNamespaces),
     branchingEnabled: Boolean(body.useBranching),
   };

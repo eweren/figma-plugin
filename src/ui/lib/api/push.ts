@@ -4,6 +4,7 @@ import type { components } from "$ui/lib/api/schema.generated";
 export type SingleStepImportResolvableItemRequest =
   components["schemas"]["SingleStepImportResolvableItemRequest"];
 export type SimpleImportConflictResult = components["schemas"]["SimpleImportConflictResult"];
+export type RelatedKeyDto = components["schemas"]["RelatedKeyDto"];
 
 export type PushOptions = {
   branch?: string;
@@ -68,4 +69,30 @@ export async function pushKeys(
   return {
     unresolvedConflicts: raw.unresolvedConflicts ?? [],
   };
+}
+
+/**
+ * Registers "big meta" — the related keys that appear together (in order) in a
+ * screenshot — via `POST /v2/projects/big-meta`. This feeds Tolgee's in-context
+ * translation suggestions.
+ *
+ * Branch handling deliberately differs from the older published plugin, which
+ * passed the branch as a `?branch=` query param on this endpoint. The current
+ * Tolgee API dropped that query param and instead carries the branch PER KEY on
+ * `RelatedKeyDto.branch`. Verified against the live app.tolgee.io OpenAPI (and
+ * mirrored in our generated schema): the big-meta operation has NO parameters,
+ * and `RelatedKeyDto` gained a `branch` field. A query param here would be
+ * ignored by the current server and silently drop the branch, so the caller
+ * (`buildRelatedKeys`) sets it on each related key instead.
+ */
+export async function storeBigMeta(
+  client: TolgeeClient,
+  relatedKeysInOrder: RelatedKeyDto[],
+): Promise<void> {
+  const { error, response } = await client.POST("/v2/projects/big-meta", {
+    body: { relatedKeysInOrder },
+  });
+  if (error) {
+    throw new Error(`Storing big-meta failed (status ${response?.status ?? "?"})`);
+  }
 }

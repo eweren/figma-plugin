@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { SIGNED_IN, createTestNode, hostUrl } from "../host/fixtures";
 
+// The mode radios are `sr-only` (visually hidden), so Playwright cannot
+// click them — click the visible label text inside the <label> instead.
 const IFRAME_SELECTOR = '[data-testid="plugin-iframe"]';
 
 async function openCreateCopy(page: Page) {
@@ -19,7 +21,7 @@ async function openCreateCopy(page: Page) {
   );
 
   const ui = page.frameLocator(IFRAME_SELECTOR);
-  await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+  await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
   await ui.getByRole("button", { name: "Create page copy" }).click();
   await expect(ui.getByRole("heading", { name: "Create copy" })).toBeVisible({
     timeout: 5_000,
@@ -45,7 +47,7 @@ test.describe("CreateCopy view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     await ui.getByRole("button", { name: "Create page copy" }).click();
 
@@ -70,17 +72,21 @@ test.describe("CreateCopy view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     await ui.getByRole("button", { name: "Create page copy" }).click();
     await expect(ui.getByRole("heading", { name: "Create copy" })).toBeVisible({
       timeout: 5_000,
     });
 
-    // The view has two mode radio buttons: keys and languages
-    await expect(ui.locator('input[type="radio"][value="keys"]')).toBeVisible();
+    // The view has two mode radio buttons: keys and languages. The native
+    // <input type="radio"> is visually replaced by a custom circle+dot (see
+    // CreateCopy.svelte) but keeps its radio role/name for a11y + Playwright.
     await expect(
-      ui.locator('input[type="radio"][value="languages"]'),
+      ui.getByText("Create page with key names"),
+    ).toBeVisible();
+    await expect(
+      ui.getByText("Create page per language"),
     ).toBeVisible();
   });
 
@@ -100,7 +106,7 @@ test.describe("CreateCopy view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     await ui.getByRole("button", { name: "Create page copy" }).click();
     await expect(ui.getByRole("heading", { name: "Create copy" })).toBeVisible({
@@ -109,7 +115,7 @@ test.describe("CreateCopy view", () => {
 
     await ui.getByRole("button", { name: "Back" }).click();
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
   });
 
   test("Create button is enabled in keys mode by default", async ({ page }) => {
@@ -125,10 +131,14 @@ test.describe("CreateCopy view", () => {
   }) => {
     const ui = await openCreateCopy(page);
 
-    await ui.locator('input[type="radio"][value="languages"]').click();
+    await ui.getByText("Create page per language").click();
 
-    // Languages are fetched from Tolgee; checkboxes appear once the list loads.
-    await expect(ui.locator('input[type="checkbox"]').first()).toBeVisible({
+    // Languages are fetched from Tolgee; checkboxes appear once the list
+    // loads. CheckboxField renders a <button> (visual box + label text), not
+    // a native <input type="checkbox"> — matched by its "Name (tag)" label.
+    await expect(
+      ui.getByRole("button", { name: /\([\w-]+\)$/ }).first(),
+    ).toBeVisible({
       timeout: 20_000,
     });
   });
@@ -138,14 +148,14 @@ test.describe("CreateCopy view", () => {
   }) => {
     const ui = await openCreateCopy(page);
 
-    await ui.locator('input[type="radio"][value="languages"]').click();
+    await ui.getByText("Create page per language").click();
 
     const createButton = ui.getByRole("button", { name: "Create" });
     // canSubmit = mode === "keys" || selectedLangs.length > 0 → false in languages mode with nothing selected.
     await expect(createButton).toBeDisabled();
 
     // Wait for language checkboxes to load, then select one.
-    const firstCheckbox = ui.locator('input[type="checkbox"]').first();
+    const firstCheckbox = ui.getByRole("button", { name: /\([\w-]+\)$/ }).first();
     await expect(firstCheckbox).toBeVisible({ timeout: 20_000 });
     await firstCheckbox.click();
 
