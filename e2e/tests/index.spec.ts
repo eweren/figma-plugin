@@ -26,7 +26,7 @@ test.describe("Index view", () => {
     // Wait for the Index view to bootstrap. The auth bootstrap is async
     // (validateApiKey + project meta + languages), so we anchor on the
     // post-auth selection counter rather than racing it.
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     // The connected key is rendered verbatim. We avoid asserting on the
     // English translation text because the Pull-on-init flow may overwrite
@@ -48,7 +48,7 @@ test.describe("Index view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     // The unconnected row shows the raw text as a clickable preview and a
     // key-name input next to it.

@@ -27,7 +27,7 @@ test.describe("StringDetails view", () => {
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     // The characters button has `title={node.characters}` in NodeListItem.
     await ui.getByTitle("On the road").click();
@@ -67,7 +67,7 @@ test.describe("StringDetails view", () => {
     await ui.getByRole("button", { name: "Save" }).click();
 
     // After saving, the UI navigates back to the Index view.
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
   });
 
   test("cancel returns to Index", async ({ page }) => {
@@ -75,7 +75,7 @@ test.describe("StringDetails view", () => {
 
     await ui.locator("footer").getByRole("button", { name: "Cancel" }).click();
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
   });
 
   test("plural toggle reveals plural parameter input and plural editor", async ({
@@ -144,7 +144,7 @@ test.describe("StringDetails view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
     await ui.getByTitle("On the road").click();
     await expect(ui.getByText("String details")).toBeVisible({ timeout: 5_000 });
 
@@ -195,7 +195,7 @@ test.describe("StringDetails view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
     await ui.getByTitle("On the road").click();
     await expect(ui.getByText("String details")).toBeVisible({ timeout: 5_000 });
 

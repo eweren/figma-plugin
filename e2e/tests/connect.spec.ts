@@ -17,12 +17,12 @@ test.describe("Connect view", () => {
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     // Click the Link2 icon button to open the Connect view.
-    await ui.getByTitle("Connect to existing key").click();
+    await ui.getByRole("button", { name: "Connect to key" }).click();
 
-    await expect(ui.getByText("Connect to Tolgee")).toBeVisible({
+    await expect(ui.getByText("Connect to existing key")).toBeVisible({
       timeout: 5_000,
     });
     await expect(ui.locator("#connect-key")).toBeVisible();
@@ -41,9 +41,9 @@ test.describe("Connect view", () => {
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
+    await ui.getByRole("button", { name: "Connect to key" }).click();
     await expect(ui.locator("#connect-key")).toBeVisible({ timeout: 5_000 });
 
     await ui.locator("#connect-key").fill("my-new-key");
@@ -51,7 +51,7 @@ test.describe("Connect view", () => {
     await ui.getByRole("button", { name: "Connect" }).click();
 
     // After connecting, the UI navigates back to the Index view.
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
     // The list-item row must show the connected state.
     await expect(ui.getByText("connected")).toBeVisible();
     await expect(ui.getByText("my-new-key")).toBeVisible();
@@ -70,17 +70,17 @@ test.describe("Connect view", () => {
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
-    await expect(ui.getByText("Connect to Tolgee")).toBeVisible({
+    await ui.getByRole("button", { name: "Connect to key" }).click();
+    await expect(ui.getByText("Connect to existing key")).toBeVisible({
       timeout: 5_000,
     });
 
     // The footer "Cancel" button — scope to footer to avoid matching the header Cancel.
     await ui.locator("footer").getByRole("button", { name: "Cancel" }).click();
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
   });
 
   test("shows Remove connection for connected node", async ({ page }) => {
@@ -100,9 +100,9 @@ test.describe("Connect view", () => {
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
+    await ui.getByRole("button", { name: "Connect to key" }).click();
 
     await expect(
       ui.getByRole("button", { name: "Remove connection" }),
@@ -123,9 +123,9 @@ test.describe("Connect view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
+    await ui.getByRole("button", { name: "Connect to key" }).click();
     await expect(ui.locator("#connect-key")).toBeVisible({ timeout: 5_000 });
 
     // Key field starts empty — Connect should be disabled.
@@ -152,9 +152,9 @@ test.describe("Connect view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
+    await ui.getByRole("button", { name: "Connect to key" }).click();
     await expect(ui.getByText("Plural message (ICU)")).toBeVisible({
       timeout: 5_000,
     });
@@ -185,9 +185,9 @@ test.describe("Connect view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
+    await ui.getByRole("button", { name: "Connect to key" }).click();
     await expect(
       ui.getByRole("button", { name: "Remove connection" }),
     ).toBeVisible({ timeout: 5_000 });
@@ -195,7 +195,7 @@ test.describe("Connect view", () => {
     await ui.getByRole("button", { name: "Remove connection" }).click();
 
     // After removing, the view returns to Index.
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
     // The node row must show the inline key input, not the connected badge.
     await expect(ui.locator('input[placeholder="Key name"]')).toBeVisible();
     await expect(ui.getByText("connected")).not.toBeVisible();
@@ -215,10 +215,10 @@ test.describe("Connect view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
-    await expect(ui.getByText("Connect to Tolgee")).toBeVisible({
+    await ui.getByRole("button", { name: "Connect to key" }).click();
+    await expect(ui.getByText("Connect to existing key")).toBeVisible({
       timeout: 5_000,
     });
 
@@ -247,10 +247,10 @@ test.describe("Connect view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
-    await expect(ui.getByText("Connect to Tolgee")).toBeVisible({
+    await ui.getByRole("button", { name: "Connect to key" }).click();
+    await expect(ui.getByText("Connect to existing key")).toBeVisible({
       timeout: 5_000,
     });
 
@@ -263,7 +263,7 @@ test.describe("Connect view", () => {
     await ui.getByRole("button", { name: "Connect" }).click();
 
     // The node row must now reflect the connected state.
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
     await expect(ui.getByText("connected")).toBeVisible();
     await expect(ui.getByText("on-the-road-title")).toBeVisible();
   });

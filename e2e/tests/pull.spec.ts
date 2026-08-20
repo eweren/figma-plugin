@@ -27,7 +27,7 @@ test.describe("Pull view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
     // Wait for auth bootstrap to complete
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Download/ }).click();
 
@@ -52,7 +52,7 @@ test.describe("Pull view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Download/ }).click();
 
@@ -92,7 +92,7 @@ test.describe("Pull view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Download/ }).click();
 
@@ -119,7 +119,7 @@ test.describe("Pull view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Download/ }).click();
     await expect(
@@ -130,7 +130,7 @@ test.describe("Pull view", () => {
     await ui.locator("header").getByRole("button", { name: "Cancel" }).click();
 
     // Should be back at the Index view
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
   });
 
   test("shows language in header", async ({ page }) => {
@@ -149,7 +149,7 @@ test.describe("Pull view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Download/ }).click();
 
@@ -184,7 +184,7 @@ test.describe("Pull view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Download/ }).click();
 
@@ -214,7 +214,7 @@ test.describe("Pull view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Download/ }).click();
 
@@ -253,7 +253,7 @@ test.describe("Pull view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Download/ }).click();
 
@@ -288,7 +288,7 @@ test.describe("Pull view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Download/ }).click();
 
@@ -297,6 +297,6 @@ test.describe("Pull view", () => {
     await applyBtn.click();
 
     // After applying, the view navigates back to Index.
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 10_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 10_000 });
   });
 });

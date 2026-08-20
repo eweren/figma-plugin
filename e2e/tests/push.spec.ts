@@ -22,7 +22,7 @@ test.describe("Push view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
     // Wait for auth bootstrap to complete
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Upload/ }).click();
 
@@ -49,7 +49,7 @@ test.describe("Push view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Upload/ }).click();
 
@@ -80,7 +80,7 @@ test.describe("Push view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Upload/ }).click();
 
@@ -108,7 +108,7 @@ test.describe("Push view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Upload/ }).click();
     await expect(
@@ -118,7 +118,7 @@ test.describe("Push view", () => {
     await ui.getByRole("button", { name: "Back" }).click();
 
     // Should be back at the Index view
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
   });
 
   test("Push to Tolgee button is enabled when new keys exist", async ({
@@ -141,7 +141,7 @@ test.describe("Push view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Upload/ }).click();
 
@@ -175,7 +175,7 @@ test.describe("Push view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Upload/ }).click();
 
@@ -203,7 +203,7 @@ test.describe("Push view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Upload/ }).click();
 
@@ -244,7 +244,7 @@ test.describe("Push view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Upload/ }).click();
 
@@ -277,7 +277,7 @@ test.describe("Push view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     await ui.getByRole("button", { name: /Upload/ }).click();
 

@@ -30,7 +30,7 @@ test.describe("Dev Mode", () => {
     await page.goto(bootUrl("dev"));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     // Upload (Push) stays — production keeps it in dev, it's metadata-only.
     await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible();
@@ -47,7 +47,7 @@ test.describe("Dev Mode", () => {
   }) => {
     await page.goto(bootUrl("dev"));
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     // Rows upgrade to their interactive form on hover.
     await ui.getByText("On the road").hover();
@@ -76,7 +76,7 @@ test.describe("Dev Mode", () => {
     await expect(
       ui.getByRole("heading", { name: "String details" }),
     ).not.toBeVisible();
-    await expect(ui.getByText("1 selected")).toBeVisible();
+    await expect(ui.getByText("1 string")).toBeVisible();
   });
 
   test("Copy key flashes the row's ⋮ trigger to a checkmark, then reverts", async ({
@@ -87,7 +87,7 @@ test.describe("Dev Mode", () => {
     // always-visible confirmation channel.
     await page.goto(bootUrl("dev"));
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     await ui.getByText("On the road").hover();
     const trigger = ui.getByRole("button", { name: "More actions" });
@@ -103,7 +103,7 @@ test.describe("Dev Mode", () => {
   test("design editor keeps everything (regression guard)", async ({ page }) => {
     await page.goto(bootUrl("figma"));
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible();
     await expect(ui.getByRole("button", { name: /Download/ })).toBeVisible();
@@ -160,7 +160,7 @@ test.describe("Dev Mode", () => {
       }),
     );
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     await ui.getByText("Loose text").hover();
     await ui.getByRole("button", { name: "More actions" }).click();

@@ -208,10 +208,10 @@ test.describe("Namespace feature — Connect view", () => {
     );
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
-    await expect(ui.getByText("Connect to Tolgee")).toBeVisible({
+    await ui.getByRole("button", { name: "Connect to key" }).click();
+    await expect(ui.getByText("Connect to existing key")).toBeVisible({
       timeout: 5_000,
     });
 
@@ -238,13 +238,13 @@ test.describe("Namespace feature — Connect view", () => {
     );
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
     // Use CSS attribute selector to bypass ARIA accessible-name computation:
     // the Link2 SVG contributes an accessible name from its internal <title>,
     // which makes getByTitle() miss the button. [title="..."] matches the raw attribute.
     await ui.locator('button[title="Connect to existing key"]').click();
-    await expect(ui.getByText("Connect to Tolgee")).toBeVisible({
+    await expect(ui.getByText("Connect to existing key")).toBeVisible({
       timeout: 5_000,
     });
 
@@ -265,9 +265,9 @@ test.describe("Namespace feature — Connect view", () => {
     );
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
+    await ui.getByRole("button", { name: "Connect to key" }).click();
     await expect(ui.locator("#connect-key")).toBeVisible({ timeout: 5_000 });
 
     await ui.locator("#connect-key").fill("my-namespaced-key");
@@ -275,7 +275,7 @@ test.describe("Namespace feature — Connect view", () => {
     await ui.getByRole("button", { name: "Connect" }).click();
 
     // After connecting, the Index view shows the key with its namespace prefix.
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
     await expect(ui.getByText("my-namespace.my-namespaced-key")).toBeVisible();
   });
 
@@ -292,9 +292,9 @@ test.describe("Namespace feature — Connect view", () => {
     );
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
+    await ui.getByRole("button", { name: "Connect to key" }).click();
     await expect(ui.locator("#connect-key")).toBeVisible({ timeout: 5_000 });
 
     // Leave ns empty (default state) and connect.
@@ -302,7 +302,7 @@ test.describe("Namespace feature — Connect view", () => {
     await ui.getByRole("button", { name: "Connect" }).click();
 
     // The node row shows only the key name (no "ns." prefix).
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
     await expect(ui.getByText("just-a-key")).toBeVisible();
   });
 });
@@ -321,10 +321,10 @@ test.describe("Namespace feature — key search results", () => {
     );
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
-    await expect(ui.getByText("Connect to Tolgee")).toBeVisible({
+    await ui.getByRole("button", { name: "Connect to key" }).click();
+    await expect(ui.getByText("Connect to existing key")).toBeVisible({
       timeout: 5_000,
     });
 
@@ -354,10 +354,10 @@ test.describe("Namespace feature — key search results", () => {
     );
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
-    await expect(ui.getByText("Connect to Tolgee")).toBeVisible({
+    await ui.getByRole("button", { name: "Connect to key" }).click();
+    await expect(ui.getByText("Connect to existing key")).toBeVisible({
       timeout: 5_000,
     });
 
@@ -395,10 +395,10 @@ test.describe("Namespace feature — key search results", () => {
     );
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByTitle("Connect to existing key").click();
-    await expect(ui.getByText("Connect to Tolgee")).toBeVisible({
+    await ui.getByRole("button", { name: "Connect to key" }).click();
+    await expect(ui.getByText("Connect to existing key")).toBeVisible({
       timeout: 5_000,
     });
 

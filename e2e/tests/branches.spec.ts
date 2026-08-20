@@ -23,6 +23,12 @@ function headerBranchSelect(ui: ReturnType<Page["frameLocator"]>) {
  *
  * - Patches GET /v2/projects/2 → useBranching: true
  * - Stubs  GET /v2/projects/branches → returns the supplied branch list
+ *
+ * Both intercepts are UNBOUNDED on purpose. They used to be `{ times: 1 }`,
+ * but the plugin polls the branch list (Index keeps it fresh), so the second
+ * and third calls fell through to the real API — which 400s on a project with
+ * branching disabled — and the empty result wiped the branch list the first
+ * call had just populated.
  */
 async function mockBranchingEnabled(
   page: Page,
@@ -31,37 +37,44 @@ async function mockBranchingEnabled(
   await page.route(
     (url) => url.pathname === "/v2/projects/2",
     async (route) => {
-      const real = await route.fetch();
-      const body = await real.json();
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ...body, useBranching: true }),
-      });
+      try {
+        const real = await route.fetch();
+        const body = await real.json();
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ...body, useBranching: true }),
+        });
+      } catch {
+        // The plugin polls this endpoint, so a request can still be in flight
+        // when the test ends — answering a closed page throws. Nothing to do.
+      }
     },
-    { times: 1 },
   );
 
   await page.route(
     (url) => url.pathname === "/v2/projects/branches",
     async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          _embedded: {
-            branches: branches.map((name, i) => ({ name, active: i === 0 })),
-          },
-          page: {
-            size: 20,
-            totalElements: branches.length,
-            totalPages: 1,
-            number: 0,
-          },
-        }),
-      });
+      try {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            _embedded: {
+              branches: branches.map((name, i) => ({ name, active: i === 0 })),
+            },
+            page: {
+              size: 20,
+              totalElements: branches.length,
+              totalPages: 1,
+              number: 0,
+            },
+          }),
+        });
+      } catch {
+        // Same as above: polled endpoint, request may outlive the test.
+      }
     },
-    { times: 1 },
   );
 }
 
@@ -85,7 +98,7 @@ test.describe("Branch feature — branching disabled", () => {
     await expect(headerBranchSelect(ui)).not.toBeVisible();
   });
 
-  test("language and namespace selects visible but no branch select when branching disabled", async ({
+  test("language select visible but no branch select when branching disabled", async ({
     page,
   }) => {
     await page.goto(hostUrl(SIGNED_IN));
@@ -102,12 +115,9 @@ test.describe("Branch feature — branching disabled", () => {
       .filter({ has: ui.locator("option[disabled]").filter({ hasText: "Language" }) });
     await expect(langSelect).toBeVisible();
 
-    // Namespace dropdown must be present (project has useNamespaces=true).
-    const nsSelect = ui
-      .locator("header")
-      .locator("select")
-      .filter({ has: ui.locator("option[disabled]").filter({ hasText: "Namespace" }) });
-    await expect(nsSelect).toBeVisible();
+    // No namespace assertion here any more: the header namespace select was
+    // removed in ba90c02 and the picker now lives on the rows and in the bulk
+    // "Set namespace" action. This test kept asserting the old UI.
 
     // Branch dropdown must NOT be present.
     await expect(headerBranchSelect(ui)).not.toBeVisible();

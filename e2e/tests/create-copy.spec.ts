@@ -19,7 +19,7 @@ async function openCreateCopy(page: Page) {
   );
 
   const ui = page.frameLocator(IFRAME_SELECTOR);
-  await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+  await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
   await ui.getByRole("button", { name: "Create page copy" }).click();
   await expect(ui.getByRole("heading", { name: "Create copy" })).toBeVisible({
     timeout: 5_000,
@@ -45,7 +45,7 @@ test.describe("CreateCopy view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     await ui.getByRole("button", { name: "Create page copy" }).click();
 
@@ -70,7 +70,7 @@ test.describe("CreateCopy view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     await ui.getByRole("button", { name: "Create page copy" }).click();
     await expect(ui.getByRole("heading", { name: "Create copy" })).toBeVisible({
@@ -104,7 +104,7 @@ test.describe("CreateCopy view", () => {
     );
 
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 60_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 60_000 });
 
     await ui.getByRole("button", { name: "Create page copy" }).click();
     await expect(ui.getByRole("heading", { name: "Create copy" })).toBeVisible({
@@ -113,7 +113,7 @@ test.describe("CreateCopy view", () => {
 
     await ui.getByRole("button", { name: "Back" }).click();
 
-    await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 5_000 });
+    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
   });
 
   test("Create button is enabled in keys mode by default", async ({ page }) => {
