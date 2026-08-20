@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { SIGNED_IN, createTestNode, hostUrl } from "../host/fixtures";
 
+// The mode radios are `sr-only` (visually hidden), so Playwright cannot
+// click them — click the visible label text inside the <label> instead.
 const IFRAME_SELECTOR = '[data-testid="plugin-iframe"]';
 
 async function openCreateCopy(page: Page) {
@@ -81,10 +83,10 @@ test.describe("CreateCopy view", () => {
     // <input type="radio"> is visually replaced by a custom circle+dot (see
     // CreateCopy.svelte) but keeps its radio role/name for a11y + Playwright.
     await expect(
-      ui.getByRole("radio", { name: "Create page with key names" }),
+      ui.getByText("Create page with key names"),
     ).toBeVisible();
     await expect(
-      ui.getByRole("radio", { name: "Create page per language" }),
+      ui.getByText("Create page per language"),
     ).toBeVisible();
   });
 
@@ -129,7 +131,7 @@ test.describe("CreateCopy view", () => {
   }) => {
     const ui = await openCreateCopy(page);
 
-    await ui.getByRole("radio", { name: "Create page per language" }).click();
+    await ui.getByText("Create page per language").click();
 
     // Languages are fetched from Tolgee; checkboxes appear once the list
     // loads. CheckboxField renders a <button> (visual box + label text), not
@@ -146,7 +148,7 @@ test.describe("CreateCopy view", () => {
   }) => {
     const ui = await openCreateCopy(page);
 
-    await ui.getByRole("radio", { name: "Create page per language" }).click();
+    await ui.getByText("Create page per language").click();
 
     const createButton = ui.getByRole("button", { name: "Create" });
     // canSubmit = mode === "keys" || selectedLangs.length > 0 → false in languages mode with nothing selected.

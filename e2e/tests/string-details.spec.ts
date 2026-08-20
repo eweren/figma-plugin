@@ -10,11 +10,13 @@ test.describe("StringDetails view", () => {
    * node and waits for the authenticated state, then opens StringDetails by
    * clicking the characters button.
    */
-  async function openStringDetails(page: Page) {
+  async function openStringDetails(page: Page, opts: { connected?: boolean } = {}) {
+    const connected = opts.connected ?? true;
     const node = createTestNode({
       text: "On the road",
-      key: "on-the-road-title",
-      connected: true,
+      // A connected key has its plural flag LOCKED (it is changed in Tolgee),
+      // so tests that toggle it must open an unconnected node.
+      ...(connected ? { key: "on-the-road-title", connected: true } : {}),
     });
 
     await page.goto(
@@ -84,16 +86,17 @@ test.describe("StringDetails view", () => {
   test("plural toggle reveals plural parameter input and plural editor", async ({
     page,
   }) => {
-    const ui = await openStringDetails(page);
+    // Unconnected: the Plural control is disabled for a connected key.
+    const ui = await openStringDetails(page, { connected: false });
 
-    // Plural parameter input is hidden before toggling.
-    await expect(ui.locator("#string-details-param")).not.toBeVisible();
+    // The plural editor is absent before toggling.
+    await expect(ui.locator(".plural-editor")).toHaveCount(0);
 
-    await ui.locator("#string-details-plural").click();
+    // A CheckboxField renders a <button> carrying the label, not an input with
+    // an id (`#string-details-plural` never existed).
+    await ui.getByRole("button", { name: "Plural" }).click();
 
-    // After toggle: plural parameter input and plural editor form appear.
-    await expect(ui.locator("#string-details-param")).toBeVisible();
-    await expect(ui.locator(".plural-editor")).toBeVisible();
+    await expect(ui.locator(".plural-editor")).toBeVisible({ timeout: 5_000 });
   });
 
   test("shows 'No node selected' when navigated without a node", async ({
@@ -159,7 +162,9 @@ test.describe("StringDetails view", () => {
     await selectOnHost(page, [nodeB]);
 
     await expect(ui.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({ timeout: 5_000 });
-    await ui.getByRole("button", { name: "Save" }).click();
+    // Scope to the dialog: the view's own footer Save is on screen too, so an
+    // unscoped lookup hits two buttons and trips strict mode.
+    await ui.getByRole("dialog").getByRole("button", { name: "Save" }).click();
 
     // Dialog closes; StringDetails follows the live selection to nodeB.
     await expect(ui.getByRole("heading", { name: "Unsaved changes" })).not.toBeVisible();
