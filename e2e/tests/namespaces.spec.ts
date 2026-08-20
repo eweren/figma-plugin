@@ -22,7 +22,7 @@ test.describe("Namespace feature — header dropdown", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -35,7 +35,7 @@ test.describe("Namespace feature — header dropdown", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -52,7 +52,7 @@ test.describe("Namespace feature — header dropdown", () => {
     await page.goto(hostUrl(configWithNs));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -66,7 +66,7 @@ test.describe("Namespace feature — header dropdown", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -104,7 +104,7 @@ test.describe("Namespace feature — header dropdown", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -120,7 +120,7 @@ test.describe("Namespace feature — Settings / Project tab", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -141,7 +141,7 @@ test.describe("Namespace feature — Settings / Project tab", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -180,7 +180,7 @@ test.describe("Namespace feature — Settings / Project tab", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 

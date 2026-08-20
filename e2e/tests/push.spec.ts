@@ -24,10 +24,10 @@ test.describe("Push view", () => {
     // Wait for auth bootstrap to complete
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Push/ }).click();
+    await ui.getByRole("button", { name: /Upload/ }).click();
 
     await expect(
-      ui.getByRole("heading", { name: /Push to Tolgee/ }),
+      ui.getByRole("heading", { name: /Upload to Tolgee/ }),
     ).toBeVisible({ timeout: 5_000 });
   });
 
@@ -51,7 +51,7 @@ test.describe("Push view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Push/ }).click();
+    await ui.getByRole("button", { name: /Upload/ }).click();
 
     // The "Computing changes…" card is shown while the diff query is pending.
     // It may resolve quickly, so we check that it either appeared or that the
@@ -82,7 +82,7 @@ test.describe("Push view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Push/ }).click();
+    await ui.getByRole("button", { name: /Upload/ }).click();
 
     // Wait for the diff summary grid (New / Changed / Unchanged labels)
     await expect(ui.getByText("New", { exact: true })).toBeVisible({
@@ -110,9 +110,9 @@ test.describe("Push view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Push/ }).click();
+    await ui.getByRole("button", { name: /Upload/ }).click();
     await expect(
-      ui.getByRole("heading", { name: /Push to Tolgee/ }),
+      ui.getByRole("heading", { name: /Upload to Tolgee/ }),
     ).toBeVisible({ timeout: 5_000 });
 
     await ui.getByRole("button", { name: "Back" }).click();
@@ -143,15 +143,15 @@ test.describe("Push view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Push/ }).click();
+    await ui.getByRole("button", { name: /Upload/ }).click();
 
     // Key is new — "New" label must appear in the diff summary.
     await expect(ui.getByText("New", { exact: true })).toBeVisible({
       timeout: 20_000,
     });
 
-    // The "Push to Tolgee" button must be enabled because there is a new key.
-    const pushButton = ui.getByRole("button", { name: "Push to Tolgee" });
+    // The "Upload to Tolgee" button must be enabled because there is a new key.
+    const pushButton = ui.getByRole("button", { name: "Upload to Tolgee" });
     await expect(pushButton).toBeEnabled({ timeout: 5_000 });
   });
 
@@ -177,14 +177,14 @@ test.describe("Push view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Push/ }).click();
+    await ui.getByRole("button", { name: /Upload/ }).click();
 
     // Wait for the diff summary to appear (diff query settled)
     await expect(ui.getByText("Unchanged")).toBeVisible({ timeout: 20_000 });
 
-    // The "Push to Tolgee" footer button should be disabled because there are
+    // The "Upload to Tolgee" footer button should be disabled because there are
     // no new or changed keys to push.
-    const pushButton = ui.getByRole("button", { name: "Push to Tolgee" });
+    const pushButton = ui.getByRole("button", { name: "Upload to Tolgee" });
     await expect(pushButton).toBeDisabled();
   });
 
@@ -205,7 +205,7 @@ test.describe("Push view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Push/ }).click();
+    await ui.getByRole("button", { name: /Upload/ }).click();
 
     // A disabled query still reports `isPending`, so without the empty-state
     // guard the "Computing changes…" card would spin forever. It must instead
@@ -214,8 +214,8 @@ test.describe("Push view", () => {
       timeout: 10_000,
     });
     await expect(ui.getByText("Computing changes…")).not.toBeVisible();
-    // The diff never runs → the footer "Push to Tolgee" action isn't rendered.
-    await expect(ui.getByRole("button", { name: "Push to Tolgee" })).not.toBeVisible();
+    // The diff never runs → the footer "Upload to Tolgee" action isn't rendered.
+    await expect(ui.getByRole("button", { name: "Upload to Tolgee" })).not.toBeVisible();
   });
 
   test("surfaces a diff error instead of an endless spinner when the fetch fails", async ({
@@ -246,7 +246,7 @@ test.describe("Push view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Push/ }).click();
+    await ui.getByRole("button", { name: /Upload/ }).click();
 
     // The diff query settles to an error banner …
     await expect(
@@ -255,7 +255,7 @@ test.describe("Push view", () => {
 
     // … and the loading card is gone (not stuck), with no push action offered.
     await expect(ui.getByText("Computing changes…")).not.toBeVisible();
-    await expect(ui.getByRole("button", { name: "Push to Tolgee" })).not.toBeVisible();
+    await expect(ui.getByRole("button", { name: "Upload to Tolgee" })).not.toBeVisible();
   });
 
   test("completes push successfully for new key", async ({ page }) => {
@@ -279,14 +279,14 @@ test.describe("Push view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Push/ }).click();
+    await ui.getByRole("button", { name: /Upload/ }).click();
 
     // Key is new — "New" label must appear in the diff summary.
     await expect(ui.getByText("New", { exact: true })).toBeVisible({
       timeout: 20_000,
     });
 
-    const pushButton = ui.getByRole("button", { name: "Push to Tolgee" });
+    const pushButton = ui.getByRole("button", { name: "Upload to Tolgee" });
     await expect(pushButton).toBeEnabled({ timeout: 5_000 });
     await pushButton.click();
 

@@ -72,7 +72,7 @@ test.describe("PageSetup view", () => {
       timeout: 5_000,
     });
     // Auth bootstrap may take a moment; await the push/pull buttons as proof.
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
   });

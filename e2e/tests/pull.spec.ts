@@ -29,10 +29,10 @@ test.describe("Pull view", () => {
     // Wait for auth bootstrap to complete
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Pull/ }).click();
+    await ui.getByRole("button", { name: /Download/ }).click();
 
     await expect(
-      ui.getByRole("heading", { name: /Pull translations/ }),
+      ui.getByRole("heading", { name: /Download to Figma/ }),
     ).toBeVisible({ timeout: 5_000 });
   });
 
@@ -54,7 +54,7 @@ test.describe("Pull view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Pull/ }).click();
+    await ui.getByRole("button", { name: /Download/ }).click();
 
     // Wait for either the diff result or the up-to-date message (Tolgee fetch
     // can take a few seconds). The loading state transitions away once both
@@ -94,7 +94,7 @@ test.describe("Pull view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Pull/ }).click();
+    await ui.getByRole("button", { name: /Download/ }).click();
 
     // Translation matches remote — must always show the up-to-date message.
     await expect(ui.getByText("Everything is up to date.")).toBeVisible({
@@ -121,9 +121,9 @@ test.describe("Pull view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Pull/ }).click();
+    await ui.getByRole("button", { name: /Download/ }).click();
     await expect(
-      ui.getByRole("heading", { name: /Pull translations/ }),
+      ui.getByRole("heading", { name: /Download to Figma/ }),
     ).toBeVisible({ timeout: 5_000 });
 
     // Click the Cancel button in the header (not the footer Cancel)
@@ -151,11 +151,11 @@ test.describe("Pull view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Pull/ }).click();
+    await ui.getByRole("button", { name: /Download/ }).click();
 
-    // Header should read "Pull translations" with "(en)" nearby
+    // Header should read "Download to Figma" with "(en)" nearby
     await expect(
-      ui.getByRole("heading", { name: /Pull translations/ }),
+      ui.getByRole("heading", { name: /Download to Figma/ }),
     ).toBeVisible({ timeout: 5_000 });
     await expect(ui.locator("header").getByText("(en)")).toBeVisible();
   });
@@ -186,7 +186,7 @@ test.describe("Pull view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Pull/ }).click();
+    await ui.getByRole("button", { name: /Download/ }).click();
 
     // Without a language the Pull view immediately shows an error.
     await expect(ui.getByText("No language selected.")).toBeVisible({
@@ -216,7 +216,7 @@ test.describe("Pull view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Pull/ }).click();
+    await ui.getByRole("button", { name: /Download/ }).click();
 
     // Translation differs — must always show the changes list and Apply button.
     await expect(ui.getByText("Changes to apply")).toBeVisible({
@@ -255,7 +255,7 @@ test.describe("Pull view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Pull/ }).click();
+    await ui.getByRole("button", { name: /Download/ }).click();
 
     // The failed query settles to an error message (fallback wording depends on
     // whether the server body carried an error code).
@@ -290,7 +290,7 @@ test.describe("Pull view", () => {
     const ui = page.frameLocator(IFRAME_SELECTOR);
     await expect(ui.getByText("1 selected")).toBeVisible({ timeout: 30_000 });
 
-    await ui.getByRole("button", { name: /Pull/ }).click();
+    await ui.getByRole("button", { name: /Download/ }).click();
 
     const applyBtn = ui.getByRole("button", { name: /^Apply \(/ });
     await expect(applyBtn).toBeVisible({ timeout: 20_000 });

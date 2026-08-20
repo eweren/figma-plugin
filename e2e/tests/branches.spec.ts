@@ -77,7 +77,7 @@ test.describe("Branch feature — branching disabled", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -91,7 +91,7 @@ test.describe("Branch feature — branching disabled", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -128,7 +128,7 @@ test.describe("Branch feature — branching enabled", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -146,7 +146,7 @@ test.describe("Branch feature — branching enabled", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -160,7 +160,7 @@ test.describe("Branch feature — branching enabled", () => {
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -181,7 +181,7 @@ test.describe("Branch feature — branching enabled", () => {
     await page.goto(hostUrl(configWithBranch));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -203,7 +203,7 @@ test.describe("Branch feature — branching enabled", () => {
     await page.goto(hostUrl(configWithUnknownBranch));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -226,7 +226,7 @@ test.describe("Branch feature — branching enabled", () => {
     await page.goto(hostUrl(configWithBranch));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -249,7 +249,7 @@ test.describe("Branch feature — branching enabled", () => {
     await page.goto(hostUrl(configWithBranch));
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 

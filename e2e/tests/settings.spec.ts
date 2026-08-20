@@ -48,7 +48,7 @@ test.describe("Settings", () => {
     // init message hasn't arrived yet when Cancel is clicked immediately.
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -60,7 +60,7 @@ test.describe("Settings", () => {
     await ui.getByRole("button", { name: "Cancel" }).click();
 
     // Index view shows Push/Pull buttons when authenticated.
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -69,7 +69,7 @@ test.describe("Settings", () => {
     // Navigate from Index after auth completes — same rationale as Cancel test.
     await page.goto(hostUrl(SIGNED_IN));
     const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
 
@@ -81,7 +81,7 @@ test.describe("Settings", () => {
     // The top-right "Close" button is inside the Settings header.
     await ui.locator("header").getByRole("button", { name: "Close" }).click();
 
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -126,7 +126,7 @@ test.describe("Settings", () => {
     await ui.getByRole("button", { name: "Save" }).click();
 
     // After Save with valid credentials, the app navigates to Index.
-    await expect(ui.getByRole("button", { name: /Push/ })).toBeVisible({
+    await expect(ui.getByRole("button", { name: /Upload/ })).toBeVisible({
       timeout: 30_000,
     });
   });
