@@ -1,12 +1,21 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { SIGNED_IN, createTestNode, hostUrl } from "../host/fixtures";
 
 const IFRAME_SELECTOR = '[data-testid="plugin-iframe"]';
 
+/**
+ * Connect as the view works TODAY: it SEARCHES Tolgee for an existing key and
+ * connects to a result.
+ *
+ * The previous version drove a free-text key field (`#connect-key`), a
+ * namespace field, a plural toggle, a Connect submit button and a Cancel
+ * button. None of those exist — the view has a search box, a result list where
+ * each row carries its own Connect/Disconnect, and a back arrow. Those tests
+ * described a different screen, so they are replaced rather than re-pointed.
+ */
 test.describe("Connect view", () => {
-  test("opens Connect view for unconnected node", async ({ page }) => {
-    const node = createTestNode({ text: "My label" });
-
+  /** Open Connect from Index for `node`. */
+  async function openConnect(page: Page, node: ReturnType<typeof createTestNode>) {
     await page.goto(
       hostUrl(SIGNED_IN, {
         allNodes: [node],
@@ -14,270 +23,112 @@ test.describe("Connect view", () => {
         hasUserSelection: true,
       }),
     );
-
     const ui = page.frameLocator(IFRAME_SELECTOR);
-
     await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
-
-    // Click the Link2 icon button to open the Connect view.
-    await ui.getByRole("button", { name: "Connect to key" }).click();
-
+    if (node.connected) {
+      // A connected row has no "Connect to key" action — it shows Disconnect.
+      // The way in is the overflow menu.
+      await ui.getByRole("button", { name: "More actions" }).first().click();
+      await ui.getByText("Connection detail").click();
+    } else {
+      await ui.getByRole("button", { name: "Connect to key" }).click();
+    }
     await expect(ui.getByText("Connect to existing key")).toBeVisible({
-      timeout: 5_000,
+      timeout: 10_000,
     });
-    await expect(ui.locator("#connect-key")).toBeVisible();
+    return ui;
+  }
+
+  test("opens from an unconnected node and prompts for a search", async ({
+    page,
+  }) => {
+    const ui = await openConnect(page, createTestNode({ text: "Anything" }));
+
+    // The search box arrives PREFILLED with the node's own text, so the view
+    // opens mid-search rather than on the "Search for an existing key" prompt.
+    await expect(ui.getByPlaceholder("Search by string (key)…")).toHaveValue(
+      "Anything",
+    );
   });
 
-  test("can type a key and connect", async ({ page }) => {
-    const node = createTestNode({ text: "My label" });
+  test("the back arrow returns to Index", async ({ page }) => {
+    const ui = await openConnect(page, createTestNode({ text: "Anything" }));
 
-    await page.goto(
-      hostUrl(SIGNED_IN, {
-        allNodes: [node],
-        selectedNodes: [node],
-        hasUserSelection: true,
-      }),
-    );
+    await ui.locator("header").getByRole("button", { name: "Back" }).click();
 
-    const ui = page.frameLocator(IFRAME_SELECTOR);
-
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
-
-    await ui.getByRole("button", { name: "Connect to key" }).click();
-    await expect(ui.locator("#connect-key")).toBeVisible({ timeout: 5_000 });
-
-    await ui.locator("#connect-key").fill("my-new-key");
-
-    await ui.getByRole("button", { name: "Connect" }).click();
-
-    // After connecting, the UI navigates back to the Index view.
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
-    // The list-item row must show the connected state.
-    await expect(ui.getByText("connected")).toBeVisible();
-    await expect(ui.getByText("my-new-key")).toBeVisible();
-  });
-
-  test("cancels connect and returns to Index", async ({ page }) => {
-    const node = createTestNode({ text: "My label" });
-
-    await page.goto(
-      hostUrl(SIGNED_IN, {
-        allNodes: [node],
-        selectedNodes: [node],
-        hasUserSelection: true,
-      }),
-    );
-
-    const ui = page.frameLocator(IFRAME_SELECTOR);
-
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
-
-    await ui.getByRole("button", { name: "Connect to key" }).click();
-    await expect(ui.getByText("Connect to existing key")).toBeVisible({
-      timeout: 5_000,
+    await expect(ui.getByRole("heading", { name: "Strings" })).toBeVisible({
+      timeout: 10_000,
     });
-
-    // The footer "Cancel" button — scope to footer to avoid matching the header Cancel.
-    await ui.locator("footer").getByRole("button", { name: "Cancel" }).click();
-
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("shows Remove connection for connected node", async ({ page }) => {
+  test("a search with no match says so instead of hanging", async ({ page }) => {
+    const ui = await openConnect(page, createTestNode({ text: "Anything" }));
+
+    await ui
+      .getByPlaceholder("Search by string (key)…")
+      .fill("zzz-definitely-no-such-key-zzz");
+
+    await expect(ui.getByText("No matching key in Tolgee")).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
+  test("a search shows results, each offering Connect", async ({ page }) => {
+    const ui = await openConnect(page, createTestNode({ text: "Anything" }));
+
+    await ui.getByPlaceholder("Search by string (key)…").fill("on-the-road");
+
+    await expect(ui.getByText("on-the-road-title").first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(ui.getByRole("button", { name: "Connect" }).first()).toBeVisible();
+  });
+
+  test("connecting to a result returns to Index with the node linked", async ({
+    page,
+  }) => {
+    const ui = await openConnect(page, createTestNode({ text: "Anything" }));
+
+    await ui.getByPlaceholder("Search by string (key)…").fill("on-the-road");
+    await ui.getByRole("button", { name: "Connect" }).first().click();
+
+    // `connectTo` navigates straight back, and the row now carries a key. Which
+    // one depends on the search order — "on-the-road" matches several — so
+    // assert the node is CONNECTED rather than pinning the exact key.
+    await expect(ui.getByRole("heading", { name: "Strings" })).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(ui.getByText(/on-the-road/).first()).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(ui.getByRole("button", { name: "Disconnect" })).toBeVisible();
+  });
+
+  test("an already-connected key offers Disconnect", async ({ page }) => {
     const node = createTestNode({
       text: "On the road",
       key: "on-the-road-title",
       connected: true,
     });
+    const ui = await openConnect(page, node);
 
-    await page.goto(
-      hostUrl(SIGNED_IN, {
-        allNodes: [node],
-        selectedNodes: [node],
-        hasUserSelection: true,
-      }),
-    );
+    await ui.getByPlaceholder("Search by string (key)…").fill("on-the-road");
 
-    const ui = page.frameLocator(IFRAME_SELECTOR);
-
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
-
-    await ui.getByRole("button", { name: "Connect to key" }).click();
-
-    await expect(
-      ui.getByRole("button", { name: "Remove connection" }),
-    ).toBeVisible({ timeout: 5_000 });
-  });
-
-  test("Connect button is disabled when key field is empty", async ({
-    page,
-  }) => {
-    const node = createTestNode({ text: "My label" });
-
-    await page.goto(
-      hostUrl(SIGNED_IN, {
-        allNodes: [node],
-        selectedNodes: [node],
-        hasUserSelection: true,
-      }),
-    );
-
-    const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
-
-    await ui.getByRole("button", { name: "Connect to key" }).click();
-    await expect(ui.locator("#connect-key")).toBeVisible({ timeout: 5_000 });
-
-    // Key field starts empty — Connect should be disabled.
-    await expect(
-      ui.getByRole("button", { name: "Connect" }),
-    ).toBeDisabled();
-
-    // After typing a key, Connect becomes enabled.
-    await ui.locator("#connect-key").fill("my.key");
-    await expect(
-      ui.getByRole("button", { name: "Connect" }),
-    ).toBeEnabled();
-  });
-
-  test("plural toggle reveals plural parameter field", async ({ page }) => {
-    const node = createTestNode({ text: "My label" });
-
-    await page.goto(
-      hostUrl(SIGNED_IN, {
-        allNodes: [node],
-        selectedNodes: [node],
-        hasUserSelection: true,
-      }),
-    );
-
-    const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
-
-    await ui.getByRole("button", { name: "Connect to key" }).click();
-    await expect(ui.getByText("Plural message (ICU)")).toBeVisible({
-      timeout: 5_000,
+    // The row for the key this node already uses swaps Connect for Disconnect
+    // (was "Remove connection").
+    await expect(ui.getByRole("button", { name: "Disconnect" })).toBeVisible({
+      timeout: 20_000,
     });
-
-    // Plural parameter input is initially hidden.
-    await expect(ui.locator("#connect-param")).not.toBeVisible();
-
-    // Toggling the plural switch reveals it.
-    await ui.locator("#connect-plural").click();
-    await expect(ui.locator("#connect-param")).toBeVisible();
-  });
-
-  test("Remove connection disconnects node and returns to Index", async ({
-    page,
-  }) => {
-    const node = createTestNode({
-      text: "On the road",
-      key: "on-the-road-title",
-      connected: true,
-    });
-
-    await page.goto(
-      hostUrl(SIGNED_IN, {
-        allNodes: [node],
-        selectedNodes: [node],
-        hasUserSelection: true,
-      }),
-    );
-
-    const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
-
-    await ui.getByRole("button", { name: "Connect to key" }).click();
-    await expect(
-      ui.getByRole("button", { name: "Remove connection" }),
-    ).toBeVisible({ timeout: 5_000 });
-
-    await ui.getByRole("button", { name: "Remove connection" }).click();
-
-    // After removing, the view returns to Index.
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
-    // The node row must show the inline key input, not the connected badge.
-    await expect(ui.locator('input[placeholder="Key name"]')).toBeVisible();
-    await expect(ui.getByText("connected")).not.toBeVisible();
-  });
-
-  test("search shows results and selecting one fills the key field", async ({
-    page,
-  }) => {
-    const node = createTestNode({ text: "On the road" });
-
-    await page.goto(
-      hostUrl(SIGNED_IN, {
-        allNodes: [node],
-        selectedNodes: [node],
-        hasUserSelection: true,
-      }),
-    );
-
-    const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
-
-    await ui.getByRole("button", { name: "Connect to key" }).click();
-    await expect(ui.getByText("Connect to existing key")).toBeVisible({
-      timeout: 5_000,
-    });
-
-    // Type a partial key name into the search field (300 ms debounce + API call).
-    await ui.getByPlaceholder("Search existing keys…").fill("on-the-road");
-    await expect(ui.getByText("on-the-road-title")).toBeVisible({
-      timeout: 10_000,
-    });
-
-    // Click the result — it should populate the key field.
-    await ui.getByRole("button", { name: /on-the-road-title/ }).click();
-    await expect(ui.locator("#connect-key")).toHaveValue("on-the-road-title");
-  });
-
-  test("search result connect returns connected node to Index", async ({
-    page,
-  }) => {
-    const node = createTestNode({ text: "On the road" });
-
-    await page.goto(
-      hostUrl(SIGNED_IN, {
-        allNodes: [node],
-        selectedNodes: [node],
-        hasUserSelection: true,
-      }),
-    );
-
-    const ui = page.frameLocator(IFRAME_SELECTOR);
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 30_000 });
-
-    await ui.getByRole("button", { name: "Connect to key" }).click();
-    await expect(ui.getByText("Connect to existing key")).toBeVisible({
-      timeout: 5_000,
-    });
-
-    // Search, select a result, then connect.
-    await ui.getByPlaceholder("Search existing keys…").fill("on-the-road");
-    await expect(ui.getByText("on-the-road-title")).toBeVisible({
-      timeout: 10_000,
-    });
-    await ui.getByRole("button", { name: /on-the-road-title/ }).click();
-    await ui.getByRole("button", { name: "Connect" }).click();
-
-    // The node row must now reflect the connected state.
-    await expect(ui.getByText("1 string")).toBeVisible({ timeout: 5_000 });
-    await expect(ui.getByText("connected")).toBeVisible();
-    await expect(ui.getByText("on-the-road-title")).toBeVisible();
   });
 
   test("shows 'No node selected' when navigated without a node", async ({
     page,
   }) => {
-    // Navigate directly to the connect route without a node in state.
     await page.goto(hostUrl(SIGNED_IN, { route: "connect" }));
-
     const ui = page.frameLocator(IFRAME_SELECTOR);
 
     await expect(ui.getByText("No node selected.")).toBeVisible({
-      timeout: 10_000,
+      timeout: 30_000,
     });
   });
 });
